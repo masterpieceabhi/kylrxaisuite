@@ -256,4 +256,7 @@ router.get('/leave/calendar', authorize(MANAGER_ROLES), requireUsOrg, async (req
     res.json({ success: true, from, to, data: rows });
 });
 
+// Shared with offboarding (final leave balances)
+router.helpers = { balanceFor, loadPolicies, hireDateOf };
+
 module.exports = router;

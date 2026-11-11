@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offboarding | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:14px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.Terminating{background:#fef3c7;color:#92400e}.Terminated{background:#f1f5f9;color:var(--muted)}.late{background:#fee2e2;color:var(--bad)}.done{background:#dcfce7;color:var(--ok)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.task{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+code{background:#f1f5f9;padding:2px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<header><h1>Offboarding and rehire</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>People leaving or gone</h2>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Last day</th><th>Reason</th><th>Status</th><th>Checklist</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    <p class="hint" id="empty" style="display:none">Nobody is leaving.</p>
+  </section>
+
+  <section class="card" id="detail" style="display:none">
+    <h2 id="dTitle"></h2>
+    <div id="dBody"></div>
+  </section>
+
+  <section class="card">
+    <h2>End someone's employment</h2>
+    <div class="warn">Rules about final pay and unused leave are different in each state. Check the deadlines with a US advisor. Access to the app is switched off at the end of the last day.</div>
+    <form id="termForm"><div class="grid">
+      <label>Person<select name="userId" id="who"></select></label>
+      <label>Last day of work<input type="date" name="lastDay" required></label>
+      <label>Type<select name="type"><option value="resignation">Resignation</option><option value="layoff">Layoff</option><option value="end_of_contract">End of contract</option><option value="retirement">Retirement</option><option value="termination_for_cause">Termination for cause</option><option value="other">Other</option></select></label>
+      <label>Reason (recorded)<input name="reason" required minlength="3"></label>
+      <label>Eligible to be rehired?<select name="rehireEligible"><option value="true">Yes</option><option value="false">No</option></select></label>
+    </div><div class="row"><button type="submit">Start offboarding</button></div></form>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+let rowsData = [];
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+
+async function load() {
+  const [off, emps] = await Promise.all([api('GET', '/offboarding'), api('GET', '/employees')]);
+  rowsData = off.data;
+  const leaving = new Set(off.data.map((r) => r.userId));
+  $('who').innerHTML = emps.data.filter((e) => !leaving.has(e.id)).map((e) => `<option value="${e.id}">${e.name || ''} (${e.employeeId})</option>`).join('');
+  $('rows').innerHTML = off.data.map((r) => `<tr><td>${r.employeeId || '-'}</td><td>${r.name || ''}</td><td>${r.lastDay}</td><td>${r.type.replace(/_/g, ' ')}: ${r.reason}</td><td><span class="tag ${r.status}">${r.status}</span></td><td>${r.progress ? `${r.progress.percent}%${r.progress.overdue ? ` <span class="tag late">${r.progress.overdue} late</span>` : ''}` : '-'}</td><td><button class="ghost" data-open="${r.userId}">Open</button></td></tr>`).join('');
+  $('empty').style.display = off.data.length ? 'none' : 'block';
+}
+
+async function openDetail(userId) {
+  const r = rowsData.find((x) => x.userId === userId); if (!r) return;
+  const [sum, lists] = await Promise.all([api('GET', `/offboarding/${userId}/summary`), api('GET', `/checklists/person/${userId}`)]);
+  const off = lists.lists.find((l) => l.kind === 'offboarding');
+  $('dTitle').textContent = `${r.name} (${r.employeeId || ''}): last day ${r.lastDay}`;
+  let html = `<h3>To do</h3>` + (off ? off.tasks.map((t) => `<div class="task"><div>${t.done ? '✅' : '⬜'} ${t.title}<div class="hint">${t.assignee} · due ${t.dueDate}${t.help ? ` · ${t.help}` : ''}</div></div><div>${t.overdue ? '<span class="tag late">late</span> ' : ''}${t.done ? (t.doneByData ? '<span class="tag done">done by the system</span>' : `<button class="ghost" data-undo="${t.id}">Undo</button>`) : `<button data-done="${t.id}">Mark done</button>`}</div></div>`).join('') : '<p class="hint">No checklist.</p>');
+  html += `<h3>Unused leave</h3>` + (sum.leave.length ? `<table><tbody>${sum.leave.map((l) => `<tr><td>${l.policy}</td><td>${l.balanceHours} hours</td><td>${l.payoutRequired ? `<b>Pay out ${l.payoutHours} hours</b>` : 'Not paid out by this policy'}</td></tr>`).join('')}</tbody></table>` : '<p class="hint">No leave policies apply.</p>');
+  html += `<h3>I-9</h3><p>Keep the I-9 until <b>${sum.i9RetainUntil}</b> (the later of 3 years after hire or 1 year after the last day).</p>`;
+  html += `<h3>Hours in the last two weeks</h3><p>${sum.lastTwoWeeks.map((d) => `${d.date}: ${(d.workedMinutes / 60).toFixed(1)}h`).join(' · ') || 'No hours recorded.'}</p>`;
+  html += `<p class="hint">${sum.notes.join(' ')}</p><div class="row">`;
+  if (r.status === 'Terminating') html += `<button class="no" data-cancel="${userId}">Cancel the departure</button>`;
+  if (r.status === 'Terminated') html += `<label>New start date<input type="date" id="reDate"></label><button data-rehire="${userId}">Rehire</button>`;
+  html += '</div><div id="reOut" class="hint" style="margin-top:10px"></div>';
+  $('dBody').innerHTML = html; $('detail').style.display = 'block'; $('detail').dataset.user = userId; $('detail').dataset.list = off ? off.id : '';
+  $('detail').scrollIntoView({ behavior: 'smooth' });
+}
+
+document.addEventListener('click', async (e) => {
+  const open = e.target.closest('[data-open]'); const done = e.target.closest('[data-done]'); const undo = e.target.closest('[data-undo]');
+  const cancel = e.target.closest('[data-cancel]'); const re = e.target.closest('[data-rehire]');
+  const userId = $('detail').dataset.user; const listId = $('detail').dataset.list;
+  try {
+    if (open) await openDetail(open.dataset.open);
+    if (done || undo) { const id = (done || undo).dataset.done || (done || undo).dataset.undo; await api('PUT', `/checklists/person/${userId}/${listId}/tasks/${id}`, { status: done ? 'done' : 'open' }); await load(); await openDetail(userId); }
+    if (cancel && window.confirm('Cancel this departure? The person stays employed.')) { await api('POST', `/offboarding/${userId}/cancel`); say('Departure cancelled.'); $('detail').style.display = 'none'; await load(); }
+    if (re) {
+      const startDate = $('reDate').value; if (!startDate) return say('Pick a new start date.', false);
+      const r = rowsData.find((x) => x.userId === userId); let body = { startDate };
+      if (r && r.rehireEligible === false) { const reason = window.prompt('This person was marked not eligible for rehire. Why are you rehiring them?'); if (!reason) return; body = { ...body, override: true, reason }; }
+      const out = await api('POST', `/offboarding/${userId}/rehire`, body);
+      $('reOut').innerHTML = `Rehired. Temporary password, shown once: <code>${out.temporaryPassword}</code><br>I-9: <b>${out.i9.action === 'update_section_3' ? 'update Section 3 of the old form' : 'complete a new I-9'}</b> (${out.i9.reason}).`;
+      say('Rehired.'); await load();
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+$('termForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  if (!window.confirm('Start offboarding for this person?')) return;
+  try {
+    const r = await api('POST', `/offboarding/${f.userId.value}/terminate`, { lastDay: f.lastDay.value, type: f.type.value, reason: f.reason.value, rehireEligible: f.rehireEligible.value === 'true' });
+    say(`Offboarding started. ${r.immediate ? 'Access is already switched off.' : 'Access switches off after the last day.'} ${r.cancelledLeaveRequests ? `${r.cancelledLeaveRequests} future time-off request(s) were cancelled.` : ''}`);
+    f.reset(); await load();
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { await load(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

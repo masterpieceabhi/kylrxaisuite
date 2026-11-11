@@ -9,6 +9,7 @@ const { admin, db, rawCollection } = require('../config/firebase');
 const { encryptField } = require('./pii-crypto');
 const v = require('./us-validation');
 const forms = require('./us-forms');
+const checklists = require('./us-checklist-service');
 
 const ALLOWED_ROLES = ['employee', 'manager', 'hr_admin'];
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -120,6 +121,10 @@ async function createPerson(orgId, validated, employeeId, actorId) {
             };
         }
         await db.collection('users').doc(userRecord.uid).set(record);
+        // Start the new-hire checklist (best effort: HR can still add it later)
+        try {
+            await checklists.createChecklist(orgId, { id: userRecord.uid, data: record }, 'onboarding', value.startDate);
+        } catch (_) {}
     } catch (error) {
         await admin.auth().deleteUser(userRecord.uid).catch(() => {});
         throw error;

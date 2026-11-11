@@ -311,6 +311,11 @@ exports.login = async (req, res, next) => {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
 
+        // Employment ended: the right password no longer opens a session
+        if (/^terminated$/i.test(String(user.status || ''))) {
+            return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
+
         // 3. Reset failed login attempts on successful password verification
         await db.collection('users').doc(userId).update({
             loginAttempts: 0,

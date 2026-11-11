@@ -186,7 +186,36 @@ function validateCompanyProfile(input) {
     return { errors, value };
 }
 
+/** ABA routing number: 9 digits with the 3-7-1 checksum */
+function validateRoutingNumber(input) {
+    const d = digits(input);
+    if (d.length !== 9) return { valid: false, error: 'Routing number must have 9 digits' };
+    const n = d.split('').map(Number);
+    const sum = 3 * (n[0] + n[3] + n[6]) + 7 * (n[1] + n[4] + n[7]) + (n[2] + n[5] + n[8]);
+    if (sum % 10 !== 0) return { valid: false, error: 'Routing number is not valid, please check it' };
+    return { valid: true, digits: d };
+}
+
+const ACCOUNT_TYPES = ['checking', 'savings'];
+
+function validateDirectDeposit(input) {
+    const errors = [];
+    const b = input || {};
+    const value = {};
+    const bankName = String(b.bankName || '').trim();
+    if (!bankName) errors.push('bankName is required'); else value.bankName = bankName;
+    const rt = validateRoutingNumber(b.routingNumber);
+    if (!rt.valid) errors.push(rt.error); else value.routingNumber = rt.digits;
+    const acct = digits(b.accountNumber);
+    if (acct.length < 4 || acct.length > 17) errors.push('Account number must have 4 to 17 digits');
+    else { value.accountNumber = acct; value.accountLast4 = acct.slice(-4); }
+    if (!ACCOUNT_TYPES.includes(b.accountType)) errors.push('accountType must be checking or savings'); else value.accountType = b.accountType;
+    if (!b.authorization) errors.push('authorization is required (you allow payroll to deposit your pay)');
+    return { errors, value };
+}
+
 module.exports = {
+    validateRoutingNumber, validateDirectDeposit, ACCOUNT_TYPES,
     US_STATES, CLASSIFICATIONS, FLSA_STATUSES, EMPLOYMENT_TYPES, PAY_TYPES, PAY_FREQUENCIES, ENTITY_TYPES,
     validateSsn, validateItin, validateTaxpayerId, maskTaxpayerId, validateEin, validateZip,
     validateAddress, validateEmployeeProfile, validateCompanyProfile

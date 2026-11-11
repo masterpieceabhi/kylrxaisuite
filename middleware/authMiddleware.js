@@ -119,6 +119,11 @@ const verifyToken = async (req, res, next) => {
             role: effectiveRole
         };
 
+        // Someone whose employment has ended can no longer use any existing session
+        if (/^terminated$/i.test(String(userData.status || ''))) {
+            return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
+
         req.user = userData;
         next();
     } catch (error) {

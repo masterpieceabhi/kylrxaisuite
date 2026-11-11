@@ -4,6 +4,7 @@ const { db } = require('../config/firebase');
 const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
 const { encryptField } = require('../services/pii-crypto');
 const forms = require('../services/us-forms');
+const { validateDirectDeposit } = require('../services/us-validation');
 const { requireUsOrg, findEmployee, audit, PEOPLE_COLLECTIONS } = require('./us-hr').helpers;
 
 router.use(verifyToken);
@@ -63,7 +64,9 @@ function publicForms(emp, org) {
         listA: publicDoc(i9.section2.listA), listB: publicDoc(i9.section2.listB), listC: publicDoc(i9.section2.listC)
     } : null;
     const w4 = f.w4 && f.w4.current ? { ...f.w4.current } : null;
+    const dd = f.directDeposit ? { bankName: f.directDeposit.bankName, accountType: f.directDeposit.accountType, accountLast4: f.directDeposit.accountLast4, routingNumber: f.directDeposit.routingNumber, updatedAt: f.directDeposit.updatedAt } : null;
     return {
+        directDeposit: dd,
         employeeId: emp.data.employeeId || emp.id,
         name: emp.data.name || null,
         firstDay: firstDayOf(emp),
@@ -104,6 +107,23 @@ router.put('/employees/:id/w4', requireUsOrg, async (req, res) => {
     await emp.ref.set({ usForms: { w4: { current, history } } }, { merge: true });
     audit(req.orgId, req, 'us_w4_submitted', emp.id, { taxYear: value.taxYear, revision: history.length + 1 });
     res.json({ success: true, forms: publicForms({ ...emp, data: { ...emp.data, usForms: { ...(emp.data.usForms || {}), w4: { current, history } } } }, req.org) });
+});
+
+/** Bank account for direct deposit. The account number is stored encrypted and shown as the last 4 only. */
+router.put('/employees/:id/direct-deposit', requireUsOrg, async (req, res) => {
+    const emp = await findEmployee(req.orgId, req.params.id);
+    if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    if (!canAccess(req, emp)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    const { errors, value } = validateDirectDeposit(req.body);
+    if (errors.length) return res.status(400).json({ success: false, errors });
+    const directDeposit = {
+        bankName: value.bankName, routingNumber: value.routingNumber, accountType: value.accountType,
+        accountNumberEncrypted: encryptField(value.accountNumber, `${req.orgId}:${emp.id}:bank`), accountLast4: value.accountLast4,
+        updatedAt: new Date().toISOString(), updatedBy: req.user.id || null, authorizedAt: new Date().toISOString(), authorizedIp: req.ip || null
+    };
+    await emp.ref.set({ usForms: { directDeposit } }, { merge: true });
+    audit(req.orgId, req, 'us_direct_deposit_updated', emp.id, { bank: value.bankName, last4: value.accountLast4 });
+    res.json({ success: true, forms: publicForms({ ...emp, data: { ...emp.data, usForms: { ...(emp.data.usForms || {}), directDeposit } } }, req.org) });
 });
 
 router.put('/employees/:id/i9/section1', requireUsOrg, async (req, res) => {
@@ -163,7 +183,7 @@ router.get('/compliance/onboarding', authorize(ADMIN_HR_ROLES), requireUsOrg, as
     const snaps = await Promise.all(PEOPLE_COLLECTIONS.map((n) => db.collection(n).get()));
     const today = todayIn(orgTimeZone(req.org));
     const rows = snaps.flatMap((s) => s.docs)
-        .filter((d) => d.data().orgId === req.orgId && d.data().employeeId)
+        .filter((d) => d.data().orgId === req.orgId && d.data().employeeId && !/^terminated$/i.test(String(d.data().status || '')))
         .map((d) => {
             const emp = { id: d.id, data: d.data() };
             const f = forms.onboardingStatus({

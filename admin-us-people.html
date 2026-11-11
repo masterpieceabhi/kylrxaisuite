@@ -24,7 +24,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 </style>
 </head>
 <body>
-<header><h1>US People</h1><a href="admin-dashboard.html">Back to dashboard</a></header>
+<header><h1>US People</h1><div><a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
 <main>
   <div id="msg" role="status"></div>
   <div class="card" id="blocked" style="display:none"><h2>Not available</h2><p>This page is for US companies. Your organization's country is not set to United States.</p></div>
@@ -47,6 +47,12 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <h2>Employees</h2>
     <table><thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Work state</th><th>SSN</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
     <p class="hint" id="empty" style="display:none">No employees yet. Create one from the dashboard, then come back to complete the US profile.</p>
+  </section>
+
+  <section class="card" id="todoCard" style="display:none">
+    <h2>HR to-do list <span class="hint" id="todoCounts"></span></h2>
+    <table><thead><tr><th>Person</th><th>Task</th><th>Due</th><th></th></tr></thead><tbody id="todoRows"></tbody></table>
+    <p class="hint" id="todoEmpty" style="display:none">Nothing to do right now.</p>
   </section>
 
   <section class="card" id="complianceCard" style="display:none">
@@ -256,14 +262,27 @@ $('bulkGo').onclick = async () => {
   catch (e) { say(e.message, false); }
 };
 
+
+async function loadTodo() {
+  const r = await api('GET', '/checklists/overview?assignee=hr');
+  $('todoCounts').textContent = `(${r.counts.open} open, ${r.counts.overdue} late)`;
+  $('todoRows').innerHTML = r.data.slice(0, 40).map((t) => `<tr><td>${t.name || ''} <span class="hint">${t.kind}</span></td><td>${t.title}${t.help ? `<div class="hint">${t.help}</div>` : ''}</td><td>${t.dueDate}${t.overdue ? ' <span class="tag no">late</span>' : ''}</td><td><button class="ghost" data-tl="${t.listId}" data-tu="${t.userId}" data-tt="${t.taskId}">Mark done</button></td></tr>`).join('');
+  $('todoEmpty').style.display = r.data.length ? 'none' : 'block';
+}
+$('todoRows').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-tt]'); if (!b) return;
+  try { await api('PUT', `/checklists/person/${b.dataset.tu}/${b.dataset.tl}/tasks/${b.dataset.tt}`, { status: 'done' }); await loadTodo(); await loadCompliance(); }
+  catch (e) { say(e.message, false); }
+});
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   try {
     const token = await user.getIdToken();
     const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${token}` } })).json();
     if (!org.success || org.country.code !== 'US') { $('blocked').style.display = 'block'; return; }
-    ['companyCard', 'peopleCard', 'complianceCard', 'addCard', 'bulkCard'].forEach((id) => { $(id).style.display = 'block'; });
-    await loadCompany(); await loadPeople(); await loadCompliance();
+    ['companyCard', 'peopleCard', 'todoCard', 'complianceCard', 'addCard', 'bulkCard'].forEach((id) => { $(id).style.display = 'block'; });
+    await loadCompany(); await loadPeople(); await loadCompliance(); await loadTodo();
   } catch (e) { say(e.message, false); }
 });
 </script>

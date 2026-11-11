@@ -26,7 +26,7 @@ button.go{width:100%;padding:18px;border:0;border-radius:14px;background:var(--b
 <header><b id="t">New hire paperwork</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
 <main>
   <div id="msg" role="status"></div>
-  <div class="steps"><div class="step" id="s1">1. Tax form (W-4)</div><div class="step" id="s2">2. Work eligibility (I-9)</div></div>
+  <div class="steps"><div class="step" id="s1">1. Tax form (W-4)</div><div class="step" id="s2">2. Work eligibility (I-9)</div><div class="step" id="s3">3. Bank</div></div>
   <div class="card" id="lead"></div>
 
   <form class="card" id="w4">
@@ -58,6 +58,18 @@ button.go{width:100%;padding:18px;border:0;border-radius:14px;background:var(--b
     <button class="go" type="submit" id="i9b"></button>
   </form>
 
+  <form class="card hide" id="dd">
+    <h2 id="ddt"></h2><p id="ddp"></p>
+    <label class="f"><span id="lbBank"></span><input type="text" name="bankName" autocomplete="off"></label>
+    <label class="f"><span id="lbType"></span><select name="accountType"><option value="checking" id="oChk"></option><option value="savings" id="oSav"></option></select></label>
+    <label class="f"><span id="lbRoute"></span><input type="text" name="routingNumber" inputmode="numeric" maxlength="9" autocomplete="off"></label>
+    <label class="f"><span id="lbAcct"></span><input type="text" name="accountNumber" inputmode="numeric" maxlength="17" autocomplete="off"></label>
+    <label class="opt"><input type="checkbox" name="authorization"><span id="ddAuth"></span></label>
+    <button class="go" type="submit" id="ddb"></button>
+  </form>
+
+  <div class="card" id="todo" style="display:none"><h2 id="todoT"></h2><div id="todoRows"></div></div>
+
   <div class="card hide" id="allDone"><h2 id="doneT"></h2><p id="doneP"></p></div>
 </main>
 
@@ -75,7 +87,7 @@ const T = {
     cit: [['us_citizen', 'A citizen of the United States', ''], ['noncitizen_national', 'A noncitizen national of the United States', ''], ['lawful_permanent_resident', 'A lawful permanent resident', 'You will need your card number'], ['alien_authorized_to_work', 'A noncitizen authorized to work', 'You will need your document number and the date it ends']],
     an: 'Document number (A-Number, USCIS number, I-94 or passport number)', ae: 'Work permission ends on', ol: 'Other last names you have used (if any)',
     att: 'I attest, under penalty of perjury, that I am the person described above and my answers are true.', i9note: 'You will show your original documents to HR within 3 business days of your first day.', i9b: 'Sign and finish',
-    doneT: 'All done. Thank you!', doneP: 'HR will check your documents with you. Nothing else is needed here.', saved: 'Saved.', fail: 'Could not save. Please check the highlighted answers.' },
+    ddt: 'Step 3: Direct deposit', ddp: 'Where should your pay go? Your account number is stored encrypted and only the last 4 digits are ever shown.', lbBank: 'Bank name', lbType: 'Account type', oChk: 'Checking', oSav: 'Savings', lbRoute: 'Routing number (9 digits, on the bottom of a check)', lbAcct: 'Account number', ddAuth: 'I allow my employer to deposit my pay into this account.', ddb: 'Save bank account', todoT: 'Your to-do list', todoDone: 'Done', todoMark: 'Mark done', due: 'due {d}', late: 'late', doneT: 'All done. Thank you!', doneP: 'HR will check your documents with you. Nothing else is needed here.', saved: 'Saved.', fail: 'Could not save. Please check the highlighted answers.' },
   es: { title: 'Papeles de nuevo empleado', lead: 'Dos formularios cortos. Tómese su tiempo. Sus respuestas son privadas y solo Recursos Humanos las ve.',
     w4t: 'Paso 1: Retención de impuestos (Formulario W-4)', w4p: 'Esto le dice a su empleador cuánto impuesto descontar de cada pago.',
     fs: [['single_or_mfs', 'Soltero/a, o casado/a declarando por separado'], ['mfj_or_qss', 'Casado/a declarando en conjunto, o cónyuge sobreviviente'], ['head_of_household', 'Jefe/a de familia']],
@@ -86,7 +98,7 @@ const T = {
     cit: [['us_citizen', 'Ciudadano/a de Estados Unidos', ''], ['noncitizen_national', 'Nacional no ciudadano de Estados Unidos', ''], ['lawful_permanent_resident', 'Residente permanente legal', 'Necesitará el número de su tarjeta'], ['alien_authorized_to_work', 'No ciudadano/a autorizado/a para trabajar', 'Necesitará el número de su documento y la fecha en que vence']],
     an: 'Número de documento (Número A, USCIS, I-94 o pasaporte)', ae: 'El permiso de trabajo vence el', ol: 'Otros apellidos que ha usado (si hay)',
     att: 'Atestiguo, bajo pena de perjurio, que soy la persona descrita arriba y mis respuestas son verdaderas.', i9note: 'Mostrará sus documentos originales a Recursos Humanos dentro de 3 días hábiles de su primer día.', i9b: 'Firmar y terminar',
-    doneT: '¡Listo! Gracias.', doneP: 'Recursos Humanos revisará sus documentos con usted. No necesita hacer nada más aquí.', saved: 'Guardado.', fail: 'No se pudo guardar. Revise las respuestas marcadas.' }
+    ddt: 'Paso 3: Depósito directo', ddp: '¿A dónde debe ir su pago? Su número de cuenta se guarda cifrado y solo se muestran los últimos 4 dígitos.', lbBank: 'Nombre del banco', lbType: 'Tipo de cuenta', oChk: 'Cuenta corriente', oSav: 'Cuenta de ahorros', lbRoute: 'Número de ruta (9 dígitos, abajo en un cheque)', lbAcct: 'Número de cuenta', ddAuth: 'Autorizo a mi empleador a depositar mi pago en esta cuenta.', ddb: 'Guardar cuenta bancaria', todoT: 'Su lista de tareas', todoDone: 'Hecho', todoMark: 'Marcar hecho', due: 'para el {d}', late: 'atrasada', doneT: '¡Listo! Gracias.', doneP: 'Recursos Humanos revisará sus documentos con usted. No necesita hacer nada más aquí.', saved: 'Guardado.', fail: 'No se pudo guardar. Revise las respuestas marcadas.' }
 };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
@@ -97,8 +109,8 @@ function paint() {
   const t = T[lang]; document.documentElement.lang = lang; document.title = t.title; $('t').textContent = t.title;
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
   $('lead').innerHTML = `<h1>${t.title}</h1><p style="margin:8px 0 0">${t.lead}</p>`;
-  ['w4t', 'w4p', 'mj', 'lc', 'lo', 'li', 'ld', 'lx', 'ex', 'decl', 'i9t', 'i9p', 'an', 'ae', 'ol', 'att', 'i9note', 'doneT', 'doneP'].forEach((k) => { $(k).textContent = t[k]; });
-  $('sn1').textContent = t.sn; $('sn2').textContent = t.sn; $('w4b').textContent = t.w4b; $('i9b').textContent = t.i9b;
+  ['w4t', 'w4p', 'mj', 'lc', 'lo', 'li', 'ld', 'lx', 'ex', 'decl', 'i9t', 'i9p', 'an', 'ae', 'ol', 'att', 'i9note', 'doneT', 'doneP', 'ddt', 'ddp', 'lbBank', 'lbType', 'oChk', 'oSav', 'lbRoute', 'lbAcct', 'ddAuth', 'todoT'].forEach((k) => { $(k).textContent = t[k]; });
+  $('ddb').textContent = t.ddb; $('s3').textContent = lang === 'es' ? '3. Banco' : '3. Bank'; $('s3').classList.toggle('done', Boolean(forms && forms.directDeposit)); renderTodo(); $('sn1').textContent = t.sn; $('sn2').textContent = t.sn; $('w4b').textContent = t.w4b; $('i9b').textContent = t.i9b;
   const sel = (document.querySelector('[name=filingStatus]:checked') || {}).value;
   $('fs').innerHTML = t.fs.map(([v, l]) => `<label class="opt"><input type="radio" name="filingStatus" value="${v}" ${sel === v ? 'checked' : ''}><span>${l}</span></label>`).join('');
   const csel = (document.querySelector('[name=citizenshipStatus]:checked') || {}).value;
@@ -118,9 +130,10 @@ async function api(method, path, body) {
 }
 
 function stage() {
-  const w4Done = Boolean(forms.w4), i9Done = Boolean(forms.i9.section1);
+  const w4Done = Boolean(forms.w4), i9Done = Boolean(forms.i9.section1), ddDone = Boolean(forms.directDeposit);
   $('w4').classList.toggle('hide', w4Done); $('i9').classList.toggle('hide', !w4Done || i9Done);
-  $('allDone').classList.toggle('hide', !(w4Done && i9Done)); paint();
+  $('dd').classList.toggle('hide', !(w4Done && i9Done) || ddDone);
+  $('allDone').classList.toggle('hide', !(w4Done && i9Done && ddDone)); paint(); loadTodo();
 }
 
 document.addEventListener('change', (e) => { if (e.target.name === 'citizenshipStatus') $('alien').classList.toggle('hide', !['alien_authorized_to_work', 'lawful_permanent_resident'].includes(e.target.value)); });
@@ -144,6 +157,40 @@ $('i9').addEventListener('submit', async (e) => {
   if (f.otherLastNamesUsed.value) body.otherLastNamesUsed = f.otherLastNamesUsed.value;
   try { const r = await api('PUT', '/i9/section1', body); forms = r.forms; show('ok', T[lang].saved); stage(); }
   catch (err) { show('err', err.message); }
+});
+
+let todo = [];
+async function loadTodo() {
+  try {
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch('/api/us/checklists/mine', { headers: { Authorization: `Bearer ${token}` } });
+    const json = await res.json();
+    todo = res.ok ? json.lists : [];
+    renderTodo();
+  } catch (_) {}
+}
+function renderTodo() {
+  const t = T[lang]; const rows = [];
+  todo.forEach((l) => l.tasks.forEach((k) => rows.push({ listId: l.id, ...k })));
+  $('todo').style.display = rows.length ? 'block' : 'none';
+  $('todoRows').innerHTML = rows.map((k) => `<div class="opt" style="cursor:default;justify-content:space-between;align-items:center"><span>${k.done ? '✅' : '⬜'} ${k.title}<small>${k.done ? t.todoDone : `${t.due.replace('{d}', k.dueDate)}${k.overdue ? ` · ${t.late}` : ''}`}</small></span>${!k.done && !k.auto ? `<button type="button" class="go" style="width:auto;margin:0;padding:10px 14px;font-size:16px" data-list="${k.listId}" data-task="${k.id}">${t.todoMark}</button>` : ''}</div>`).join('');
+}
+$('todoRows').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-task]'); if (!b) return;
+  try {
+    const token = await auth.currentUser.getIdToken();
+    const r = await fetch(`/api/us/checklists/person/${encodeURIComponent(auth.currentUser.uid)}/${encodeURIComponent(b.dataset.list)}/tasks/${encodeURIComponent(b.dataset.task)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ status: 'done' }) });
+    if (!r.ok) throw new Error((await r.json()).error || 'Request failed');
+    await loadTodo();
+  } catch (err) { show('err', err.message); }
+});
+
+$('dd').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  try {
+    const r = await api('PUT', '/direct-deposit', { bankName: f.bankName.value, accountType: f.accountType.value, routingNumber: f.routingNumber.value, accountNumber: f.accountNumber.value, authorization: f.authorization.checked });
+    forms = r.forms; f.accountNumber.value = ''; show('ok', T[lang].saved); stage();
+  } catch (err) { show('err', err.message); }
 });
 
 paint();

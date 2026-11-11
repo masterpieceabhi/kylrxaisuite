@@ -128,7 +128,7 @@ router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     const generic = () => res.status(401).json({ success: false, code: 'wrong_pin', error: 'Number or PIN is not right' });
     if (!doc) { await bcrypt.compare(pin, '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvali'); return generic(); }
     const u = doc.data();
-    if (u.status && String(u.status).toLowerCase() !== 'active') return res.status(403).json({ success: false, code: 'inactive', error: 'This account is not active' });
+    if (u.status && !['active', 'terminating'].includes(String(u.status).toLowerCase())) return res.status(403).json({ success: false, code: 'inactive', error: 'This account is not active' });
     if (u.pinLockedUntil && new Date(u.pinLockedUntil) > new Date()) {
         return res.status(423).json({ success: false, code: 'locked', error: 'Too many wrong tries. Ask your manager for help.' });
     }
@@ -241,7 +241,7 @@ router.get('/team/now', authorize(MANAGER_ROLES), requireOrg, async (req, res) =
     ]);
     const byUser = new Map();
     punchSnap.docs.forEach((d) => { const p = d.data(); if (!byUser.has(p.userId)) byUser.set(p.userId, []); byUser.get(p.userId).push(p); });
-    const rows = people.docs.filter((d) => String(d.data().status || 'Active').toLowerCase() === 'active').map((d) => {
+    const rows = people.docs.filter((d) => ['active', 'terminating'].includes(String(d.data().status || 'Active').toLowerCase())).map((d) => {
         const u = d.data();
         const s = buildStatus(byUser.get(d.id) || [], info, nowIso);
         return { userId: d.id, employeeId: u.employeeId || null, name: u.name, jobTitle: u.jobTitle || null, department: u.departmentName || null,

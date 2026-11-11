@@ -8,45 +8,48 @@ Status meanings: **Done** = built and tested; **Partial** = core works, pieces m
 
 | Status | Count |
 |---|---|
-| Done | 9 |
-| Partial | 22 |
-| Existing, not adapted | 10 |
-| Not started | 40 |
+| Done | 12 |
+| Partial | 23 |
+| Existing, not adapted | 8 |
+| Not started | 38 |
 | Later (Gusto/connectors) | 30 |
 | **All** | **111** |
 
-Not counting the postponed Gusto and connector work, there are 81 functions: 9 done, 22 partial, 10 existing-not-adapted, 40 not started.
+Not counting the postponed Gusto and connector work, there are 81 functions: 12 done, 23 partial, 8 existing-not-adapted, 38 not started.
 
 ## By module
 
 | Module | Done | Partial | Existing | Not started | Later |
 |---|---|---|---|---|---|
 | A Platform and country | 1 | 7 | 0 | 2 | 0 |
-| B People and organization | 2 | 3 | 1 | 4 | 0 |
-| C Hiring and onboarding | 2 | 0 | 3 | 5 | 0 |
+| B People and organization | 3 | 3 | 1 | 3 | 0 |
+| C Hiring and onboarding | 3 | 1 | 2 | 4 | 0 |
 | D Time, attendance, scheduling | 1 | 4 | 0 | 5 | 1 |
 | E Leave and holidays | 3 | 2 | 0 | 2 | 1 |
 | F Payroll (Gusto) | 0 | 0 | 0 | 0 | 13 |
 | G Benefits | 0 | 0 | 0 | 6 | 0 |
 | H Documents and compliance | 0 | 3 | 1 | 4 | 0 |
-| I Performance and engagement | 0 | 0 | 4 | 2 | 0 |
+| I Performance and engagement | 0 | 1 | 3 | 2 | 0 |
 | J Analytics and reporting | 0 | 0 | 1 | 4 | 1 |
 | K Connectors | 0 | 0 | 0 | 0 | 14 |
-| L Security, privacy, operations | 0 | 3 | 0 | 6 | 0 |
+| L Security, privacy, operations | 1 | 2 | 0 | 6 | 0 |
 
-## Done (9)
+## Done (12)
 
 - US-A08 SSN/ITIN encryption at rest, masking (last 4), reveal with audit log. - SSN/ITIN and I-9 document numbers encrypted, masked, reveal needs a reason and is logged
 - US-B02 Worker classification: W-2 employee vs 1099 contractor; exempt vs non-exempt; full/part time. - W-2 vs 1099, exempt vs non-exempt, full/part time with rule checks
 - US-B07 Bulk import (CSV/Excel) with validation and preview. - CSV/Excel upload with a check-first step, row-by-row errors and a template
+- US-B09 Termination and rehire flows with last-day logic. - Termination with last day, scheduled access shut-off, leave cancelled, final summary, cancel before last day, rehire with I-9 guidance
 - US-C04 Form W-4 collection and storage (federal and state withholding forms). - Federal W-4 with signature, history, plain language EN/ES (state forms not included)
 - US-C05 Form I-9: Section 1 by day one, Section 2 within 3 business days, document upload, expiry tracking, reverification alerts. - I-9 Sections 1 and 2, 3-business-day deadline, expiry and retention dates, HR status table
+- US-C08 Direct-deposit form and bank validation. - Direct deposit with routing-number check, encrypted account number, shown as last 4 only
 - US-D01 Clock in/out (web, mobile) with optional geofence and IP rules. - Any role, big-button phone page, shared-tablet PIN kiosk, EN/ES, floating clock button
 - US-E01 PTO/vacation policies and accrual engine. - PTO policies with accrual, caps, carryover, waiting period
 - US-E02 Paid sick leave by state/city: accrual, carryover, caps, usage rules. - Paid sick policies work; state/city rules must be entered and confirmed by an advisor
 - US-E05 Leave requests, approvals, calendar and team view. - Requests, approve/deny/cancel, balances, team calendar
+- US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN, I-9 document numbers and bank account numbers are encrypted and masked
 
-## Partial (22)
+## Partial (23)
 
 - US-A01 Country switch per company (IN / US / CA) driving currency, date, time zone, ID fields, visible modules. - Country settings and India-page gate work; no screen yet to pick the country when a company is created
 - US-A02 US company profile: legal name, EIN, entity type, addresses by state, industry code, fiscal year. - EIN, entity type, address, work states saved; no industry code, fiscal year or sites
@@ -56,46 +59,43 @@ Not counting the postponed Gusto and connector work, there are 81 functions: 9 d
 - US-A07 Role model for US: Owner, HR Admin, Payroll Admin, Manager, Employee, Accountant (read-only), Auditor. - Super admin, HR admin, manager, employee exist; no payroll admin, accountant or auditor roles
 - US-A10 Audit trail on every change to people, pay and tax data. - New modules write an audit log (SSN reveal, I-9, leave, time fixes, PINs); no screen to browse it
 - US-B01 Employee record (legal and preferred name, address, DOB, work state, emergency contacts). - Legal name, DOB, address, work state; no emergency contacts
-- US-B05 Pay setup: hourly or salary, frequency, direct deposit split, pay schedule assignment. - Hourly/salary, rate and pay frequency saved; no direct deposit or pay schedule
+- US-B05 Pay setup: hourly or salary, frequency, direct deposit split, pay schedule assignment. - Hourly/salary, rate, pay frequency and direct deposit saved; no pay schedule
 - US-B10 Contractor records and 1099 data (TIN, W-9 status). - 1099 classification and taxpayer ID only; no W-9 status or contractor payments
+- US-C03 Onboarding checklist builder with due dates and reminders. - US onboarding, offboarding and rehire checklists with due dates, owners and self-completing tasks, HR to-do list; fixed default tasks (HR can add custom ones), no email reminders or template editor yet
 - US-D02 Timesheets with weekly approval by manager. - Timesheets by day and week; no weekly manager approval
 - US-D03 Overtime engine: over 40 hours per workweek at 1.5x; state daily/double-time rules (e.g. California). - Weekly overtime over 40 shown; no daily or double-time rules, exempt staff not excluded
 - US-D04 Meal and rest break rules and missed-break premiums by state. - Breaks are tracked and unpaid; no meal/rest rule checks or premiums
 - US-D10 Attendance exceptions: late, missed punch, regularization. - Forgotten clock-out flag and HR missed-punch fix; no employee correction request
 - US-E06 US federal holiday calendar plus company holidays. - Federal holidays are skipped in requests; no editable company holiday calendar for US
-- US-E07 Balance statements and payout-at-termination rules by state. - Balances shown; payout at termination not built
+- US-E07 Balance statements and payout-at-termination rules by state. - Balances shown and a payout summary at termination; no payout calculation into pay
 - US-H02 E-signature for company and employee documents. - Typed signature on W-4 and I-9 only
 - US-H03 Compliance calendar (I-9 audits, new-hire reports, posters, filing dates). - W-4/I-9 deadline table; no wider compliance calendar
 - US-H07 I-9 audit report and missing-document report. - Status table exists; no printable audit report
+- US-I06 Exit interviews and offboarding checklist. - US offboarding checklist with an exit-conversation task; no exit-interview form or notes
 - US-L01 MFA enforced for admins; SSO (SAML/OIDC) for customers. - Email one-time-code login exists; no single sign-on
 - US-L02 Fix the known issues first (login bypass done; demo passwords, dependency vulnerabilities, tenant scoping on). - Login bypass and silent-save bugs fixed; demo passwords, dependency vulnerabilities, company-data scoping and one plaintext temp password remain
-- US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN and I-9 numbers encrypted; bank numbers not yet
 
-## Existing, not adapted (10)
+## Existing, not adapted (8)
 
 - US-B03 Org chart, departments, managers, reporting lines. - Org chart, departments and managers exist from the India app; not tested for US
 - US-C01 Candidate and requisition tracking, pipeline stages. - Recruitment code exists from the India app; not adapted
-- US-C03 Onboarding checklist builder with due dates and reminders. - India onboarding wizard exists; no US checklist with due dates and reminders
 - US-C09 Handbook and policy acknowledgements. - Policy acknowledgements exist from the India app
 - US-H08 Policy library with versions. - Policy library exists from the India app
 - US-I01 Goals and reviews. - Goals and reviews exist from the India app
 - US-I03 Pulse surveys and eNPS. - Surveys exist from the India app
 - US-I05 Asset tracking. - Asset tracking exists from the India app
-- US-I06 Exit interviews and offboarding checklist. - Exit and offboarding screens exist from the India app; not adapted for US
 - US-J05 Custom report builder and scheduled exports. - Report builder exists from the India app
 
-## Not started (40)
+## Not started (38)
 
 - US-A06 Effective-dated rules tables (min wage, overtime, sick leave), reviewed each January. - No dated tables for minimum wage or overtime rules (leave policies are configurable instead)
 - US-A09 Data residency in a US region; backup and restore. - No US data region or backup plan yet
 - US-B04 Job, title, compensation history with effective dates. - Pay rate is stored but there is no dated job or pay history
 - US-B06 Custom fields and employee tags.
 - US-B08 Employee self-service profile edits with approval. - People can complete their own W-4/I-9 but cannot edit their profile
-- US-B09 Termination and rehire flows with last-day logic. - No termination, last-day or rehire flow (offboarding) for US
 - US-C02 Offer letter templates and e-signature. - Offer letters and e-signature
 - US-C06 E-Verify hand-off tracking (record of case results).
 - US-C07 State new-hire reporting by deadline per state.
-- US-C08 Direct-deposit form and bank validation.
 - US-C10 Background-check provider hook.
 - US-D05 Minimum-wage checks (federal, state, city) with alerts.
 - US-D06 Shift scheduling, swaps, open shifts, publish to team. - Shift scheduling for US
