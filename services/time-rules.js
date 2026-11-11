@@ -134,6 +134,13 @@ function timesheet(punches, tz, nowIso, overtimeThresholdHours) {
     const workByDay = new Map();
     const breakByDay = new Map();
     for (const i of intervalsOf(punches, nowIso)) addByDay(i.kind === 'work' ? workByDay : breakByDay, i.start, i.end, tz);
+    // longest single break per day (for meal-break checks)
+    const longestBreak = new Map();
+    for (const i of intervalsOf(punches, nowIso).filter((x) => x.kind === 'break')) {
+        const parts = new Map();
+        addByDay(parts, i.start, i.end, tz);
+        parts.forEach((min, day) => longestBreak.set(day, Math.max(longestBreak.get(day) || 0, min)));
+    }
     const punchCount = new Map();
     for (const p of punches) { const k = localDate(p.at, tz); punchCount.set(k, (punchCount.get(k) || 0) + 1); }
     const dates = new Set([...workByDay.keys(), ...breakByDay.keys(), ...punchCount.keys()]);
@@ -142,6 +149,7 @@ function timesheet(punches, tz, nowIso, overtimeThresholdHours) {
         date,
         workedMinutes: Math.round(workByDay.get(date) || 0),
         breakMinutes: Math.round(breakByDay.get(date) || 0),
+        longestBreakMinutes: Math.round(longestBreak.get(date) || 0),
         open: open && date === localDate(nowIso || new Date().toISOString(), tz),
         punches: punchCount.get(date) || 0
     }));
@@ -162,6 +170,37 @@ function timesheet(punches, tz, nowIso, overtimeThresholdHours) {
     return { days, weeks: weekRows };
 }
 
+function tzOffsetMinutes(utcMs, tz) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
+    }).formatToParts(new Date(utcMs));
+    const g = (t) => Number(parts.find((p) => p.type === t).value);
+    return (Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - utcMs) / 60000;
+}
+
+/** A wall-clock time in a time zone ("2026-11-09", "08:30", "America/Chicago") as a UTC ISO string */
+function zonedToUtcIso(dateIso, timeHHMM, tz) {
+    const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateIso));
+    const tm = /^(\d{1,2}):(\d{2})$/.exec(String(timeHHMM));
+    if (!dm || !tm || Number(tm[1]) > 23 || Number(tm[2]) > 59) return null;
+    const guess = Date.UTC(+dm[1], +dm[2] - 1, +dm[3], +tm[1], +tm[2]);
+    let utc = guess - tzOffsetMinutes(guess, tz) * 60000;
+    const again = tzOffsetMinutes(utc, tz);
+    utc = guess - again * 60000;
+    return new Date(utc).toISOString();
+}
+
+/** First invalid step in a list of punches (oldest first), or null when the sequence is valid */
+function validateSequence(punches) {
+    const seen = [];
+    for (let i = 0; i < punches.length; i++) {
+        const code = checkPunch(stateOf(seen), punches[i].type);
+        if (code) return { index: i, code };
+        seen.push(punches[i]);
+    }
+    return null;
+}
+
 /** Normalizes what a worker types on a keypad ("1", "0001", "EMP0001") into an employee ID */
 function employeeIdFromKeypad(input, prefix = 'EMP', padLength = 4) {
     const digits = String(input || '').replace(/\D/g, '');
@@ -175,5 +214,6 @@ function validPin(pin) {
 
 module.exports = {
     PUNCH_TYPES, LONG_SHIFT_HOURS, localDate, stateOf, allowedActions, checkPunch, totals,
-    isForgottenClockOut, weekStart, timesheet, employeeIdFromKeypad, validPin
+    isForgottenClockOut, weekStart, timesheet, employeeIdFromKeypad, validPin,
+    tzOffsetMinutes, zonedToUtcIso, validateSequence
 };

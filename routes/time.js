@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
 const { getCountryConfig } = require('../country-config');
 const rules = require('../services/time-rules');
+const policy = require('../services/time-policy');
 
 const KIOSK_SESSION_SECONDS = 45;
 const PIN_MAX_ATTEMPTS = 5;
@@ -27,14 +28,15 @@ async function orgInfo(orgId) {
     const candidate = (data.usProfile && data.usProfile.timezone) || data.timezone || data.Time_Zone || country.timeZones[0];
     let tz = country.timeZones[0];
     try { new Intl.DateTimeFormat('en-US', { timeZone: candidate }); tz = candidate; } catch (_) {}
-    return { orgId, tz, country: country.code, overtimeWeeklyHours: country.code === 'US' ? 40 : null };
+    const merged = { ...policy.DEFAULT_RULES, ...((data.usProfile && data.usProfile.timeRules) || {}) };
+    return { orgId, tz, country: country.code, rules: merged, overtimeWeeklyHours: country.code === 'US' ? merged.overtimeWeeklyHours : null };
 }
 
 /** Punches for a user at or after `sinceIso`, oldest first */
 async function punchesSince(orgId, userId, sinceIso, tx) {
     const q = rawCollection('time_punches').where('userId', '==', userId).where('at', '>=', sinceIso).orderBy('at');
     const snap = tx ? await tx.get(q) : await q.get();
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.orgId === orgId);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.orgId === orgId && !p.voided);
 }
 
 function buildStatus(punches, info, nowIso) {
@@ -73,9 +75,18 @@ function cleanLocation(loc) {
  * Records one punch if it is allowed. Runs in a transaction so two quick taps cannot both
  * clock in. A repeat of the same action within 15 seconds is treated as the same tap.
  */
+/** True when the person's workweek containing `localDay` has been approved (it is then locked) */
+async function weekIsLocked(userId, localDay) {
+    const snap = await rawCollection('timesheet_weeks').doc(`${userId}_${rules.weekStart(localDay)}`).get();
+    return exists(snap) && snap.data().status === 'approved';
+}
+
 async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, location, note, addedBy }) {
     const info = await orgInfo(orgId);
     const nowIso = new Date().toISOString();
+    if (await weekIsLocked(userId, rules.localDate(nowIso, info.tz))) {
+        return { ok: false, code: 'week_locked', status: buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso) };
+    }
     return admin.firestore().runTransaction(async (tx) => {
         const punches = await punchesSince(orgId, userId, daysAgoIso(8), tx);
         const last = punches.length ? punches[punches.length - 1] : null;
@@ -97,7 +108,8 @@ async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, 
 
 const ERROR_TEXT = {
     already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.',
-    not_on_break: 'You are not on a break.', unknown_action: 'Unknown action.', not_allowed: 'That is not possible right now.'
+    not_on_break: 'You are not on a break.', unknown_action: 'Unknown action.', not_allowed: 'That is not possible right now.',
+    week_locked: 'This week has been approved. Ask your manager if something needs to change.'
 };
 
 /* ----------------------------- Shared-device kiosk (no login) ----------------------------- */
@@ -261,6 +273,7 @@ router.post('/punches/manual', authorize(ADMIN_HR_ROLES), requireOrg, async (req
     if (!exists(t) || t.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Person not found' });
     const info = await orgInfo(req.orgId);
     const atIso = when.toISOString();
+    if (await weekIsLocked(userId, rules.localDate(atIso, info.tz))) return res.status(409).json({ success: false, error: 'That week is approved. Reopen it first.' });
     await rawCollection('time_punches').add({
         orgId: req.orgId, userId, employeeId: t.data().employeeId || null, type, at: atIso, localDate: rules.localDate(atIso, info.tz),
         tz: info.tz, source: 'manual', deviceId: null, location: null, note: String(reason).slice(0, 200), addedBy: req.user.id
@@ -310,6 +323,6 @@ router.delete('/kiosks/:id', authorize(ADMIN_HR_ROLES), requireOrg, async (req, 
 });
 
 // Shared with the leave routes (worked hours drive hours-based accrual)
-router.helpers = { orgInfo, punchesSince };
+router.helpers = { orgInfo, punchesSince, buildStatus, weekIsLocked, ERROR_TEXT };
 
 module.exports = router;

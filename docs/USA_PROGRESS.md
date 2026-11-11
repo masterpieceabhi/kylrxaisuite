@@ -8,23 +8,23 @@ Status meanings: **Done** = built and tested; **Partial** = core works, pieces m
 
 | Status | Count |
 |---|---|
-| Done | 12 |
-| Partial | 23 |
+| Done | 15 |
+| Partial | 22 |
 | Existing, not adapted | 8 |
-| Not started | 38 |
-| Later (Gusto/connectors) | 30 |
+| Not started | 37 |
+| Later (Gusto/connectors) | 29 |
 | **All** | **111** |
 
-Not counting the postponed Gusto and connector work, there are 81 functions: 12 done, 23 partial, 8 existing-not-adapted, 38 not started.
+Not counting the postponed Gusto and connector work, there are 82 functions: 15 done, 22 partial, 8 existing-not-adapted, 37 not started.
 
 ## By module
 
 | Module | Done | Partial | Existing | Not started | Later |
 |---|---|---|---|---|---|
-| A Platform and country | 1 | 7 | 0 | 2 | 0 |
+| A Platform and country | 1 | 8 | 0 | 1 | 0 |
 | B People and organization | 3 | 3 | 1 | 3 | 0 |
 | C Hiring and onboarding | 3 | 1 | 2 | 4 | 0 |
-| D Time, attendance, scheduling | 1 | 4 | 0 | 5 | 1 |
+| D Time, attendance, scheduling | 4 | 2 | 0 | 5 | 0 |
 | E Leave and holidays | 3 | 2 | 0 | 2 | 1 |
 | F Payroll (Gusto) | 0 | 0 | 0 | 0 | 13 |
 | G Benefits | 0 | 0 | 0 | 6 | 0 |
@@ -34,7 +34,7 @@ Not counting the postponed Gusto and connector work, there are 81 functions: 12 
 | K Connectors | 0 | 0 | 0 | 0 | 14 |
 | L Security, privacy, operations | 1 | 2 | 0 | 6 | 0 |
 
-## Done (12)
+## Done (15)
 
 - US-A08 SSN/ITIN encryption at rest, masking (last 4), reveal with audit log. - SSN/ITIN and I-9 document numbers encrypted, masked, reveal needs a reason and is logged
 - US-B02 Worker classification: W-2 employee vs 1099 contractor; exempt vs non-exempt; full/part time. - W-2 vs 1099, exempt vs non-exempt, full/part time with rule checks
@@ -44,28 +44,30 @@ Not counting the postponed Gusto and connector work, there are 81 functions: 12 
 - US-C05 Form I-9: Section 1 by day one, Section 2 within 3 business days, document upload, expiry tracking, reverification alerts. - I-9 Sections 1 and 2, 3-business-day deadline, expiry and retention dates, HR status table
 - US-C08 Direct-deposit form and bank validation. - Direct deposit with routing-number check, encrypted account number, shown as last 4 only
 - US-D01 Clock in/out (web, mobile) with optional geofence and IP rules. - Any role, big-button phone page, shared-tablet PIN kiosk, EN/ES, floating clock button
+- US-D02 Timesheets with weekly approval by manager. - Weekly timesheet per person, send for approval, approve or send back with a note, approved weeks lock, HR can reopen with a reason
+- US-D03 Overtime engine: over 40 hours per workweek at 1.5x; state daily/double-time rules (e.g. California). - Weekly overtime, optional daily overtime and double time, exempt staff paid straight time; thresholds are company settings to confirm per state
+- US-D10 Attendance exceptions: late, missed punch, regularization. - Forgotten clock-out flag; employees request add, change or remove a punch; manager or HR approves; nothing editable after the week is approved
 - US-E01 PTO/vacation policies and accrual engine. - PTO policies with accrual, caps, carryover, waiting period
 - US-E02 Paid sick leave by state/city: accrual, carryover, caps, usage rules. - Paid sick policies work; state/city rules must be entered and confirmed by an advisor
 - US-E05 Leave requests, approvals, calendar and team view. - Requests, approve/deny/cancel, balances, team calendar
 - US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN, I-9 document numbers and bank account numbers are encrypted and masked
 
-## Partial (23)
+## Partial (22)
 
 - US-A01 Country switch per company (IN / US / CA) driving currency, date, time zone, ID fields, visible modules. - Country settings and India-page gate work; no screen yet to pick the country when a company is created
 - US-A02 US company profile: legal name, EIN, entity type, addresses by state, industry code, fiscal year. - EIN, entity type, address, work states saved; no industry code, fiscal year or sites
 - US-A03 Multi-state / multi-location work-site model (state, county, city tax jurisdictions). - Work states per company and per employee; no work-site or city/county model
 - US-A04 Hide India-only modules (PF, ESIC, PT, LWF, NPS, Gratuity) for US companies. - India menus and tabs hidden for US; a few India cards remain on the payroll Documents tab
 - US-A05 USD currency and US number/date/address formatting; US time zones and DST. - USD, US dates and time zones defined and used by the clock; most old screens still show India formats
+- US-A06 Effective-dated rules tables (min wage, overtime, sick leave), reviewed each January. - Company-level overtime, meal-break and leave settings exist; no dated state/city tables for minimum wage or overtime
 - US-A07 Role model for US: Owner, HR Admin, Payroll Admin, Manager, Employee, Accountant (read-only), Auditor. - Super admin, HR admin, manager, employee exist; no payroll admin, accountant or auditor roles
 - US-A10 Audit trail on every change to people, pay and tax data. - New modules write an audit log (SSN reveal, I-9, leave, time fixes, PINs); no screen to browse it
 - US-B01 Employee record (legal and preferred name, address, DOB, work state, emergency contacts). - Legal name, DOB, address, work state; no emergency contacts
 - US-B05 Pay setup: hourly or salary, frequency, direct deposit split, pay schedule assignment. - Hourly/salary, rate, pay frequency and direct deposit saved; no pay schedule
 - US-B10 Contractor records and 1099 data (TIN, W-9 status). - 1099 classification and taxpayer ID only; no W-9 status or contractor payments
 - US-C03 Onboarding checklist builder with due dates and reminders. - US onboarding, offboarding and rehire checklists with due dates, owners and self-completing tasks, HR to-do list; fixed default tasks (HR can add custom ones), no email reminders or template editor yet
-- US-D02 Timesheets with weekly approval by manager. - Timesheets by day and week; no weekly manager approval
-- US-D03 Overtime engine: over 40 hours per workweek at 1.5x; state daily/double-time rules (e.g. California). - Weekly overtime over 40 shown; no daily or double-time rules, exempt staff not excluded
-- US-D04 Meal and rest break rules and missed-break premiums by state. - Breaks are tracked and unpaid; no meal/rest rule checks or premiums
-- US-D10 Attendance exceptions: late, missed punch, regularization. - Forgotten clock-out flag and HR missed-punch fix; no employee correction request
+- US-D04 Meal and rest break rules and missed-break premiums by state. - Meal-break check flags days without a long enough break; no rest-break rules or premium pay
+- US-D09 Hours-to-payroll export per pay period (feeds Gusto). - CSV of approved hours (regular, overtime, double time) per person and week; the Gusto feed comes later
 - US-E06 US federal holiday calendar plus company holidays. - Federal holidays are skipped in requests; no editable company holiday calendar for US
 - US-E07 Balance statements and payout-at-termination rules by state. - Balances shown and a payout summary at termination; no payout calculation into pay
 - US-H02 E-signature for company and employee documents. - Typed signature on W-4 and I-9 only
@@ -86,9 +88,8 @@ Not counting the postponed Gusto and connector work, there are 81 functions: 12 
 - US-I05 Asset tracking. - Asset tracking exists from the India app
 - US-J05 Custom report builder and scheduled exports. - Report builder exists from the India app
 
-## Not started (38)
+## Not started (37)
 
-- US-A06 Effective-dated rules tables (min wage, overtime, sick leave), reviewed each January. - No dated tables for minimum wage or overtime rules (leave policies are configurable instead)
 - US-A09 Data residency in a US region; backup and restore. - No US data region or backup plan yet
 - US-B04 Job, title, compensation history with effective dates. - Pay rate is stored but there is no dated job or pay history
 - US-B06 Custom fields and employee tags.
@@ -127,9 +128,8 @@ Not counting the postponed Gusto and connector work, there are 81 functions: 12 
 - US-L08 Customer support tooling: impersonation with consent and audit, status page.
 - US-L09 Production deployment pipeline, environments, release process. - Production deployment pipeline
 
-## Later (Gusto/connectors) (30)
+## Later (Gusto/connectors) (29)
 
-- US-D09 Hours-to-payroll export per pay period (feeds Gusto). - Hours export to the payroll provider
 - US-E08 Two-way sync of time-off policies and requests with Gusto.
 - US-F01 Company payroll onboarding wizard (see section 3). - Company payroll onboarding with Gusto
 - US-F02 Pay schedule management. - Payroll through Gusto

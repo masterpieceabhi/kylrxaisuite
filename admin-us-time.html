@@ -30,6 +30,36 @@ code{background:#f1f5f9;padding:2px 6px;border-radius:6px;word-break:break-all}
   <div id="msg" role="status"></div>
 
   <section class="card">
+    <h2>Hours waiting for approval <span class="hint" id="apCount"></span></h2>
+    <table><thead><tr><th>Person</th><th>Week of</th><th>Total</th><th>Regular</th><th>Overtime</th><th>Double</th><th>Notes</th><th></th></tr></thead><tbody id="approvals"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Punch fixes waiting <span class="hint" id="corCount"></span></h2>
+    <table><thead><tr><th>Person</th><th>What</th><th>Day</th><th>Time</th><th>Reason</th><th></th></tr></thead><tbody id="corrections"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Overtime and meal-break rules</h2>
+    <div class="hint" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px">Daily overtime, double time and meal breaks depend on your state. Confirm each setting with a US compliance advisor before you rely on it.</div>
+    <form id="rulesForm"><div class="grid">
+      <label>Weekly overtime after (hours)<input name="weekly" type="number" step="0.5" min="1" max="168" required></label>
+      <label>Daily overtime<select name="dailyOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Daily overtime after (hours)<input name="dailyHours" type="number" step="0.5" min="1" max="24"></label>
+      <label>Double time after (hours, optional)<input name="dtHours" type="number" step="0.5" min="1" max="24"></label>
+      <label>Meal-break check<select name="mealOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Meal break needed after (hours worked)<input name="mealAfter" type="number" step="0.5" min="1" max="24"></label>
+      <label>Shortest meal break (minutes)<input name="mealMin" type="number" step="5" min="5" max="240"></label>
+    </div><div class="row"><button type="submit">Save rules</button></div></form>
+  </section>
+
+  <section class="card">
+    <h2>Approved hours for payroll</h2>
+    <div class="row" style="margin-top:0"><label style="display:flex;gap:6px;align-items:center">From <input type="date" id="exFrom"></label><label style="display:flex;gap:6px;align-items:center">To <input type="date" id="exTo"></label><button id="exGo" class="ghost">Download CSV</button></div>
+    <p class="hint">One row for each person and week, with regular, overtime and double-time hours. Only approved weeks are included.</p>
+  </section>
+
+  <section class="card">
     <h2>Who is working now <span class="hint" id="counts"></span></h2>
     <table><thead><tr><th>ID</th><th>Name</th><th>Job</th><th>Status</th><th>Since</th><th>Today</th><th>Kiosk PIN</th><th></th></tr></thead><tbody id="rows"></tbody></table>
   </section>
@@ -119,9 +149,53 @@ $('tsGo').onclick = async () => {
   } catch (err) { say(err.message, false); }
 };
 
+
+const mins = (h) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+async function loadApprovals() {
+  const r = await api('GET', '/approvals?status=submitted');
+  $('apCount').textContent = `(${r.count})`;
+  $('approvals').innerHTML = r.data.map((w) => `<tr><td>${w.name || ''}</td><td>${w.weekStart}</td><td>${mins(w.totals.workedHours)}</td><td>${mins(w.totals.regularHours)}</td><td>${mins(w.totals.overtimeHours)}</td><td>${mins(w.totals.doubleTimeHours)}</td><td>${(w.flags || []).map((f) => f.replace(/_/g, ' ')).join(', ')}</td><td><button data-wa="${w.userId}|${w.weekStart}">Approve</button> <button class="ghost" data-wr="${w.userId}|${w.weekStart}">Send back</button></td></tr>`).join('') || '<tr><td colspan="8" class="hint">Nothing waiting.</td></tr>';
+}
+async function loadCorrections() {
+  const r = await api('GET', '/corrections?scope=pending');
+  $('corCount').textContent = `(${r.count})`;
+  const kind = { add: 'Add punch', change: 'Change time', remove: 'Remove punch' };
+  $('corrections').innerHTML = r.data.map((c) => `<tr><td>${c.name || ''}</td><td>${kind[c.kind]}: ${c.type.replace('_', ' ')}</td><td>${c.localDate}</td><td>${c.kind === 'change' ? `${c.originalLocalTime} to ${c.localTime}` : (c.localTime || '')}</td><td>${c.reason}</td><td><button data-ca="${c.id}">Approve</button> <button class="ghost" data-cd="${c.id}">Deny</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing waiting.</td></tr>';
+}
+async function loadRules() {
+  const r = await api('GET', '/rules'); const x = r.rules; const f = $('rulesForm');
+  f.weekly.value = x.overtimeWeeklyHours; f.dailyOn.value = String(x.dailyOvertime.enabled); f.dailyHours.value = x.dailyOvertime.thresholdHours;
+  f.dtHours.value = x.dailyOvertime.doubleTimeThresholdHours || ''; f.mealOn.value = String(x.meal.enabled); f.mealAfter.value = x.meal.requiredAfterHours; f.mealMin.value = x.meal.minimumMinutes;
+}
+document.addEventListener('click', async (e) => {
+  const wa = e.target.closest('[data-wa]'); const wr = e.target.closest('[data-wr]'); const ca = e.target.closest('[data-ca]'); const cd = e.target.closest('[data-cd]');
+  try {
+    if (wa) { const [u, w] = wa.dataset.wa.split('|'); await api('PUT', `/weeks/${u}/${w}/decision`, { decision: 'approve' }); say('Hours approved. That week is now locked.'); await loadApprovals(); await loadRoster(); }
+    if (wr) { const [u, w] = wr.dataset.wr.split('|'); const note = window.prompt('What needs fixing? The person will see this.'); if (!note) return; await api('PUT', `/weeks/${u}/${w}/decision`, { decision: 'reject', note }); say('Sent back.'); await loadApprovals(); }
+    if (ca) { await api('PUT', `/corrections/${ca.dataset.ca}/decision`, { decision: 'approve' }); say('Fix applied.'); await loadCorrections(); await loadRoster(); }
+    if (cd) { const note = window.prompt('Reason (optional):') || ''; await api('PUT', `/corrections/${cd.dataset.cd}/decision`, { decision: 'deny', note }); say('Denied.'); await loadCorrections(); }
+  } catch (err) { say(err.message, false); }
+});
+$('rulesForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  try {
+    await api('PUT', '/rules', { overtimeWeeklyHours: Number(f.weekly.value), dailyOvertime: { enabled: f.dailyOn.value === 'true', thresholdHours: Number(f.dailyHours.value), doubleTimeThresholdHours: f.dtHours.value ? Number(f.dtHours.value) : null }, meal: { enabled: f.mealOn.value === 'true', requiredAfterHours: Number(f.mealAfter.value), minimumMinutes: Number(f.mealMin.value) } });
+    say('Rules saved.');
+  } catch (err) { say(err.message, false); }
+});
+$('exGo').onclick = async () => {
+  try {
+    const q = new URLSearchParams({ format: 'csv' }); if ($('exFrom').value) q.set('from', $('exFrom').value); if ($('exTo').value) q.set('to', $('exTo').value);
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch(`/api/time/export/hours?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Could not export');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = 'approved-hours.csv'; a.click();
+  } catch (err) { say(err.message, false); }
+};
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
-  try { await loadRoster(); await loadKiosks(); await $('tsGo').onclick(); } catch (err) { say(err.message, false); }
+  try { await loadRoster(); await loadKiosks(); await loadApprovals(); await loadCorrections(); await loadRules(); await $('tsGo').onclick(); } catch (err) { say(err.message, false); }
 });
 </script>
 </body>
