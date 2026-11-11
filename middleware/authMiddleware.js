@@ -7,6 +7,19 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Development-only shortcut: lets the local demo run without real logins (dev tokens and ?role=
+// act as a super admin). It needs an explicit opt-in and can never be on in production.
+const DEV_AUTH = process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_AUTH === 'true';
+if (DEV_AUTH) {
+    logger.warn('ALLOW_DEV_AUTH is on: dev tokens and ?role= grant super admin access. Local use only.');
+}
+const devUser = (req) => ({
+    id: 'superadmin_dev',
+    uid: 'superadmin_dev',
+    email: 'superadmin@kylrx.ai',
+    role: req.query.role || 'super_admin'
+});
+
 const ALLOWED_ROLES = [
     'Super Admin',
     'Admin',
@@ -34,14 +47,8 @@ const verifyToken = async (req, res, next) => {
         }
 
         if (!token || token === 'super_admin_dev_token' || token.startsWith('dev_')) {
-            // Allow development mode, dev tokens, or internal frontend console requests with role parameter
-            if (process.env.NODE_ENV !== 'production' || req.query.role || token === 'super_admin_dev_token') {
-                req.user = {
-                    id: 'superadmin_dev',
-                    uid: 'superadmin_dev',
-                    email: 'superadmin@kylrx.ai',
-                    role: req.query.role || 'super_admin'
-                };
+            if (DEV_AUTH) {
+                req.user = devUser(req);
                 return next();
             }
             return res.status(401).json({ success: false, error: 'Authentication token required' });
@@ -67,13 +74,8 @@ const verifyToken = async (req, res, next) => {
                 decoded = await admin.auth().verifyIdToken(token);
                 userId = decoded.uid;
             } catch (firebaseError) {
-                if (req.query.role || process.env.NODE_ENV !== 'production') {
-                    req.user = {
-                        id: 'superadmin_dev',
-                        uid: 'superadmin_dev',
-                        email: 'superadmin@kylrx.ai',
-                        role: req.query.role || 'super_admin'
-                    };
+                if (DEV_AUTH) {
+                    req.user = devUser(req);
                     return next();
                 }
                 logger.error(`Auth Error: Token verification failed for both JWT and Firebase`);

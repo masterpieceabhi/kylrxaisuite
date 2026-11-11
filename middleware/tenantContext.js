@@ -49,7 +49,8 @@ async function resolveOrgId(req) {
             if (decoded && decoded.id) return await orgIdForUser(decoded.id) || LEGACY_ORG_ID;
         } catch (_) {}
     }
-    return process.env.NODE_ENV === 'production' ? null : DEV_DEFAULT_ORG_ID;
+    const devAuth = process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_AUTH === 'true';
+    return devAuth ? DEV_DEFAULT_ORG_ID : null;
 }
 
 module.exports = async function tenantContext(req, res, next) {
