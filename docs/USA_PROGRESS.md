@@ -8,14 +8,14 @@ Status meanings: **Done** = built and tested; **Partial** = core works, pieces m
 
 | Status | Count |
 |---|---|
-| Done | 19 |
-| Partial | 23 |
+| Done | 22 |
+| Partial | 24 |
 | Existing, not adapted | 8 |
-| Not started | 33 |
+| Not started | 29 |
 | Later (Gusto/connectors) | 28 |
 | **All** | **111** |
 
-Not counting the postponed Gusto and connector work, there are 83 functions: 19 done, 23 partial, 8 existing-not-adapted, 33 not started.
+Not counting the postponed Gusto and connector work, there are 83 functions: 22 done, 24 partial, 8 existing-not-adapted, 29 not started.
 
 ## By module
 
@@ -28,13 +28,13 @@ Not counting the postponed Gusto and connector work, there are 83 functions: 19 
 | E Leave and holidays | 3 | 2 | 0 | 2 | 1 |
 | F Payroll (Gusto) | 0 | 0 | 0 | 0 | 13 |
 | G Benefits | 0 | 0 | 0 | 6 | 0 |
-| H Documents and compliance | 0 | 3 | 1 | 4 | 0 |
+| H Documents and compliance | 3 | 4 | 1 | 0 | 0 |
 | I Performance and engagement | 0 | 1 | 3 | 2 | 0 |
 | J Analytics and reporting | 4 | 1 | 1 | 0 | 0 |
 | K Connectors | 0 | 0 | 0 | 0 | 14 |
 | L Security, privacy, operations | 1 | 2 | 0 | 6 | 0 |
 
-## Done (19)
+## Done (22)
 
 - US-A08 SSN/ITIN encryption at rest, masking (last 4), reveal with audit log. - SSN/ITIN and I-9 document numbers encrypted, masked, reveal needs a reason and is logged
 - US-B02 Worker classification: W-2 employee vs 1099 contractor; exempt vs non-exempt; full/part time. - W-2 vs 1099, exempt vs non-exempt, full/part time with rule checks
@@ -50,13 +50,16 @@ Not counting the postponed Gusto and connector work, there are 83 functions: 19 
 - US-E01 PTO/vacation policies and accrual engine. - PTO policies with accrual, caps, carryover, waiting period
 - US-E02 Paid sick leave by state/city: accrual, carryover, caps, usage rules. - Paid sick policies work; state/city rules must be entered and confirmed by an advisor
 - US-E05 Leave requests, approvals, calendar and team view. - Requests, approve/deny/cancel, balances, team calendar
+- US-H01 Document vault by employee and company with retention rules. - Encrypted company and employee documents with categories, visibility rules, confidential files, expiry alerts, retention dates, legal hold, audit trail
+- US-H05 EEO-1 and demographic reporting data. - Voluntary EEO self-identification kept apart from the personnel file, job categories, EEO-1 style counts with CSV (filing itself is done on the EEOC site)
+- US-H06 OSHA incident log (300/300A) basics. - Workers report injuries, HR classifies, OSHA 300 log and 300A summary with incidence rates, CSV; no Form 301 incident report
 - US-J01 Headcount, turnover, tenure dashboards. - Headcount now, by department, worker type, state and tenure, 12-month trend, turnover rate with voluntary/involuntary split, CSV
 - US-J02 Labor cost and overtime reports. - Hours, overtime share and estimated wages by week, department and person from approved timesheets, CSV (wages only, an estimate)
 - US-J03 Time-off liability report. - Unused time off in hours and estimated dollars by policy and person, payout-required amount, CSV
 - US-J04 Compliance status report (I-9, W-4, training). - Missing W-4, I-9, SSN, bank, work state and pay rate; expiring I-9s; old I-9s that can be disposed of; CSV
 - US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN, I-9 document numbers and bank account numbers are encrypted and masked
 
-## Partial (23)
+## Partial (24)
 
 - US-A01 Country switch per company (IN / US / CA) driving currency, date, time zone, ID fields, visible modules. - Country settings and India-page gate work; no screen yet to pick the country when a company is created
 - US-A02 US company profile: legal name, EIN, entity type, addresses by state, industry code, fiscal year. - EIN, entity type, address, work states saved; no industry code, fiscal year or sites
@@ -75,7 +78,8 @@ Not counting the postponed Gusto and connector work, there are 83 functions: 19 
 - US-E06 US federal holiday calendar plus company holidays. - Federal holidays are skipped in requests; no editable company holiday calendar for US
 - US-E07 Balance statements and payout-at-termination rules by state. - Balances shown and a payout summary at termination; no payout calculation into pay
 - US-H02 E-signature for company and employee documents. - Typed signature on W-4 and I-9 only
-- US-H03 Compliance calendar (I-9 audits, new-hire reports, posters, filing dates). - W-4/I-9 deadline table; no wider compliance calendar
+- US-H03 Compliance calendar (I-9 audits, new-hire reports, posters, filing dates). - W-4/I-9 deadlines, document and notice expiry lists; no single compliance calendar yet
+- US-H04 Labor law poster and handbook state add-ons. - Tracker for federal notices and each work state (where, when, review reminders); the notice texts and state-specific lists are not included
 - US-H07 I-9 audit report and missing-document report. - Status table exists; no printable audit report
 - US-I06 Exit interviews and offboarding checklist. - US offboarding checklist with an exit-conversation task; no exit-interview form or notes
 - US-J06 Payroll cost by department/project from Gusto data. - Estimated wages by department from approved timesheets; the actual payroll cost will come from Gusto
@@ -93,7 +97,7 @@ Not counting the postponed Gusto and connector work, there are 83 functions: 19 
 - US-I05 Asset tracking. - Asset tracking exists from the India app
 - US-J05 Custom report builder and scheduled exports. - Report builder exists from the India app
 
-## Not started (33)
+## Not started (29)
 
 - US-A09 Data residency in a US region; backup and restore. - No US data region or backup plan yet
 - US-B04 Job, title, compensation history with effective dates. - Pay rate is stored but there is no dated job or pay history
@@ -116,10 +120,6 @@ Not counting the postponed Gusto and connector work, there are 83 functions: 19 
 - US-G04 Life-event changes. - Benefits
 - US-G05 401(k) provider hook (Gusto partner options) and ACA tracking data. - Benefits
 - US-G06 Benefit summaries for employees. - Benefits
-- US-H01 Document vault by employee and company with retention rules. - Document vault for US
-- US-H04 Labor law poster and handbook state add-ons.
-- US-H05 EEO-1 and demographic reporting data.
-- US-H06 OSHA incident log (300/300A) basics.
 - US-I02 Review cycles, 360 feedback.
 - US-I04 Recognition and announcements.
 - US-L04 State privacy features: data export and deletion requests (CCPA/CPRA).

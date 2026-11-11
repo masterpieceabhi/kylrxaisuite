@@ -280,6 +280,8 @@ app.use("/api/us", require("./routes/us-leave"));
 app.use("/api/us", require("./routes/us-checklists"));
 app.use("/api/us", require("./routes/us-offboarding"));
 app.use("/api/us", require("./routes/us-reports"));
+app.use("/api/us", require("./routes/us-vault"));
+app.use("/api/us", require("./routes/us-compliance"));
 app.use("/api/manager-goals", managerGoalsRoutes);
 app.use("/api/employee-goals", employeeGoalsRoutes);
 app.use("/api/custom-templates", customTemplatesRoutes);

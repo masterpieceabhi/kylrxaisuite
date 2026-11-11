@@ -56,4 +56,21 @@ function decryptField(payload, context) {
     return Buffer.concat([decipher.update(Buffer.from(parts[3], 'base64')), decipher.final()]).toString('utf8');
 }
 
-module.exports = { encryptField, decryptField };
+/** Whole-file encryption for the document vault: [1 version byte][12 byte IV][16 byte tag][ciphertext] */
+function encryptBuffer(buf, context) {
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
+    cipher.setAAD(Buffer.from(String(context || '')));
+    const ct = Buffer.concat([cipher.update(buf), cipher.final()]);
+    return Buffer.concat([Buffer.from([1]), iv, cipher.getAuthTag(), ct]);
+}
+
+function decryptBuffer(blob, context) {
+    if (!blob || blob.length < 30 || blob[0] !== 1) throw new Error('Unrecognized encrypted file');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', getKey(), blob.slice(1, 13));
+    decipher.setAAD(Buffer.from(String(context || '')));
+    decipher.setAuthTag(blob.slice(13, 29));
+    return Buffer.concat([decipher.update(blob.slice(29)), decipher.final()]);
+}
+
+module.exports = { encryptField, decryptField, encryptBuffer, decryptBuffer };
