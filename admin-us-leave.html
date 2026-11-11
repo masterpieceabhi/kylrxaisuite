@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time off | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.pending{background:#fef3c7;color:#92400e}.approved{background:#dcfce7;color:var(--ok)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header><h1>Time off (PTO and sick leave)</h1><div><a href="leave.html">My time off</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Waiting for a decision</h2>
+    <table><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Hours</th><th>Note</th><th></th></tr></thead><tbody id="pending"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Who is off in the next 30 days</h2>
+    <table><thead><tr><th>Person</th><th>Type</th><th>From</th><th>To</th><th>Status</th></tr></thead><tbody id="cal"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Policies</h2>
+    <div class="warn">The presets are starting points only. Paid sick leave rules are different in each state and some cities, and they change. Confirm every number with a US compliance advisor before you use a policy for real employees.</div>
+    <table><thead><tr><th>Name</th><th>Type</th><th>How it is earned</th><th>Limits</th><th></th></tr></thead><tbody id="policies"></tbody></table>
+    <div class="row"><select id="preset"></select><button id="addPreset">Add this policy</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Adjust a balance</h2>
+    <form id="adj"><div class="grid">
+      <label>Person<select name="userId" id="adjUser"></select></label>
+      <label>Policy<select name="policyId" id="adjPolicy"></select></label>
+      <label>Hours (use a minus to remove)<input name="hours" type="number" step="0.25" required></label>
+      <label>Reason (recorded)<input name="reason" required minlength="5"></label>
+    </div><div class="row"><button type="submit">Save adjustment</button></div></form>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; };
+let presets = [];
+
+async function api(method, path, body, base = '/api/us/leave') {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+
+const how = (p) => { const a = p.accrual; return a.method === 'hours_worked' ? `${a.earnHours} h per ${a.perHours} h worked` : a.method === 'monthly' ? `${a.monthlyHours} h each month` : `${a.grantHours} h each year`; };
+const lim = (p) => [p.maxBalance != null && `max ${p.maxBalance} h`, p.annualAccrualCap != null && `earn up to ${p.annualAccrualCap} h/yr`, p.annualUseCap != null && `use up to ${p.annualUseCap} h/yr`, p.carryoverCap != null && `carry over ${p.carryoverCap} h`, p.usageWaitingDays && `wait ${p.usageWaitingDays} days`].filter(Boolean).join(', ') || 'none';
+
+async function load() {
+  const [pend, cal, pol, pre, team] = await Promise.all([
+    api('GET', '/requests?scope=all&status=pending'), api('GET', '/calendar'), api('GET', '/policies'), api('GET', '/policies/presets'), api('GET', '/team/now', null, '/api/time')
+  ]);
+  $('pending').innerHTML = pend.data.map((r) => `<tr><td>${r.name || ''}</td><td>${r.policyName}</td><td>${r.startDate === r.endDate ? r.startDate : `${r.startDate} to ${r.endDate}`}</td><td>${r.hours}</td><td>${r.reason || ''}</td><td><button data-yes="${r.id}">Approve</button> <button class="no" data-no="${r.id}">Deny</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing waiting.</td></tr>';
+  $('cal').innerHTML = cal.data.map((r) => `<tr><td>${r.name || ''}</td><td>${r.policyName}</td><td>${r.startDate}</td><td>${r.endDate}</td><td><span class="tag ${r.status}">${r.status}</span></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody is off.</td></tr>';
+  $('policies').innerHTML = pol.data.map((p) => `<tr><td>${p.name}</td><td>${p.type}</td><td>${how(p)}</td><td>${lim(p)}</td><td><button class="ghost" data-del="${p.id}">Archive</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No policies yet. Add one below.</td></tr>';
+  presets = pre.data; $('preset').innerHTML = presets.map((p) => `<option value="${p.key}">${p.name}</option>`).join('');
+  $('adjPolicy').innerHTML = pol.data.map((p) => `<option value="${p.id}">${p.name}</option>`).join('');
+  $('adjUser').innerHTML = team.data.map((p) => `<option value="${p.userId}">${p.name || p.employeeId}</option>`).join('');
+}
+
+document.addEventListener('click', async (e) => {
+  const y = e.target.closest('[data-yes]'); const n = e.target.closest('[data-no]'); const d = e.target.closest('[data-del]');
+  try {
+    if (y) { await api('PUT', `/requests/${y.dataset.yes}/decision`, { decision: 'approve' }); say('Approved.'); await load(); }
+    if (n) { const note = window.prompt('Reason (optional, the employee can see it):') || ''; await api('PUT', `/requests/${n.dataset.no}/decision`, { decision: 'deny', note }); say('Denied.'); await load(); }
+    if (d && window.confirm('Archive this policy? People keep their history but can no longer request it.')) { await api('DELETE', `/policies/${d.dataset.del}`); await load(); }
+  } catch (err) { say(err.message, false); }
+});
+$('addPreset').onclick = async () => {
+  const p = presets.find((x) => x.key === $('preset').value); if (!p) return;
+  const { key, ...body } = p;
+  try { await api('POST', '/policies', body); say('Policy added. Review its numbers with your advisor.'); await load(); } catch (err) { say(err.message, false); }
+};
+$('adj').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await api('POST', '/adjustments', { userId: f.get('userId'), policyId: f.get('policyId'), hours: Number(f.get('hours')), reason: f.get('reason') }); say('Adjustment saved and recorded.'); e.target.reset(); } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { await load(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

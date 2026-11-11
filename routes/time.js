@@ -309,4 +309,7 @@ router.delete('/kiosks/:id', authorize(ADMIN_HR_ROLES), requireOrg, async (req, 
     res.json({ success: true });
 });
 
+// Shared with the leave routes (worked hours drive hours-based accrual)
+router.helpers = { orgInfo, punchesSince };
+
 module.exports = router;
