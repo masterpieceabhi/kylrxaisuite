@@ -4,6 +4,7 @@
  */
 
 import { db, onSnapshot, registerListener } from './firebase-config.js';
+import './country-gate.js';
 import { doc, setDoc, arrayUnion, arrayRemove } from "./firebase-config.js";
 
 const DEFAULT_APPS = [
