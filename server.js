@@ -271,6 +271,7 @@ app.use("/api/policies", policiesRoutes);
 app.use("/api/assets", assetsRoutes);
 app.use("/api/exits", exitsRoutes);
 app.use("/api/org", require("./routes/org"));
+app.use("/api/us", require("./routes/us-hr"));
 app.use("/api/manager-goals", managerGoalsRoutes);
 app.use("/api/employee-goals", employeeGoalsRoutes);
 app.use("/api/custom-templates", customTemplatesRoutes);

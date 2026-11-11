@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>US People | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;color:var(--ink);background:#fff}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button:disabled{opacity:.5}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.tag.ok{background:#dcfce7;color:var(--ok)}.tag.no{background:#fee2e2;color:var(--bad)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<header><h1>US People</h1><a href="admin-dashboard.html">Back to dashboard</a></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="card" id="blocked" style="display:none"><h2>Not available</h2><p>This page is for US companies. Your organization's country is not set to United States.</p></div>
+
+  <section class="card" id="companyCard" style="display:none">
+    <h2>Company (EIN and entity)</h2>
+    <form id="companyForm"><div class="grid">
+      <label>Legal name<input name="legalName" required></label>
+      <label>EIN<input name="ein" placeholder="12-3456789" required></label>
+      <label>Entity type<select name="entityType"><option value="llc">LLC</option><option value="c_corp">C corporation</option><option value="s_corp">S corporation</option><option value="partnership">Partnership</option><option value="sole_proprietorship">Sole proprietorship</option><option value="nonprofit">Nonprofit</option></select></label>
+      <label>Address line<input name="line1" required></label>
+      <label>City<input name="city" required></label>
+      <label>State<input name="state" maxlength="2" placeholder="TX" required></label>
+      <label>ZIP<input name="zip" placeholder="78701" required></label>
+      <label>Work states (comma separated)<input name="workStates" placeholder="TX, OK" required></label>
+    </div><div class="row"><button type="submit">Save company</button></div></form>
+  </section>
+
+  <section class="card" id="peopleCard" style="display:none">
+    <h2>Employees</h2>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Work state</th><th>SSN</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    <p class="hint" id="empty" style="display:none">No employees yet. Create one from the dashboard, then come back to complete the US profile.</p>
+  </section>
+
+  <section class="card" id="formCard" style="display:none">
+    <h2 id="formTitle">US profile</h2>
+    <form id="empForm"><div class="grid">
+      <label>Legal first name<input name="legalFirstName" required></label>
+      <label>Legal last name<input name="legalLastName" required></label>
+      <label>Date of birth<input name="dateOfBirth" type="date" required></label>
+      <label>SSN or ITIN<input name="taxpayerId" autocomplete="off" placeholder="leave blank to keep current"></label>
+      <label>ID type<select name="taxpayerIdType"><option>SSN</option><option>ITIN</option></select></label>
+      <label>Home address<input name="line1" required></label>
+      <label>City<input name="city" required></label>
+      <label>State<input name="state" maxlength="2" required></label>
+      <label>ZIP<input name="zip" required></label>
+      <label>Work state<input name="workState" maxlength="2" required></label>
+      <label>Classification<select name="classification"><option value="W2">W-2 employee</option><option value="1099">1099 contractor</option></select></label>
+      <label>FLSA status<select name="flsaStatus"><option value="non_exempt">Non-exempt (overtime)</option><option value="exempt">Exempt</option></select></label>
+      <label>Employment<select name="employmentType"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="seasonal">Seasonal</option><option value="temporary">Temporary</option></select></label>
+      <label>Pay type<select name="payType"><option value="hourly">Hourly</option><option value="salary">Salary</option></select></label>
+      <label>Pay frequency<select name="payFrequency"><option value="biweekly">Every 2 weeks</option><option value="weekly">Weekly</option><option value="semimonthly">Twice a month</option><option value="monthly">Monthly</option></select></label>
+      <label>Pay rate (USD)<input name="payRate" type="number" step="0.01" min="0" required></label>
+    </div>
+    <div class="row"><button type="submit">Save profile</button><button type="button" class="ghost" id="revealBtn">Reveal SSN (audited)</button><button type="button" class="ghost" id="cancelBtn">Close</button><span id="revealed" class="hint"></span></div></form>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+
+const $ = (id) => document.getElementById(id);
+let current = null;
+
+function say(text, ok = true) { const m = $('msg'); m.textContent = text; m.className = ok ? 'ok' : 'err'; }
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+
+const formObj = (form) => Object.fromEntries(new FormData(form).entries());
+
+async function loadCompany() {
+  const { profile } = await api('GET', '/company/profile');
+  if (!profile) return;
+  const f = $('companyForm');
+  f.legalName.value = profile.legalName || ''; f.ein.value = profile.ein || ''; f.entityType.value = profile.entityType || 'llc';
+  const a = profile.businessAddress || {};
+  f.line1.value = a.line1 || ''; f.city.value = a.city || ''; f.state.value = a.state || ''; f.zip.value = a.zip || '';
+  f.workStates.value = (profile.workStates || []).join(', ');
+}
+
+async function loadPeople() {
+  const { data } = await api('GET', '/employees');
+  $('rows').innerHTML = data.map((e) => `<tr><td>${e.employeeId}</td><td>${e.name || ''}</td><td>${e.classification || '-'}</td><td>${e.workState || '-'}</td><td>${e.taxpayerIdMasked || '-'}</td><td><span class="tag ${e.profileComplete ? 'ok' : 'no'}">${e.profileComplete ? 'Complete' : 'Incomplete'}</span></td><td><button class="ghost" data-id="${e.employeeId}" data-name="${e.name || ''}">Edit</button></td></tr>`).join('');
+  $('empty').style.display = data.length ? 'none' : 'block';
+}
+
+async function openEmployee(id, name) {
+  current = id; $('revealed').textContent = '';
+  $('formTitle').textContent = `US profile: ${name} (${id})`;
+  const { profile: p } = await api('GET', `/employees/${encodeURIComponent(id)}/profile`);
+  const f = $('empForm'); f.reset();
+  const set = (k, v) => { if (v !== undefined && v !== null) f.elements[k].value = v; };
+  ['legalFirstName', 'legalLastName', 'dateOfBirth', 'workState', 'classification', 'flsaStatus', 'employmentType', 'payType', 'payFrequency', 'payRate', 'taxpayerIdType'].forEach((k) => set(k, p[k]));
+  const a = p.homeAddress || {}; set('line1', a.line1); set('city', a.city); set('state', a.state); set('zip', a.zip);
+  f.taxpayerId.placeholder = p.taxpayerIdMasked ? `on file: ${p.taxpayerIdMasked} (leave blank to keep)` : 'required';
+  $('revealBtn').disabled = !p.hasTaxpayerId;
+  $('formCard').style.display = 'block'; $('formCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+$('rows').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) openEmployee(b.dataset.id, b.dataset.name).catch((e) => say(e.message, false)); });
+$('cancelBtn').onclick = () => { $('formCard').style.display = 'none'; current = null; };
+
+$('companyForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); const v = formObj(ev.target);
+  try {
+    await api('PUT', '/company/profile', { legalName: v.legalName, ein: v.ein, entityType: v.entityType,
+      businessAddress: { line1: v.line1, city: v.city, state: v.state, zip: v.zip },
+      workStates: v.workStates.split(',').map((s) => s.trim()).filter(Boolean) });
+    say('Company profile saved.');
+  } catch (e) { say(e.message, false); }
+});
+
+$('empForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); const v = formObj(ev.target);
+  const body = { legalFirstName: v.legalFirstName, legalLastName: v.legalLastName, dateOfBirth: v.dateOfBirth,
+    homeAddress: { line1: v.line1, city: v.city, state: v.state, zip: v.zip }, workState: v.workState,
+    classification: v.classification, employmentType: v.employmentType, payType: v.payType, payFrequency: v.payFrequency,
+    payRate: v.payRate, taxpayerIdType: v.taxpayerIdType };
+  if (v.classification === 'W2') body.flsaStatus = v.flsaStatus;
+  if (v.taxpayerId) body.taxpayerId = v.taxpayerId;
+  try { await api('PUT', `/employees/${encodeURIComponent(current)}/profile`, body); say('Profile saved.'); ev.target.taxpayerId.value = ''; await loadPeople(); await openEmployee(current, ''); }
+  catch (e) { say(e.message, false); }
+});
+
+$('revealBtn').onclick = async () => {
+  const reason = window.prompt('Why do you need to see the full number? (recorded in the audit log)');
+  if (!reason) return;
+  try { const r = await api('POST', `/employees/${encodeURIComponent(current)}/taxpayer-id/reveal`, { reason });
+    $('revealed').textContent = r.taxpayerId; setTimeout(() => { $('revealed').textContent = ''; }, 15000); }
+  catch (e) { say(e.message, false); }
+};
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    const token = await user.getIdToken();
+    const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${token}` } })).json();
+    if (!org.success || org.country.code !== 'US') { $('blocked').style.display = 'block'; return; }
+    ['companyCard', 'peopleCard'].forEach((id) => { $(id).style.display = 'block'; });
+    await loadCompany(); await loadPeople();
+  } catch (e) { say(e.message, false); }
+});
+</script>
+</body>
+</html>
