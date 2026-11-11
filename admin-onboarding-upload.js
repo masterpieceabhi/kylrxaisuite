@@ -6140,17 +6140,22 @@ async function executeOrganizationSetup(attributes21, sourceMethod) {
     // Writing counter document at organizations/{orgId}/counters/employees with currentSequence: 0
     // guarantees subsequent allocation begins atomically at EMP0001
     const counterDocRef = doc(db, "organizations", orgId, "counters", "employees");
-    await setDoc(counterDocRef, {
-        currentSequence: 0,
-        prefix: 'EMP',
-        padLength: 4,
-        nextIdPreview: 'EMP0001',
-        initialProvisioned: true,
-        orgId: orgId,
-        initializedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-    }, { merge: true });
-    console.log(`🔢 Step 2: Initialized continuous sequential Employee ID counter (EMP0001) for org ${orgId}`);
+    try {
+        await setDoc(counterDocRef, {
+            currentSequence: 0,
+            prefix: 'EMP',
+            padLength: 4,
+            nextIdPreview: 'EMP0001',
+            initialProvisioned: true,
+            orgId: orgId,
+            initializedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        console.log(`🔢 Step 2: Initialized continuous sequential Employee ID counter (EMP0001) for org ${orgId}`);
+    } catch (counterErr) {
+        // Firestore rules make counters server-only; the backend signup already provisions it.
+        console.warn('Step 2: employee ID counter is managed by the server, skipping client write:', counterErr.message);
+    }
 
     // Step 3: Update local storage and UI status
     localStorage.setItem('orgConfigured', 'true');

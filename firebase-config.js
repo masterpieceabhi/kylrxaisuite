@@ -192,8 +192,57 @@ try {
 if (USE_EMULATOR && db) {
   try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch (_) {}
 }
+// Several services use the older namespaced style (db.collection('x').doc('y').set(...)) against
+// window.db, which is a modular Firestore instance. Without this, those calls throw, the services
+// swallow the error and keep data only in browser memory while the UI reports success.
+if (db && typeof db.collection !== 'function') {
+  const wrapDoc = (s) => ({
+    id: s.id,
+    ref: s.ref,
+    exists: s.exists(),
+    data: (...a) => s.data(...a),
+    get: (f) => s.get(f)
+  });
+  const wrapSnap = (qs) => ({
+    docs: qs.docs.map(wrapDoc),
+    empty: qs.empty,
+    size: qs.size,
+    forEach: (fn) => qs.docs.map(wrapDoc).forEach(fn)
+  });
+  const compatQuery = (q) => ({
+    where: (f, op, v) => compatQuery(query(q, where(f, op, v))),
+    orderBy: (f, d) => compatQuery(query(q, orderBy(f, d))),
+    limit: (n) => compatQuery(query(q, limit(n))),
+    get: async () => wrapSnap(await rawGetDocs(q)),
+    onSnapshot: (next, err) => rawOnSnapshot(q, (qs) => next(wrapSnap(qs)), err)
+  });
+  const compatDoc = (r) => ({
+    id: r.id,
+    path: r.path,
+    collection: (n) => compatCollection(collection(r, n)),
+    set: (d, o) => rawSetDoc(r, d, o),
+    update: (d) => rawUpdateDoc(r, d),
+    delete: () => rawDeleteDoc(r),
+    get: async () => wrapDoc(await rawGetDoc(r)),
+    onSnapshot: (next, err) => rawOnSnapshot(r, (s) => next(wrapDoc(s)), err)
+  });
+  const compatCollection = (c) => ({
+    ...compatQuery(c),
+    doc: (id) => compatDoc(id ? doc(c, id) : doc(c)),
+    add: async (d) => compatDoc(await rawAddDoc(c, d))
+  });
+  db.collection = (path) => compatCollection(collection(db, path));
+  db.doc = (path) => compatDoc(doc(db, path));
+}
 if (typeof window !== 'undefined') {
   window.db = db;
+  // Many services (holiday calendar, cost center, shifts, finance, ...) destructure these from
+  // window.firebaseFirestore; nothing defined it, so their saves silently stayed in memory.
+  window.firebaseFirestore = {
+    doc, collection, query, where, orderBy, limit, serverTimestamp, arrayUnion, arrayRemove, deleteField,
+    setDoc: rawSetDoc, updateDoc: rawUpdateDoc, deleteDoc: rawDeleteDoc, addDoc: rawAddDoc,
+    getDoc: rawGetDoc, getDocs: rawGetDocs, onSnapshot: rawOnSnapshot, writeBatch: rawWriteBatch
+  };
 }
 const storage = getStorage(app);
 
