@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--amber:#d97706}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1150px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap}nav.tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}nav.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}.tile b{display:block;font-size:28px}.tile span{color:var(--muted);font-size:13px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}td.n,th.n{text-align:right}
+.bar{display:grid;grid-template-columns:150px 1fr 56px;gap:8px;align-items:center;margin:5px 0}.bar i{display:block;height:14px;border-radius:7px;background:var(--blue)}.bar span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar b{text-align:right}
+.spark{width:100%;height:120px}
+.row{display:flex;gap:10px;align-items:center;margin:0 0 12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+input,select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button.act{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.ghost{background:#eef2ff;color:var(--blue)}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#fee2e2;color:var(--bad)}
+</style>
+</head>
+<body>
+<header><h1>Reports</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <nav class="tabs" id="tabs">
+    <button data-t="overview" class="on">Overview</button><button data-t="headcount">Headcount</button><button data-t="turnover">Turnover</button><button data-t="labor">Hours and overtime</button><button data-t="leave">Time off owed</button><button data-t="compliance">Paperwork</button><button data-t="time">Timesheets</button>
+  </nav>
+  <div id="view"></div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 1 });
+const usd = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let tab = 'overview';
+const state = { from: '', to: '' };
+
+async function raw(path) { const token = await auth.currentUser.getIdToken(); return fetch(`/api/us/reports${path}`, { headers: { Authorization: `Bearer ${token}` } }); }
+async function api(path) { const r = await raw(path); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`); return j; }
+async function download(path, name) { const r = await raw(path + (path.includes('?') ? '&' : '?') + 'format=csv'); if (!r.ok) throw new Error('Could not export'); const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = `${name}.csv`; a.click(); }
+
+const bars = (items, label = 'key', value = 'count') => { const max = Math.max(1, ...items.map((i) => i[value])); return items.map((i) => `<div class="bar"><span title="${esc(i[label])}">${esc(String(i[label]).replace(/_/g, ' '))}</span><i style="width:${(i[value] / max) * 100}%"></i><b>${fmt(i[value])}</b></div>`).join('') || '<p class="hint">Nothing to show.</p>'; };
+const table = (cols, rows) => `<table><thead><tr>${cols.map((c) => `<th class="${c.n ? 'n' : ''}">${c.h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td class="${c.n ? 'n' : ''}">${c.f ? c.f(r) : esc(r[c.k])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="hint">Nothing to show.</td></tr>`}</tbody></table>`;
+const spark = (pts, key) => { if (pts.length < 2) return ''; const max = Math.max(1, ...pts.map((p) => p[key])); const W = 600, H = 100; const xy = pts.map((p, i) => [10 + (i * (W - 20)) / (pts.length - 1), H - 10 - (p[key] / max) * (H - 24)]); return `<svg class="spark" viewBox="0 0 ${W} ${H + 18}" preserveAspectRatio="none"><polyline fill="none" stroke="#2563eb" stroke-width="3" points="${xy.map((p) => p.join(',')).join(' ')}"/>${xy.map((p, i) => `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="#2563eb"/><text x="${p[0]}" y="${H + 14}" font-size="11" text-anchor="middle" fill="#64748b">${pts[i].month.slice(5)}</text><text x="${p[0]}" y="${p[1] - 8}" font-size="11" text-anchor="middle" fill="#0f172a">${pts[i][key]}</text>`).join('')}</svg>`; };
+const rangeBar = (name) => `<div class="row"><label>From <input type="date" id="rFrom" value="${state.from}"></label><label>To <input type="date" id="rTo" value="${state.to}"></label><button class="act ghost" id="rGo">Update</button><button class="act" id="csv">Download CSV</button><span class="hint">${name}</span></div>`;
+
+const views = {
+  async overview() {
+    const s = await api('/summary');
+    return `<div class="tiles"><div class="tile"><b>${s.headcount}</b><span>People working now</span></div><div class="tile"><b>${s.hiresLast6Months}</b><span>Hires in the last 6 months</span></div><div class="tile"><b>${s.turnover90d.separations}</b><span>Left in the last 90 days (${fmt(s.turnover90d.annualizedPercent)}% a year)</span></div><div class="tile"><b>${s.peopleWithPaperworkIssues}</b><span>People with missing paperwork or data</span></div><div class="tile"><b>${s.hoursWaitingForApproval}</b><span>Timesheets waiting for approval</span></div></div>
+      <div class="card" style="margin-top:16px"><h2>Headcount, last 6 months</h2>${spark(s.trend, 'headcount')}</div>`;
+  },
+  async headcount() {
+    const r = await api('/headcount');
+    return `<div class="row"><button class="act" id="csv">Download people list (CSV)</button><span class="hint">As of ${r.asOf}</span></div><div class="tiles"><div class="tile"><b>${r.total}</b><span>People working</span></div><div class="tile"><b>${r.hiresInPeriod}</b><span>Hired in the last 12 months</span></div></div>
+      <div class="card" style="margin-top:16px"><h2>Last 12 months</h2>${spark(r.trend, 'headcount')}</div>
+      <div class="two"><div class="card"><h2>By department</h2>${bars(r.byDepartment)}</div><div class="card"><h2>By worker type</h2>${bars(r.byWorkerType)}<h3>By employment</h3>${bars(r.byEmploymentType)}</div><div class="card"><h2>By work state</h2>${bars(r.byState)}</div><div class="card"><h2>How long people have worked here</h2>${bars(r.tenure)}</div></div>`;
+  },
+  async turnover() {
+    const q = state.from && state.to ? `?from=${state.from}&to=${state.to}` : '';
+    const r = await api(`/turnover${q}`); state.from = r.from; state.to = r.to;
+    return `${rangeBar('Default: the last 12 months')}<div class="tiles"><div class="tile"><b>${r.separations}</b><span>People left</span></div><div class="tile"><b>${fmt(r.ratePercent)}%</b><span>Turnover for this period</span></div><div class="tile"><b>${fmt(r.annualizedPercent)}%</b><span>If it continued for a year</span></div><div class="tile"><b>${r.under90Days}</b><span>Left within 90 days of starting</span></div><div class="tile"><b>${Math.round(r.averageTenureDays / 30)}</b><span>Average months worked before leaving</span></div></div>
+      <div class="two" style="margin-top:16px"><div class="card"><h2>Why people left</h2>${bars(r.byCategory)}<h3>By type</h3>${bars(r.byType)}</div><div class="card"><h2>By department</h2>${bars(r.byDepartment)}</div></div>
+      <div class="card"><h2>Who left</h2>${table([{ h: 'ID', k: 'employeeId' }, { h: 'Name', k: 'name' }, { h: 'Department', k: 'department' }, { h: 'Last day', k: 'lastDay' }, { h: 'Type', f: (x) => esc(x.type.replace(/_/g, ' ')) }, { h: 'Days employed', k: 'tenureDays', n: 1 }], r.list)}</div>`;
+  },
+  async labor() {
+    const q = state.from && state.to ? `?from=${state.from}&to=${state.to}` : '';
+    const r = await api(`/labor${q}`); state.from = r.from; state.to = r.to;
+    return `${rangeBar('Default: the last 12 weeks. Approved timesheets only.')}<div class="warn">${esc(r.note)}${r.rowsWithoutRate ? ` ${r.rowsWithoutRate} week(s) have no pay rate on file and are not costed.` : ''}</div>
+      <div class="tiles"><div class="tile"><b>${fmt(r.totals.workedHours)}</b><span>Hours worked</span></div><div class="tile"><b>${fmt(r.totals.overtimeHours)}</b><span>Overtime and double-time hours</span></div><div class="tile"><b>${fmt(r.totals.overtimeSharePercent)}%</b><span>Share of hours that is overtime</span></div><div class="tile"><b>${usd(r.totals.estimatedCost)}</b><span>Estimated wages</span></div><div class="tile"><b>${usd(r.totals.overtimeCost)}</b><span>of which overtime pay</span></div></div>
+      <div class="two" style="margin-top:16px"><div class="card"><h2>By week</h2>${bars(r.byWeek.map((w) => ({ key: w.weekStart, count: w.workedHours })))}</div><div class="card"><h2>By department</h2>${table([{ h: 'Department', k: 'department' }, { h: 'People', k: 'people', n: 1 }, { h: 'Hours', f: (d) => fmt(d.workedHours), n: 1 }, { h: 'Overtime', f: (d) => fmt(d.overtimeHours), n: 1 }, { h: 'Wages', f: (d) => usd(d.estimatedCost), n: 1 }], r.byDepartment)}</div></div>
+      <div class="card"><h2>By person (most overtime first)</h2>${table([{ h: 'ID', k: 'employeeId' }, { h: 'Name', k: 'name' }, { h: 'Department', k: 'department' }, { h: 'Hours', f: (p) => fmt(p.workedHours), n: 1 }, { h: 'Overtime', f: (p) => fmt(p.overtimeHours + p.doubleTimeHours), n: 1 }, { h: 'OT %', f: (p) => fmt(p.overtimeShare), n: 1 }, { h: 'Wages', f: (p) => (p.hasRate ? usd(p.estimatedCost) : '<span class="tag">no pay rate</span>'), n: 1 }], r.byPerson)}</div>`;
+  },
+  async leave() {
+    const r = await api('/leave');
+    return `<div class="row"><button class="act" id="csv">Download CSV</button></div><div class="warn">${esc(r.note)}</div><div class="tiles"><div class="tile"><b>${fmt(r.totals.hours)}</b><span>Hours of time off people have</span></div><div class="tile"><b>${usd(r.totals.estimatedValue)}</b><span>Estimated value</span></div><div class="tile"><b>${usd(r.totals.payoutRequiredValue)}</b><span>of which must be paid out when someone leaves</span></div></div>
+      <div class="card" style="margin-top:16px"><h2>By policy</h2>${table([{ h: 'Policy', k: 'policy' }, { h: 'Type', k: 'type' }, { h: 'People', k: 'people', n: 1 }, { h: 'Hours', f: (p) => fmt(p.hours), n: 1 }, { h: 'Value', f: (p) => usd(p.estimatedValue), n: 1 }, { h: 'No pay rate', k: 'withoutRate', n: 1 }], r.byPolicy)}</div>
+      <div class="card"><h2>Biggest balances</h2>${table([{ h: 'ID', k: 'employeeId' }, { h: 'Name', k: 'name' }, { h: 'Policy', k: 'policy' }, { h: 'Hours', f: (d) => fmt(d.balanceHours), n: 1 }, { h: 'Value', f: (d) => (d.estimatedValue === null ? '-' : usd(d.estimatedValue)), n: 1 }], r.detail.slice(0, 25))}</div>`;
+  },
+  async compliance() {
+    const r = await api('/compliance');
+    return `<div class="row"><button class="act" id="csv">Download CSV</button><span class="hint">${r.peopleWithIssues} of ${r.peopleChecked + 0} working people have something to fix (including former employees whose I-9 can be disposed of)</span></div>
+      <div class="two"><div class="card"><h2>What is missing</h2>${bars(r.counts.map((c) => ({ key: c.label, count: c.count })))}</div><div class="card"><h2>Why this matters</h2><p>The W-4, I-9 and bank details are needed before the first paycheck. Missing SSNs, work states and pay rates stop payroll from working. Use the People page to fix them.</p></div></div>
+      <div class="card"><h2>People to follow up</h2>${table([{ h: 'ID', k: 'employeeId' }, { h: 'Name', k: 'name' }, { h: 'Department', k: 'department' }, { h: 'Problems', f: (p) => esc(p.issueText.join('; ')) }, { h: 'I-9 expiry', f: (p) => esc(p.reverifyOn || '') }], r.list)}</div>`;
+  },
+  async time() {
+    const r = await api('/time');
+    return `<div class="row"><button class="act" id="csv">Download late approvals (CSV)</button><span class="hint">Last ${r.weeks} timesheets since ${r.since}</span></div><div class="tiles"><div class="tile"><b>${r.waitingMoreThan3Days.length}</b><span>Waiting more than 3 days</span></div><div class="tile"><b>${fmt(r.averageHoursToApprove)}</b><span>Average hours to approve</span></div></div>
+      <div class="two" style="margin-top:16px"><div class="card"><h2>Timesheets by status</h2>${bars(r.byStatus)}</div><div class="card"><h2>Fix requests</h2>${bars(r.corrections)}<h3>By kind</h3>${bars(r.correctionsByKind)}<h3>Warnings found</h3>${bars(r.flags)}</div></div>
+      <div class="card"><h2>Waiting more than 3 days</h2>${table([{ h: 'ID', k: 'employeeId' }, { h: 'Name', k: 'name' }, { h: 'Week of', k: 'weekStart' }, { h: 'Days waiting', k: 'waitingDays', n: 1 }], r.waitingMoreThan3Days)}</div>`;
+  }
+};
+const csvPath = { headcount: ['/headcount', 'headcount'], turnover: () => [`/turnover${state.from ? `?from=${state.from}&to=${state.to}` : ''}`, 'turnover'], labor: () => [`/labor${state.from ? `?from=${state.from}&to=${state.to}` : ''}`, 'labor-and-overtime'], leave: ['/leave', 'leave-balances'], compliance: ['/compliance', 'paperwork-issues'], time: ['/time', 'timesheets-waiting'] };
+
+async function show(name) {
+  tab = name; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === name));
+  $('view').innerHTML = '<p class="hint">Loading...</p>'; $('msg').className = '';
+  try { $('view').innerHTML = await views[name](); } catch (e) { $('view').innerHTML = ''; $('msg').textContent = e.message; $('msg').className = 'err'; return; }
+  const csv = $('csv'); if (csv) csv.onclick = () => { const c = csvPath[name]; const [p, n] = typeof c === 'function' ? c() : c; download(p, n).catch((e) => { $('msg').textContent = e.message; $('msg').className = 'err'; }); };
+  const go = $('rGo'); if (go) go.onclick = () => { state.from = $('rFrom').value; state.to = $('rTo').value; show(name); };
+}
+$('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) { state.from = ''; state.to = ''; show(b.dataset.t); } });
+onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } show(tab); });
+</script>
+</body>
+</html>

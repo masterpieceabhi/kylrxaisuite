@@ -8,14 +8,14 @@ Status meanings: **Done** = built and tested; **Partial** = core works, pieces m
 
 | Status | Count |
 |---|---|
-| Done | 15 |
-| Partial | 22 |
+| Done | 19 |
+| Partial | 23 |
 | Existing, not adapted | 8 |
-| Not started | 37 |
-| Later (Gusto/connectors) | 29 |
+| Not started | 33 |
+| Later (Gusto/connectors) | 28 |
 | **All** | **111** |
 
-Not counting the postponed Gusto and connector work, there are 82 functions: 15 done, 22 partial, 8 existing-not-adapted, 37 not started.
+Not counting the postponed Gusto and connector work, there are 83 functions: 19 done, 23 partial, 8 existing-not-adapted, 33 not started.
 
 ## By module
 
@@ -30,11 +30,11 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 | G Benefits | 0 | 0 | 0 | 6 | 0 |
 | H Documents and compliance | 0 | 3 | 1 | 4 | 0 |
 | I Performance and engagement | 0 | 1 | 3 | 2 | 0 |
-| J Analytics and reporting | 0 | 0 | 1 | 4 | 1 |
+| J Analytics and reporting | 4 | 1 | 1 | 0 | 0 |
 | K Connectors | 0 | 0 | 0 | 0 | 14 |
 | L Security, privacy, operations | 1 | 2 | 0 | 6 | 0 |
 
-## Done (15)
+## Done (19)
 
 - US-A08 SSN/ITIN encryption at rest, masking (last 4), reveal with audit log. - SSN/ITIN and I-9 document numbers encrypted, masked, reveal needs a reason and is logged
 - US-B02 Worker classification: W-2 employee vs 1099 contractor; exempt vs non-exempt; full/part time. - W-2 vs 1099, exempt vs non-exempt, full/part time with rule checks
@@ -50,9 +50,13 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-E01 PTO/vacation policies and accrual engine. - PTO policies with accrual, caps, carryover, waiting period
 - US-E02 Paid sick leave by state/city: accrual, carryover, caps, usage rules. - Paid sick policies work; state/city rules must be entered and confirmed by an advisor
 - US-E05 Leave requests, approvals, calendar and team view. - Requests, approve/deny/cancel, balances, team calendar
+- US-J01 Headcount, turnover, tenure dashboards. - Headcount now, by department, worker type, state and tenure, 12-month trend, turnover rate with voluntary/involuntary split, CSV
+- US-J02 Labor cost and overtime reports. - Hours, overtime share and estimated wages by week, department and person from approved timesheets, CSV (wages only, an estimate)
+- US-J03 Time-off liability report. - Unused time off in hours and estimated dollars by policy and person, payout-required amount, CSV
+- US-J04 Compliance status report (I-9, W-4, training). - Missing W-4, I-9, SSN, bank, work state and pay rate; expiring I-9s; old I-9s that can be disposed of; CSV
 - US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN, I-9 document numbers and bank account numbers are encrypted and masked
 
-## Partial (22)
+## Partial (23)
 
 - US-A01 Country switch per company (IN / US / CA) driving currency, date, time zone, ID fields, visible modules. - Country settings and India-page gate work; no screen yet to pick the country when a company is created
 - US-A02 US company profile: legal name, EIN, entity type, addresses by state, industry code, fiscal year. - EIN, entity type, address, work states saved; no industry code, fiscal year or sites
@@ -74,6 +78,7 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-H03 Compliance calendar (I-9 audits, new-hire reports, posters, filing dates). - W-4/I-9 deadline table; no wider compliance calendar
 - US-H07 I-9 audit report and missing-document report. - Status table exists; no printable audit report
 - US-I06 Exit interviews and offboarding checklist. - US offboarding checklist with an exit-conversation task; no exit-interview form or notes
+- US-J06 Payroll cost by department/project from Gusto data. - Estimated wages by department from approved timesheets; the actual payroll cost will come from Gusto
 - US-L01 MFA enforced for admins; SSO (SAML/OIDC) for customers. - Email one-time-code login exists; no single sign-on
 - US-L02 Fix the known issues first (login bypass done; demo passwords, dependency vulnerabilities, tenant scoping on). - Login bypass and silent-save bugs fixed; demo passwords, dependency vulnerabilities, company-data scoping and one plaintext temp password remain
 
@@ -88,7 +93,7 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-I05 Asset tracking. - Asset tracking exists from the India app
 - US-J05 Custom report builder and scheduled exports. - Report builder exists from the India app
 
-## Not started (37)
+## Not started (33)
 
 - US-A09 Data residency in a US region; backup and restore. - No US data region or backup plan yet
 - US-B04 Job, title, compensation history with effective dates. - Pay rate is stored but there is no dated job or pay history
@@ -117,10 +122,6 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-H06 OSHA incident log (300/300A) basics.
 - US-I02 Review cycles, 360 feedback.
 - US-I04 Recognition and announcements.
-- US-J01 Headcount, turnover, tenure dashboards.
-- US-J02 Labor cost and overtime reports.
-- US-J03 Time-off liability report.
-- US-J04 Compliance status report (I-9, W-4, training).
 - US-L04 State privacy features: data export and deletion requests (CCPA/CPRA).
 - US-L05 Centralized logging, monitoring, alerting, backups, disaster recovery.
 - US-L06 Security audit, penetration test, then SOC 2 Type I, then Type II (buyers and Gusto will ask). - Security audit, pen test, SOC 2
@@ -128,7 +129,7 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-L08 Customer support tooling: impersonation with consent and audit, status page.
 - US-L09 Production deployment pipeline, environments, release process. - Production deployment pipeline
 
-## Later (Gusto/connectors) (29)
+## Later (Gusto/connectors) (28)
 
 - US-E08 Two-way sync of time-off policies and requests with Gusto.
 - US-F01 Company payroll onboarding wizard (see section 3). - Company payroll onboarding with Gusto
@@ -144,7 +145,6 @@ Not counting the postponed Gusto and connector work, there are 82 functions: 15 
 - US-F11 Garnishment and deduction tracking (non-child-support garnishments need partner handling **(confirm)**). - Payroll through Gusto
 - US-F12 Payroll journal / general ledger export (via Gusto report and our connector). - Payroll through Gusto
 - US-F13 Historical payroll import for mid-year switchers. - Payroll through Gusto
-- US-J06 Payroll cost by department/project from Gusto data.
 - US-K01 Public REST API (versioned) for people, jobs, time, leave, documents, payroll results. - Connectors
 - US-K02 API keys and OAuth 2.0 apps with scopes per company. - Connectors
 - US-K03 Outbound webhooks with signing, retries, replay. - Connectors
