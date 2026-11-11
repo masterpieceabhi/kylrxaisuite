@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time clock | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.in{background:#dcfce7;color:var(--ok)}.break{background:#fef3c7;color:#92400e}.out{background:#f1f5f9;color:var(--muted)}.warn{background:#fee2e2;color:var(--bad)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+code{background:#f1f5f9;padding:2px 6px;border-radius:6px;word-break:break-all}
+</style>
+</head>
+<body>
+<header><h1>Time clock</h1><div><a href="punch.html">Open my clock</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Who is working now <span class="hint" id="counts"></span></h2>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Job</th><th>Status</th><th>Since</th><th>Today</th><th>Kiosk PIN</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Shared tablets (kiosks)</h2>
+    <p class="hint">Put a tablet at the front desk or staff room. Workers type their number and PIN. Each tablet gets its own setup link; open it once on that tablet.</p>
+    <div class="row"><input id="kioskName" placeholder="Name, for example Front desk"><button id="kioskAdd">Add tablet</button></div>
+    <div id="kioskNew" class="hint" style="margin-top:10px"></div>
+    <table style="margin-top:10px"><tbody id="kiosks"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Fix a missed punch</h2>
+    <form id="manual"><div class="grid">
+      <label>Person<select name="userId" id="manualUser"></select></label>
+      <label>Action<select name="type"><option value="in">Clock in</option><option value="out">Clock out</option><option value="break_start">Start break</option><option value="break_end">End break</option></select></label>
+      <label>Date and time (your computer's time zone)<input name="at" type="datetime-local" required></label>
+      <label>Reason (recorded)<input name="reason" required minlength="5" placeholder="Forgot to clock out"></label>
+    </div><div class="row"><button type="submit">Add punch</button></div></form>
+  </section>
+
+  <section class="card">
+    <h2>Timesheet</h2>
+    <div class="row" style="margin-top:0"><select id="tsUser"></select><label style="display:flex;gap:6px;align-items:center">From <input type="date" id="tsFrom"></label><label style="display:flex;gap:6px;align-items:center">To <input type="date" id="tsTo"></label><button id="tsGo" class="ghost">Show</button></div>
+    <table style="margin-top:10px"><thead><tr><th>Day</th><th>Worked</th><th>Breaks</th><th>Punches</th></tr></thead><tbody id="tsRows"></tbody></table>
+    <p class="hint" id="tsWeeks"></p>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; };
+const dur = (m) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+let people = [], tz = 'UTC';
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/time${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || (json.errors || []).join('; ') || `Request failed (${res.status})`);
+  return json;
+}
+
+async function loadRoster() {
+  const r = await api('GET', '/team/now'); people = r.data; tz = r.timeZone;
+  $('counts').textContent = `(${r.counts.in} working, ${r.counts.break} on break, ${r.counts.out} not clocked in; times in ${tz})`;
+  const label = { in: 'Working', break: 'On break', out: 'Not in' };
+  $('rows').innerHTML = people.map((p) => `<tr><td>${p.employeeId || '-'}</td><td>${p.name || ''}</td><td>${p.jobTitle || ''}</td><td><span class="tag ${p.state}">${label[p.state]}</span>${p.forgottenClockOut ? ' <span class="tag warn">Forgot to clock out?</span>' : ''}</td><td>${p.since ? new Date(p.since).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }) : '-'}</td><td>${dur(p.todayMinutes)}</td><td>${p.hasPin ? 'Set' : 'Not set'}</td><td><button class="ghost" data-pin="${p.userId}">${p.hasPin ? 'Reset PIN' : 'Make PIN'}</button></td></tr>`).join('');
+  const opts = people.map((p) => `<option value="${p.userId}">${p.name || p.employeeId} ${p.employeeId ? `(${p.employeeId})` : ''}</option>`).join('');
+  $('manualUser').innerHTML = opts; $('tsUser').innerHTML = opts;
+}
+
+async function loadKiosks() {
+  const r = await api('GET', '/kiosks');
+  $('kiosks').innerHTML = r.data.map((k) => `<tr><td>${k.name}</td><td>${k.active ? 'Active' : 'Turned off'}</td><td>${k.active ? `<button class="ghost" data-off="${k.id}">Turn off</button>` : ''}</td></tr>`).join('') || '<tr><td class="hint">No tablets yet.</td></tr>';
+}
+
+$('rows').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-pin]'); if (!b) return;
+  try { const r = await api('PUT', '/pin', { userId: b.dataset.pin }); say(`PIN for ${r.name} (number ${r.employeeId}): ${r.pin}. Write it down for them now: it is shown only once.`); await loadRoster(); }
+  catch (err) { say(err.message, false); }
+});
+$('kiosks').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-off]'); if (!b) return;
+  try { await api('DELETE', `/kiosks/${b.dataset.off}`); await loadKiosks(); } catch (err) { say(err.message, false); }
+});
+$('kioskAdd').onclick = async () => {
+  try {
+    const r = await api('POST', '/kiosks', { name: $('kioskName').value });
+    const url = `${location.origin}${r.setupPath}`;
+    $('kioskNew').innerHTML = `Open this link <b>once</b> on the tablet. It is shown only now: <code>${url}</code>`; $('kioskName').value = ''; await loadKiosks();
+  } catch (err) { say(err.message, false); }
+};
+$('manual').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await api('POST', '/punches/manual', { userId: f.get('userId'), type: f.get('type'), at: new Date(f.get('at')).toISOString(), reason: f.get('reason') }); say('Punch added and recorded in the audit log.'); e.target.reset(); await loadRoster(); }
+  catch (err) { say(err.message, false); }
+});
+$('tsGo').onclick = async () => {
+  try {
+    const q = new URLSearchParams({ userId: $('tsUser').value }); if ($('tsFrom').value) q.set('from', $('tsFrom').value); if ($('tsTo').value) q.set('to', $('tsTo').value);
+    const r = await api('GET', `/timesheet?${q}`);
+    $('tsRows').innerHTML = r.days.map((d) => `<tr><td>${d.date}</td><td>${dur(d.workedMinutes)}</td><td>${dur(d.breakMinutes)}</td><td>${d.punches}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No punches in this range.</td></tr>';
+    $('tsWeeks').textContent = r.weeks.map((w) => `Week of ${w.weekStart}: ${dur(w.workedMinutes)}${w.overtimeMinutes ? `, overtime ${dur(w.overtimeMinutes)}` : ''}`).join('  |  ');
+  } catch (err) { say(err.message, false); }
+};
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { await loadRoster(); await loadKiosks(); await $('tsGo').onclick(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

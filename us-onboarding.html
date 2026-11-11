@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New hire paperwork</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--green:#16a34a;--bg:#f8fafc}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.lang button{font:inherit;font-weight:700;padding:6px 14px;border-radius:999px;border:2px solid #cbd5e1;background:#fff;margin-left:6px}.lang button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{max-width:640px;margin:0 auto;padding:20px 16px 60px;display:grid;gap:18px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
+h1{font-size:24px;margin:0}h2{font-size:20px;margin:0 0 6px}p{margin:0 0 12px;color:var(--muted)}
+.steps{display:flex;gap:10px}.step{flex:1;padding:12px;border-radius:12px;background:#e2e8f0;text-align:center;font-weight:700}.step.done{background:#dcfce7;color:#166534}
+label.f{display:grid;gap:6px;margin:14px 0;font-weight:600}
+input[type=text],input[type=number],input[type=date],select{padding:14px;border:2px solid var(--line);border-radius:12px;font:inherit}
+.opt{display:flex;gap:12px;align-items:flex-start;padding:14px;border:2px solid var(--line);border-radius:12px;margin:8px 0;cursor:pointer;font-weight:600}
+.opt input{width:22px;height:22px;margin-top:2px}.opt small{display:block;font-weight:400;color:var(--muted)}
+button.go{width:100%;padding:18px;border:0;border-radius:14px;background:var(--blue);color:#fff;font:700 20px system-ui;margin-top:12px;cursor:pointer}
+#msg{display:none;padding:14px;border-radius:12px;font-weight:600}#msg.ok{display:block;background:#dcfce7;color:#166534}#msg.err{display:block;background:#fee2e2;color:#b91c1c}
+.hide{display:none}.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:12px;padding:12px;font-size:16px}
+</style>
+</head>
+<body>
+<header><b id="t">New hire paperwork</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="steps"><div class="step" id="s1">1. Tax form (W-4)</div><div class="step" id="s2">2. Work eligibility (I-9)</div></div>
+  <div class="card" id="lead"></div>
+
+  <form class="card" id="w4">
+    <h2 id="w4t"></h2><p id="w4p"></p>
+    <div id="fs"></div>
+    <label class="opt"><input type="checkbox" name="multipleJobs"><span id="mj"></span></label>
+    <label class="f"><span id="lc"></span><input type="number" name="qualifyingChildren" min="0" step="1" value="0"></label>
+    <label class="f"><span id="lo"></span><input type="number" name="otherDependents" min="0" step="1" value="0"></label>
+    <label class="f"><span id="li"></span><input type="number" name="otherIncome" min="0" step="0.01" value="0"></label>
+    <label class="f"><span id="ld"></span><input type="number" name="deductions" min="0" step="0.01" value="0"></label>
+    <label class="f"><span id="lx"></span><input type="number" name="extraWithholding" min="0" step="0.01" value="0"></label>
+    <label class="opt"><input type="checkbox" name="exemptFromWithholding"><span id="ex"></span></label>
+    <label class="opt"><input type="checkbox" name="declarationAccepted"><span id="decl"></span></label>
+    <label class="f"><span id="sn1"></span><input type="text" name="signedName" autocomplete="name"></label>
+    <button class="go" type="submit" id="w4b"></button>
+  </form>
+
+  <form class="card hide" id="i9">
+    <h2 id="i9t"></h2><p id="i9p"></p>
+    <div id="cit"></div>
+    <div id="alien" class="hide">
+      <label class="f"><span id="an"></span><input type="text" name="authorizationNumber"></label>
+      <label class="f"><span id="ae"></span><input type="date" name="workAuthorizationExpires"></label>
+    </div>
+    <label class="f"><span id="ol"></span><input type="text" name="otherLastNamesUsed"></label>
+    <label class="opt"><input type="checkbox" name="attestation"><span id="att"></span></label>
+    <label class="f"><span id="sn2"></span><input type="text" name="signedName" autocomplete="name"></label>
+    <div class="note" id="i9note"></div>
+    <button class="go" type="submit" id="i9b"></button>
+  </form>
+
+  <div class="card hide" id="allDone"><h2 id="doneT"></h2><p id="doneP"></p></div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+
+const T = {
+  en: { title: 'New hire paperwork', lead: 'Two short forms. Take your time. Your answers are private and only HR can see them.',
+    w4t: 'Step 1: Tax withholding (Form W-4)', w4p: 'This tells your employer how much tax to take out of each paycheck.',
+    fs: [['single_or_mfs', 'Single, or married filing separately'], ['mfj_or_qss', 'Married filing jointly, or qualifying surviving spouse'], ['head_of_household', 'Head of household']],
+    mj: 'I have more than one job, or my spouse works too', lc: 'Number of children under 17 (each counts $2,000 on the form)', lo: 'Number of other dependents (each counts $500 on the form)',
+    li: 'Other income not from jobs, per year (dollars)', ld: 'Deductions beyond the standard one, per year (dollars)', lx: 'Extra tax to take out of each paycheck (dollars)',
+    ex: 'I am exempt from withholding (only if you owed no tax last year and expect none this year)', decl: 'I declare, under penalty of perjury, that this is true and correct.', sn: 'Type your full legal name to sign', w4b: 'Save and continue',
+    i9t: 'Step 2: Work eligibility (Form I-9, Section 1)', i9p: 'Every employer must confirm you can legally work in the United States.',
+    cit: [['us_citizen', 'A citizen of the United States', ''], ['noncitizen_national', 'A noncitizen national of the United States', ''], ['lawful_permanent_resident', 'A lawful permanent resident', 'You will need your card number'], ['alien_authorized_to_work', 'A noncitizen authorized to work', 'You will need your document number and the date it ends']],
+    an: 'Document number (A-Number, USCIS number, I-94 or passport number)', ae: 'Work permission ends on', ol: 'Other last names you have used (if any)',
+    att: 'I attest, under penalty of perjury, that I am the person described above and my answers are true.', i9note: 'You will show your original documents to HR within 3 business days of your first day.', i9b: 'Sign and finish',
+    doneT: 'All done. Thank you!', doneP: 'HR will check your documents with you. Nothing else is needed here.', saved: 'Saved.', fail: 'Could not save. Please check the highlighted answers.' },
+  es: { title: 'Papeles de nuevo empleado', lead: 'Dos formularios cortos. Tómese su tiempo. Sus respuestas son privadas y solo Recursos Humanos las ve.',
+    w4t: 'Paso 1: Retención de impuestos (Formulario W-4)', w4p: 'Esto le dice a su empleador cuánto impuesto descontar de cada pago.',
+    fs: [['single_or_mfs', 'Soltero/a, o casado/a declarando por separado'], ['mfj_or_qss', 'Casado/a declarando en conjunto, o cónyuge sobreviviente'], ['head_of_household', 'Jefe/a de familia']],
+    mj: 'Tengo más de un trabajo, o mi cónyuge también trabaja', lc: 'Número de hijos menores de 17 años (cada uno cuenta $2,000)', lo: 'Número de otros dependientes (cada uno cuenta $500)',
+    li: 'Otros ingresos que no son de trabajo, por año (dólares)', ld: 'Deducciones adicionales a la estándar, por año (dólares)', lx: 'Impuesto adicional a descontar de cada pago (dólares)',
+    ex: 'Estoy exento/a de retención (solo si no debió impuestos el año pasado ni espera deber este año)', decl: 'Declaro, bajo pena de perjurio, que esto es verdadero y correcto.', sn: 'Escriba su nombre legal completo para firmar', w4b: 'Guardar y continuar',
+    i9t: 'Paso 2: Elegibilidad para trabajar (Formulario I-9, Sección 1)', i9p: 'Todo empleador debe confirmar que usted puede trabajar legalmente en Estados Unidos.',
+    cit: [['us_citizen', 'Ciudadano/a de Estados Unidos', ''], ['noncitizen_national', 'Nacional no ciudadano de Estados Unidos', ''], ['lawful_permanent_resident', 'Residente permanente legal', 'Necesitará el número de su tarjeta'], ['alien_authorized_to_work', 'No ciudadano/a autorizado/a para trabajar', 'Necesitará el número de su documento y la fecha en que vence']],
+    an: 'Número de documento (Número A, USCIS, I-94 o pasaporte)', ae: 'El permiso de trabajo vence el', ol: 'Otros apellidos que ha usado (si hay)',
+    att: 'Atestiguo, bajo pena de perjurio, que soy la persona descrita arriba y mis respuestas son verdaderas.', i9note: 'Mostrará sus documentos originales a Recursos Humanos dentro de 3 días hábiles de su primer día.', i9b: 'Firmar y terminar',
+    doneT: '¡Listo! Gracias.', doneP: 'Recursos Humanos revisará sus documentos con usted. No necesita hacer nada más aquí.', saved: 'Guardado.', fail: 'No se pudo guardar. Revise las respuestas marcadas.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+const $ = (id) => document.getElementById(id);
+let forms = null;
+
+function paint() {
+  const t = T[lang]; document.documentElement.lang = lang; document.title = t.title; $('t').textContent = t.title;
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('lead').innerHTML = `<h1>${t.title}</h1><p style="margin:8px 0 0">${t.lead}</p>`;
+  ['w4t', 'w4p', 'mj', 'lc', 'lo', 'li', 'ld', 'lx', 'ex', 'decl', 'i9t', 'i9p', 'an', 'ae', 'ol', 'att', 'i9note', 'doneT', 'doneP'].forEach((k) => { $(k).textContent = t[k]; });
+  $('sn1').textContent = t.sn; $('sn2').textContent = t.sn; $('w4b').textContent = t.w4b; $('i9b').textContent = t.i9b;
+  const sel = (document.querySelector('[name=filingStatus]:checked') || {}).value;
+  $('fs').innerHTML = t.fs.map(([v, l]) => `<label class="opt"><input type="radio" name="filingStatus" value="${v}" ${sel === v ? 'checked' : ''}><span>${l}</span></label>`).join('');
+  const csel = (document.querySelector('[name=citizenshipStatus]:checked') || {}).value;
+  $('cit').innerHTML = t.cit.map(([v, l, h]) => `<label class="opt"><input type="radio" name="citizenshipStatus" value="${v}" ${csel === v ? 'checked' : ''}><span>${l}${h ? `<small>${h}</small>` : ''}</span></label>`).join('');
+  $('s1').textContent = lang === 'es' ? '1. Impuestos (W-4)' : '1. Tax form (W-4)'; $('s2').textContent = lang === 'es' ? '2. Elegibilidad (I-9)' : '2. Work eligibility (I-9)';
+  $('s1').classList.toggle('done', Boolean(forms && forms.w4)); $('s2').classList.toggle('done', Boolean(forms && forms.i9.section1));
+}
+
+function show(kind, text) { const m = $('msg'); m.textContent = text; m.className = kind; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/employees/${encodeURIComponent(auth.currentUser.uid)}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('\n')) || json.error || 'Request failed');
+  return json;
+}
+
+function stage() {
+  const w4Done = Boolean(forms.w4), i9Done = Boolean(forms.i9.section1);
+  $('w4').classList.toggle('hide', w4Done); $('i9').classList.toggle('hide', !w4Done || i9Done);
+  $('allDone').classList.toggle('hide', !(w4Done && i9Done)); paint();
+}
+
+document.addEventListener('change', (e) => { if (e.target.name === 'citizenshipStatus') $('alien').classList.toggle('hide', !['alien_authorized_to_work', 'lawful_permanent_resident'].includes(e.target.value)); });
+document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }; });
+
+$('w4').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target; const fs = f.querySelector('[name=filingStatus]:checked');
+  try {
+    const r = await api('PUT', '/w4', { taxYear: new Date().getFullYear(), filingStatus: fs && fs.value, multipleJobs: f.multipleJobs.checked,
+      qualifyingChildren: f.qualifyingChildren.value, otherDependents: f.otherDependents.value, otherIncome: f.otherIncome.value, deductions: f.deductions.value,
+      extraWithholding: f.extraWithholding.value, exemptFromWithholding: f.exemptFromWithholding.checked, declarationAccepted: f.declarationAccepted.checked, signedName: f.signedName.value });
+    forms = r.forms; show('ok', T[lang].saved); stage();
+  } catch (err) { show('err', err.message); }
+});
+
+$('i9').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target; const cs = f.querySelector('[name=citizenshipStatus]:checked');
+  const body = { citizenshipStatus: cs && cs.value, attestation: f.attestation.checked, signedName: f.signedName.value };
+  if (f.authorizationNumber.value) body.authorizationNumber = f.authorizationNumber.value;
+  if (f.workAuthorizationExpires.value) body.workAuthorizationExpires = f.workAuthorizationExpires.value;
+  if (f.otherLastNamesUsed.value) body.otherLastNamesUsed = f.otherLastNamesUsed.value;
+  try { const r = await api('PUT', '/i9/section1', body); forms = r.forms; show('ok', T[lang].saved); stage(); }
+  catch (err) { show('err', err.message); }
+});
+
+paint();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { forms = (await api('GET', '/forms')).forms; stage(); }
+  catch (err) { show('err', err.message); }
+});
+</script>
+</body>
+</html>

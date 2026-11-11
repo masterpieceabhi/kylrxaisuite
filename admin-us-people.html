@@ -49,6 +49,34 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <p class="hint" id="empty" style="display:none">No employees yet. Create one from the dashboard, then come back to complete the US profile.</p>
   </section>
 
+  <section class="card" id="complianceCard" style="display:none">
+    <h2>New-hire paperwork (W-4 and I-9)</h2>
+    <p class="hint" id="compSummary"></p>
+    <table><thead><tr><th>ID</th><th>Name</th><th>First day</th><th>W-4</th><th>I-9</th><th>I-9 Section 2 due</th><th>Needs attention</th></tr></thead><tbody id="compRows"></tbody></table>
+  </section>
+
+  <section class="card" id="addCard" style="display:none">
+    <h2>Add an employee</h2>
+    <form id="addForm"><div class="grid">
+      <label>First name<input name="firstName" required></label>
+      <label>Last name<input name="lastName" required></label>
+      <label>Email<input name="email" type="email" required></label>
+      <label>Phone<input name="phone"></label>
+      <label>Role<select name="role"><option value="employee">Employee</option><option value="manager">Manager</option><option value="hr_admin">HR admin</option></select></label>
+      <label>First day of work<input name="startDate" type="date" required></label>
+      <label>Job title<input name="jobTitle"></label>
+      <label>Department<input name="department"></label>
+    </div><div class="row"><button type="submit">Add employee</button><span class="hint">The person fills in their own SSN, W-4 and I-9 after logging in.</span></div></form>
+    <div id="newPw" class="hint" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card" id="bulkCard" style="display:none">
+    <h2>Add many employees from a file</h2>
+    <p class="hint">Use a CSV or Excel file. Columns: first_name, last_name, email, role, start_date (YYYY-MM-DD), job_title, department. Optional: phone and the profile columns (work_state, classification, flsa_status, employment_type, pay_type, pay_frequency, pay_rate, date_of_birth, address_line1, city, state, zip). Leave out ssn when you can: people can enter it themselves.</p>
+    <div class="row"><button type="button" class="ghost" id="tplBtn">Download blank template</button><input type="file" id="bulkFile" accept=".csv,.xlsx,.xls"><button type="button" id="bulkCheck" disabled>Check file</button><button type="button" id="bulkGo" disabled>Create employees</button></div>
+    <div id="bulkOut" class="hint" style="margin-top:12px"></div>
+  </section>
+
   <section class="card" id="formCard" style="display:none">
     <h2 id="formTitle">US profile</h2>
     <form id="empForm"><div class="grid">
@@ -73,6 +101,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
   </section>
 </main>
 
+<script src="utils/xlsx.full.min.js"></script>
 <script type="module">
 import { auth, onAuthStateChanged } from './firebase-config.js';
 
@@ -156,14 +185,85 @@ $('revealBtn').onclick = async () => {
   catch (e) { say(e.message, false); }
 };
 
+
+const FLAG_TEXT = { w4_overdue: 'W-4 overdue', w4_pending: 'W-4 not yet due', i9_section1_overdue: 'I-9 Section 1 overdue', i9_section2_overdue: 'I-9 Section 2 overdue', i9_reverification_soon: 'I-9 expires soon', i9_reverification_overdue: 'I-9 reverification overdue' };
+async function loadCompliance() {
+  const r = await api('GET', '/compliance/onboarding');
+  const s = r.summary;
+  $('compSummary').textContent = `${s.total} people. Missing W-4: ${s.w4Missing}. I-9 not complete: ${s.i9Incomplete}. Overdue: ${s.overdue}. Expiring soon: ${s.reverifySoon}.`;
+  $('compRows').innerHTML = r.data.map((e) => `<tr><td>${e.employeeId}</td><td>${e.name || ''}</td><td>${e.firstDay || '-'}</td><td><span class="tag ${e.w4 === 'complete' ? 'ok' : 'no'}">${e.w4 === 'complete' ? 'Done' : 'Missing'}</span></td><td><span class="tag ${e.i9State === 'complete' ? 'ok' : 'no'}">${e.i9State.replace('_', ' ')}</span></td><td>${e.i9Section2Due || '-'}</td><td>${e.flags.map((f) => FLAG_TEXT[f] || f).join(', ') || '-'}</td></tr>`).join('');
+}
+
+$('addForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); const v = formObj(ev.target);
+  try {
+    const r = await api('POST', '/employees', v);
+    const e = r.employee;
+    $('newPw').innerHTML = `Created <b>${e.name}</b> (${e.employeeId}). Temporary password, shown once: <code>${e.temporaryPassword}</code>`;
+    say('Employee added.'); ev.target.reset(); await loadPeople(); await loadCompliance();
+  } catch (e) { say(e.message, false); }
+});
+
+const COLS = ['first_name', 'last_name', 'email', 'phone', 'role', 'start_date', 'job_title', 'department', 'work_state', 'classification', 'flsa_status', 'employment_type', 'pay_type', 'pay_frequency', 'pay_rate', 'date_of_birth', 'address_line1', 'city', 'state', 'zip'];
+$('tplBtn').onclick = () => {
+  const sample = ['Maria', 'Lopez', 'maria@example.com', '', 'employee', '2026-12-01', 'Housekeeper', 'Housekeeping', 'TX', 'W2', 'non_exempt', 'full_time', 'hourly', 'biweekly', '17.50', '1991-05-20', '1 Main St', 'Austin', 'TX', '78701'];
+  const blob = new Blob([COLS.join(',') + '\n' + sample.join(',') + '\n'], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'employees-template.csv'; a.click();
+};
+
+let bulkRows = null;
+const norm = (k) => String(k).trim().toLowerCase().replace(/[\s-]+/g, '_');
+// Excel and CSV readers turn dates into 11/13/26 style text; send YYYY-MM-DD to the server
+function toIso(v, isBirthDate) {
+  const s = String(v || '').trim();
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
+  if (!m) return s;
+  let y = Number(m[3]);
+  if (m[3].length === 2) { const cur = new Date().getFullYear() % 100; y = (isBirthDate ? y > cur : y > cur + 5) ? 1900 + y : 2000 + y; }
+  return `${y}-${String(m[1]).padStart(2, '0')}-${String(m[2]).padStart(2, '0')}`;
+}
+$('bulkFile').addEventListener('change', async (ev) => {
+  const file = ev.target.files[0]; bulkRows = null; $('bulkCheck').disabled = true; $('bulkGo').disabled = true; $('bulkOut').textContent = '';
+  if (!file) return;
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false, raw: /\.csv$/i.test(file.name) });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+    bulkRows = rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [norm(k), v]))).filter((r) => Object.values(r).some((v) => String(v).trim()));
+    bulkRows.forEach((r) => { if (r.start_date) r.start_date = toIso(r.start_date); if (r.date_of_birth) r.date_of_birth = toIso(r.date_of_birth, true); });
+    $('bulkOut').textContent = `${bulkRows.length} rows read. Click "Check file" to look for problems before anything is created.`;
+    $('bulkCheck').disabled = bulkRows.length === 0;
+  } catch (e) { say('Could not read that file. Use the template (CSV or Excel).', false); }
+});
+
+function showBulk(r, created) {
+  const bad = r.results.filter((x) => x.status === 'error');
+  let html = `<b>${r.summary.ok}</b> ${created ? 'created' : 'ready'}, <b>${r.summary.errors}</b> with problems.`;
+  if (bad.length) html += '<ul>' + bad.map((x) => `<li>Row ${x.row} (${x.email || 'no email'}): ${x.errors.join('; ')}</li>`).join('') + '</ul>';
+  if (created) html += '<p><b>Temporary passwords are shown once.</b> <a href="#" id="dlPw">Download them as a file</a> before leaving this page.</p>';
+  $('bulkOut').innerHTML = html;
+  if (created) {
+    const lines = ['employee_id,name,email,temporary_password', ...r.results.filter((x) => x.status === 'created').map((x) => `${x.employeeId},${x.name},${x.email},${x.temporaryPassword}`)];
+    $('dlPw').onclick = (e) => { e.preventDefault(); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' })); a.download = 'new-employee-passwords.csv'; a.click(); };
+  }
+}
+$('bulkCheck').onclick = async () => {
+  try { const r = await api('POST', '/employees/bulk', { rows: bulkRows, dryRun: true }); showBulk(r, false); $('bulkGo').disabled = r.summary.ok === 0; }
+  catch (e) { say(e.message, false); }
+};
+$('bulkGo').onclick = async () => {
+  if (!window.confirm('Create these employees now? Rows with problems are skipped.')) return;
+  try { const r = await api('POST', '/employees/bulk', { rows: bulkRows, dryRun: false }); showBulk(r, true); $('bulkGo').disabled = true; await loadPeople(); await loadCompliance(); }
+  catch (e) { say(e.message, false); }
+};
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   try {
     const token = await user.getIdToken();
     const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${token}` } })).json();
     if (!org.success || org.country.code !== 'US') { $('blocked').style.display = 'block'; return; }
-    ['companyCard', 'peopleCard'].forEach((id) => { $(id).style.display = 'block'; });
-    await loadCompany(); await loadPeople();
+    ['companyCard', 'peopleCard', 'complianceCard', 'addCard', 'bulkCard'].forEach((id) => { $(id).style.display = 'block'; });
+    await loadCompany(); await loadPeople(); await loadCompliance();
   } catch (e) { say(e.message, false); }
 });
 </script>

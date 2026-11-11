@@ -770,3 +770,6 @@ export {
 // only through this module and always get the tenant-scoped wrappers above
 export * from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
+
+// Floating clock button on signed-in pages (US/CA companies); loaded last so it can import this module
+if (typeof window !== 'undefined') { import('./punch-fab.js').catch(() => {}); }

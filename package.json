@@ -8,7 +8,7 @@
     "emulators": "npx --yes firebase-tools@14.27.0 emulators:start --only auth,firestore --project kylrxai",
     "seed:local": "node scripts/seed-emulator.js",
     "start:local": "node scripts/start-local.js",
-    "test": "node --test --test-force-exit tests/non-negotiable-product-rules.test.mjs tests/kylrx-hr-operating-system.test.mjs services/gratuity-automation-engine.test.mjs tests/payroll-decentro-integration.test.mjs tests/business-unit-schema-and-rules.test.mjs tests/employee-type-schema-and-rules.test.mjs tests/employee-finance-schema-and-rules.test.mjs tests/manager-goals-and-custom-templates.test.mjs tests/employee-goals.test.mjs tests/country-config.test.mjs tests/us-hr-validation.test.mjs",
+    "test": "node --test --test-force-exit tests/non-negotiable-product-rules.test.mjs tests/kylrx-hr-operating-system.test.mjs services/gratuity-automation-engine.test.mjs tests/payroll-decentro-integration.test.mjs tests/business-unit-schema-and-rules.test.mjs tests/employee-type-schema-and-rules.test.mjs tests/employee-finance-schema-and-rules.test.mjs tests/manager-goals-and-custom-templates.test.mjs tests/employee-goals.test.mjs tests/country-config.test.mjs tests/us-hr-validation.test.mjs tests/us-forms.test.mjs tests/time-rules.test.mjs",
     "provision:superadmin": "node scripts/provision-superadmin.js",
     "migrate:passwords": "node scripts/migrate-plaintext-passwords.js",
     "deploy:firebase": "firebase deploy --only firestore:rules,firestore:indexes,storage"

@@ -185,4 +185,7 @@ router.post('/employees/:id/taxpayer-id/reveal', authorize(REVEAL_ROLES), requir
     res.json({ success: true, taxpayerId: `${plain.slice(0, 3)}-${plain.slice(3, 5)}-${plain.slice(5)}` });
 });
 
+// Shared with the other US routers (forms, time)
+router.helpers = { requireUsOrg, findEmployee, audit, exists, orgIdOf, PEOPLE_COLLECTIONS };
+
 module.exports = router;

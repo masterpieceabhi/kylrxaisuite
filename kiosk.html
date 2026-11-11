@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Time clock</title>
+<style>
+:root{--green:#16a34a;--red:#dc2626;--amber:#d97706;--ink:#0f172a;--muted:#64748b;--blue:#2563eb}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%}
+body{margin:0;font:22px/1.3 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#0f172a;display:flex;flex-direction:column;align-items:center}
+#bar{width:100%;display:flex;justify-content:space-between;align-items:center;padding:14px 20px;color:#cbd5e1}
+#clock{font-size:30px;font-weight:700;color:#fff}
+.lang button{font:inherit;font-weight:700;padding:8px 16px;border-radius:999px;border:2px solid #475569;background:transparent;color:#cbd5e1;margin-left:6px}
+.lang button.on{background:#fff;color:var(--ink);border-color:#fff}
+#card{width:min(94vw,520px);background:#fff;border-radius:28px;padding:24px;margin:auto 0;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+h1{margin:0 0 6px;font-size:30px}p{margin:0 0 16px;color:var(--muted)}
+#display{height:76px;border-radius:18px;background:#f1f5f9;display:grid;place-items:center;font-size:44px;font-weight:800;letter-spacing:.18em;margin-bottom:16px}
+#pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+#pad button{height:84px;border-radius:20px;border:0;background:#e2e8f0;font:800 36px system-ui;color:var(--ink);cursor:pointer}
+#pad button:active{background:#cbd5e1}#pad .fn{font-size:22px;background:#f1f5f9}#pad .go{background:var(--blue);color:#fff;font-size:24px}
+.actions{display:grid;gap:14px;margin-top:10px}
+.actions button{height:110px;border-radius:24px;border:0;color:#fff;font:800 36px system-ui;cursor:pointer}
+.actions .in{background:var(--green)}.actions .out{background:var(--red)}.actions .brk{background:var(--amber);height:84px;font-size:28px}
+.ghost{margin-top:16px;background:none;border:0;color:var(--muted);font:600 22px system-ui;padding:12px;cursor:pointer}
+.big{font-size:64px;margin:6px 0}.ok{color:var(--green)}.bad{color:var(--red)}
+#msg{min-height:1.5em;font-weight:700;margin:0 0 10px}
+</style>
+</head>
+<body>
+<div id="bar"><div id="clock"></div><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></div>
+<div id="card"></div>
+
+<script>
+const T = {
+  en: { setup: 'This tablet is not set up yet', setupHelp: 'Ask your manager for the setup link.', num: 'Your number', numHelp: 'Type your employee number', pin: 'Your PIN', pinHelp: 'Type your secret PIN',
+        next: 'NEXT', ok: 'OK', clear: 'CLEAR', hi: 'Hello, {n}', pick: 'What would you like to do?', in: 'CLOCK IN', out: 'CLOCK OUT', brk: 'START BREAK', brkEnd: 'END BREAK',
+        notMe: 'This is not me', done_in: 'You are clocked IN', done_out: 'You are clocked OUT. Thank you!', done_bs: 'Break started', done_be: 'Back to work', at: 'at {t}',
+        wrong: 'Number or PIN is not right', locked: 'Too many tries. Ask your manager for help.', expired: 'Time ran out. Start again.', fail: 'Cannot connect. Try again.',
+        already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.', inactive: 'This account is not active.' },
+  es: { setup: 'Esta tableta aún no está configurada', setupHelp: 'Pida el enlace de configuración a su supervisor.', num: 'Su número', numHelp: 'Escriba su número de empleado', pin: 'Su PIN', pinHelp: 'Escriba su PIN secreto',
+        next: 'SIGUIENTE', ok: 'OK', clear: 'BORRAR', hi: 'Hola, {n}', pick: '¿Qué desea hacer?', in: 'ENTRAR', out: 'SALIR', brk: 'EMPEZAR DESCANSO', brkEnd: 'TERMINAR DESCANSO',
+        notMe: 'No soy yo', done_in: 'Entrada registrada', done_out: 'Salida registrada. ¡Gracias!', done_bs: 'Descanso iniciado', done_be: 'De vuelta al trabajo', at: 'a las {t}',
+        wrong: 'Número o PIN incorrecto', locked: 'Demasiados intentos. Pida ayuda a su supervisor.', expired: 'Se acabó el tiempo. Empiece de nuevo.', fail: 'No hay conexión. Intente de nuevo.',
+        already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.', inactive: 'Esta cuenta no está activa.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const $ = (id) => document.getElementById(id);
+
+// Setup link: /kiosk.html?key=...  The key is kept on this device and removed from the address bar.
+try {
+  const q = new URLSearchParams(location.search);
+  if (q.get('key')) { localStorage.setItem('kylrx_kiosk_key', q.get('key')); history.replaceState(null, '', location.pathname); }
+} catch (_) {}
+const KEY = (() => { try { return localStorage.getItem('kylrx_kiosk_key'); } catch (_) { return null; } })();
+
+let step = 'number', typed = '', number = '', session = '', who = null, resetTimer = null, countdown = null;
+
+async function api(path, body) {
+  const res = await fetch(`/api/time/kiosk/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Kiosk-Key': KEY }, body: JSON.stringify(body) });
+  return { ok: res.ok, json: await res.json().catch(() => ({})) };
+}
+
+function reset() { clearTimeout(resetTimer); clearInterval(countdown); step = 'number'; typed = ''; number = ''; session = ''; who = null; render(); }
+function armReset(sec) { clearTimeout(resetTimer); resetTimer = setTimeout(reset, sec * 1000); }
+
+function keypad() {
+  const k = (v, cls = '') => `<button data-k="${v}" class="${cls}">${v === 'x' ? '⌫' : v === 'c' ? tr('clear') : v === 'go' ? (step === 'number' ? tr('next') : tr('ok')) : v}</button>`;
+  return `<div id="pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => k(n)).join('')}${k('c', 'fn')}${k(0)}${k('go', 'go')}</div>`;
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  const card = $('card');
+  if (!KEY) { card.innerHTML = `<h1>${tr('setup')}</h1><p>${tr('setupHelp')}</p>`; return; }
+  if (step === 'number' || step === 'pin') {
+    const isPin = step === 'pin';
+    const shown = isPin ? '●'.repeat(typed.length) || '' : typed;
+    card.innerHTML = `<h1>${isPin ? tr('pin') : tr('num')}</h1><p>${isPin ? tr('pinHelp') : tr('numHelp')}</p><div id="msg" class="bad"></div><div id="display">${shown || '&nbsp;'}</div>${keypad()}`;
+    return;
+  }
+  if (step === 'actions') {
+    const s = who.status; const a = s.allowed;
+    card.innerHTML = `<h1>${tr('hi', { n: who.firstName })}</h1><p>${tr('pick')}</p><div id="msg" class="bad"></div><div class="actions">`
+      + (a.includes('in') ? `<button class="in" data-a="in">${tr('in')}</button>` : '')
+      + (a.includes('out') ? `<button class="out" data-a="out">${tr('out')}</button>` : '')
+      + (a.includes('break_start') ? `<button class="brk" data-a="break_start">${tr('brk')}</button>` : '')
+      + (a.includes('break_end') ? `<button class="in" data-a="break_end">${tr('brkEnd')}</button>` : '')
+      + `</div><button class="ghost" id="notMe">${tr('notMe')}</button>`;
+    return;
+  }
+  if (step === 'done') {
+    const kind = who.doneKind; const bad = kind === 'err';
+    card.innerHTML = `<div class="big ${bad ? 'bad' : 'ok'}">${bad ? '✕' : '✓'}</div><h1>${who.doneText}</h1>${who.doneTime ? `<p>${who.doneTime}</p>` : ''}<h2>${who.name}</h2>`;
+  }
+}
+
+function setMsg(text) { const m = $('msg'); if (m) m.textContent = text; }
+const errText = (j) => T[lang][j.code === 'wrong_pin' ? 'wrong' : j.code] || j.error || tr('fail');
+
+async function submitNumber() { if (!typed) return; number = typed; typed = ''; step = 'pin'; render(); armReset(45); }
+
+async function submitPin() {
+  if (typed.length < 4) return setMsg(tr('wrong'));
+  const r = await api('identify', { employeeNumber: number, pin: typed });
+  if (!r.ok) { typed = ''; step = r.json.code === 'locked' ? 'number' : 'pin'; if (r.json.code === 'wrong_pin') { step = 'number'; number = ''; } render(); return setMsg(errText(r.json)); }
+  session = r.json.session; who = { name: r.json.name, firstName: r.json.firstName, status: r.json.status }; typed = '';
+  step = 'actions'; render(); armReset(30);
+}
+
+async function act(action) {
+  const r = await api('punch', { session, action });
+  if (r.ok) {
+    const st = r.json.status;
+    const t = new Date(st.lastPunchAt).toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit', timeZone: st.timeZone });
+    who.doneKind = 'ok'; who.doneText = tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[action]); who.doneTime = tr('at', { t });
+  } else {
+    who.doneKind = 'err'; who.doneText = errText(r.json); who.doneTime = '';
+  }
+  step = 'done'; render(); armReset(4);
+}
+
+$('card').addEventListener('click', (e) => {
+  const kb = e.target.closest('[data-k]'); const ab = e.target.closest('[data-a]');
+  if (e.target.id === 'notMe') return reset();
+  if (ab) return act(ab.dataset.a);
+  if (!kb) return;
+  const v = kb.dataset.k;
+  if (v === 'c') typed = ''; else if (v === 'go') return step === 'number' ? submitNumber() : submitPin(); else if (typed.length < 8) typed += v;
+  setMsg(''); const d = $('display'); if (d) d.innerHTML = (step === 'pin' ? '●'.repeat(typed.length) : typed) || '&nbsp;';
+  armReset(45);
+});
+document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} render(); }; });
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit' }); }, 1000);
+render();
+</script>
+</body>
+</html>
