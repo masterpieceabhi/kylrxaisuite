@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Policies | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);font-weight:400}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:60px}textarea.big{min-height:340px;line-height:1.5}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.acts button{margin:0 4px 4px 0}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.pre{white-space:pre-wrap}.text{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;max-height:420px;overflow:auto}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Policies</h1><div><a href="my-policies.html">Read the policies myself</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+
+  <section class="card">
+    <h2>All policies</h2>
+    <table><thead><tr><th>Policy</th><th>Status</th><th>Version</th><th>Read and acknowledged</th><th></th></tr></thead><tbody id="list"></tbody></table>
+    <div class="row" id="newRow" hidden><button id="newBtn" type="button">Write a new policy</button></div>
+  </section>
+
+  <section class="card" id="editCard" hidden>
+    <h2 id="eTitle">New policy</h2>
+    <form id="editForm">
+      <div class="grid">
+        <label>Title<input name="title" required minlength="3" maxlength="150" placeholder="Attendance and lateness"></label>
+        <label>Kind<select name="category" id="eCategory" required></select></label>
+        <label>Takes effect on (optional)<input name="effectiveDate" type="date"></label>
+      </div>
+      <label style="margin-top:12px">Policy text <span class="hint" id="count"></span><textarea class="big" name="body" required></textarea></label>
+      <div class="row"><label class="check"><input type="checkbox" name="requireAck"> Ask everyone to confirm they have read it</label></div>
+      <label style="margin-top:12px" id="noteLabel">What changed in this version (shown to employees, optional)<input name="changeNote" maxlength="300" placeholder="Added the rule about phones on the sales floor"></label>
+      <p class="hint">Saving keeps a draft that only HR can see. Employees see the text only after you publish.</p>
+      <div class="row"><button type="submit">Save draft</button><button type="button" id="pubBtn">Save and publish</button><label class="check" id="minorLabel" hidden><input type="checkbox" id="minor"> Small fix only: people who already confirmed do not need to again</label><button type="button" class="ghost" data-hide="editCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="ackCard" hidden>
+    <h2 id="aTitle">Who has read it</h2>
+    <p id="aSummary"></p>
+    <table><thead><tr><th>Person</th><th>Status</th><th>When</th><th>Version read</th></tr></thead><tbody id="acks"></tbody></table>
+    <div class="row"><button type="button" class="ghost" id="ackCsv">Download as CSV</button><button type="button" class="ghost" data-hide="ackCard">Close</button></div>
+    <h3>Every confirmation ever given</h3>
+    <p class="hint">Includes older versions and people who have since left. These records are never changed or removed.</p>
+    <table><thead><tr><th>Person</th><th>Version</th><th>When</th></tr></thead><tbody id="allAcks"></tbody></table>
+  </section>
+
+  <section class="card" id="verCard" hidden>
+    <h2 id="vTitle">Versions</h2>
+    <table><thead><tr><th>Version</th><th>Published</th><th>By</th><th>Takes effect</th><th>What changed</th><th></th></tr></thead><tbody id="vers"></tbody></table>
+    <div id="verText" hidden><h3 id="verTextTitle"></h3><div class="text" id="verBody"></div></div>
+    <div class="row"><button type="button" class="ghost" data-hide="verCard">Close</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const when = (d) => (d ? new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const ST = { draft: ['draft, not published', 'grey'], published: ['published', 'good'], archived: ['archived', 'warnTag'] };
+let options = null; let policies = []; let canManage = false; let editing = null; let lastReport = null; let versions = [];
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/policies${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const hideCards = () => ['editCard', 'ackCard', 'verCard'].forEach((id) => { $(id).hidden = true; });
+async function load() {
+  const r = await req('GET', ''); policies = r.data; canManage = r.canManage; $('newRow').hidden = !canManage;
+  $('list').innerHTML = policies.map((p) => {
+    const acts = [];
+    if (canManage && p.status !== 'archived') acts.push(['edit', p.version ? 'Edit or publish a new version' : 'Edit or publish', '']);
+    if (p.version) acts.push(['acks', 'Who has read it', 'ghost'], ['vers', 'Versions', 'ghost']);
+    if (canManage && p.status === 'published') acts.push(['archive', 'Archive', 'ghost']);
+    if (canManage && p.status === 'archived') acts.push(['restore', 'Bring back', '']);
+    if (canManage && !p.version) acts.push(['delete', 'Delete', 'no']);
+    const ack = p.status !== 'published' ? '' : !p.ack.asked ? '<span class="hint">not asked</span>' : `${p.ack.done} of ${p.ack.total}${p.ack.waiting ? ` <span class="tag warnTag">${p.ack.waiting} waiting</span>` : ' <span class="tag good">everyone</span>'}`;
+    return `<tr><td><b>${esc(p.title)}</b><br><span class="hint">${esc(p.category)}</span></td><td><span class="tag ${ST[p.status][1]}">${esc(ST[p.status][0])}</span>${p.version && p.unpublishedChanges ? '<br><span class="tag warnTag">draft changes not published</span>' : ''}</td><td>${p.version ? `${p.version}<br><span class="hint">${esc(day(p.publishedAt))}${p.effectiveDate ? `, takes effect ${esc(day(p.effectiveDate))}` : ''}</span>` : ''}</td><td>${ack}</td><td class="acts">${acts.map(([k, label, cls]) => `<button class="${cls}" data-act="${k}" data-id="${esc(p.id)}">${esc(label)}</button>`).join('')}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint">No policies yet.</td></tr>';
+}
+const count = () => { const n = $('editForm').elements.body.value.length; $('count').textContent = `(${n.toLocaleString('en-US')} of ${options.bodyMax.toLocaleString('en-US')} characters)`; };
+function openEditor(p) {
+  hideCards(); editing = p ? p.id : null; $('editCard').hidden = false;
+  const d = p ? p.draft : { title: '', category: options.categories[0], body: '', effectiveDate: '', requireAck: true, changeNote: '' };
+  $('eTitle').textContent = p ? (p.version ? `Edit: ${d.title} (version ${p.version} is published)` : `Edit draft: ${d.title}`) : 'New policy';
+  const f = $('editForm').elements; f.title.value = d.title; f.category.value = d.category || options.categories[0]; f.body.value = d.body; f.effectiveDate.value = d.effectiveDate || ''; f.requireAck.checked = d.requireAck; f.changeNote.value = d.changeNote || '';
+  $('noteLabel').hidden = !(p && p.version); $('minorLabel').hidden = !(p && p.version); $('minor').checked = false;
+  $('pubBtn').textContent = p && p.version ? `Save and publish as version ${p.version + 1}` : 'Save and publish';
+  count(); $('editCard').scrollIntoView({ behavior: 'smooth' });
+}
+function body() { const f = $('editForm').elements; return { title: f.title.value, category: f.category.value, body: f.body.value, effectiveDate: f.effectiveDate.value || null, requireAck: f.requireAck.checked, changeNote: f.changeNote.value }; }
+async function saveDraft() { const r = editing ? await req('PUT', `/${editing}`, body()) : await req('POST', '', body()); editing = r.policy.id; return r.policy; }
+$('editForm').addEventListener('submit', async (e) => { e.preventDefault(); try { await saveDraft(); hideCards(); await load(); say('Draft saved. Employees cannot see it until you publish.'); } catch (err) { say(err.message, false); } });
+$('editForm').elements.body.addEventListener('input', count);
+$('pubBtn').addEventListener('click', async () => {
+  if (!$('editForm').reportValidity()) return;
+  try {
+    const p = await saveDraft(); const minor = $('minor').checked; const f = $('editForm').elements;
+    const ask = p.version ? (minor ? `Publish version ${p.version + 1} as a small fix? People who already confirmed will not be asked again.` : `Publish version ${p.version + 1}?${f.requireAck.checked ? ' Everyone will be asked to read and confirm it again.' : ''}`) : `Publish "${p.title}" to everyone in the company?${f.requireAck.checked ? ' Everyone will be asked to read and confirm it.' : ''}`;
+    if (!window.confirm(ask)) { await load(); say('Draft saved. Not published.'); return; }
+    const r = await req('POST', `/${p.id}/publish`, { minor }); hideCards(); await load(); say(`Version ${r.policy.version} is published. People find it under Company policies.`);
+  } catch (err) { await load().catch(() => {}); say(err.message, false); }
+});
+$('newBtn').addEventListener('click', () => openEditor(null));
+$('ackCsv').addEventListener('click', () => {
+  if (!lastReport) return;
+  const cell = (v) => { let s = String(v ?? ''); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
+  const rows = [['Person', 'Employee number', 'Confirmed', 'When', 'Version read']].concat(lastReport.rows.map((r) => [r.name, r.employeeId || '', r.done ? 'yes' : 'no', r.at || '', r.version ?? '']));
+  const url = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = 'policy-confirmations.csv'; link.click(); URL.revokeObjectURL(url);
+});
+document.addEventListener('click', async (e) => {
+  const h = e.target.closest('[data-hide]'); if (h) { $(h.dataset.hide).hidden = true; return; }
+  const v = e.target.closest('[data-ver]'); if (v) { const x = versions.find((y) => String(y.version) === v.dataset.ver); $('verText').hidden = false; $('verTextTitle').textContent = `Version ${x.version}: ${x.title}`; $('verBody').textContent = x.body; $('verText').scrollIntoView({ behavior: 'smooth' }); return; }
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const p = policies.find((x) => x.id === t.dataset.id); if (!p) return;
+  const act = t.dataset.act;
+  try {
+    if (act === 'edit') openEditor((await req('GET', `/${p.id}`)).policy);
+    else if (act === 'acks') {
+      const r = await req('GET', `/${p.id}/acks`); lastReport = r.report; hideCards(); $('ackCard').hidden = false; $('aTitle').textContent = `Who has read: ${r.policy.title} (version ${r.policy.version})`;
+      $('aSummary').textContent = r.report.asked ? `${r.report.done} of ${r.report.total} people have confirmed. ${r.report.waiting} still waiting.` : 'This version does not ask people to confirm.';
+      $('acks').innerHTML = r.report.rows.map((x) => `<tr><td><b>${esc(x.name)}</b> <span class="hint">${esc(x.employeeId || '')}</span></td><td><span class="tag ${x.done ? 'good' : 'warnTag'}">${x.done ? 'confirmed' : 'waiting'}</span></td><td>${esc(when(x.at))}</td><td>${esc(x.version ?? '')}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nobody to list.</td></tr>';
+      $('allAcks').innerHTML = r.all.map((x) => `<tr><td>${esc(x.name || x.userId)}</td><td>${esc(x.version)}</td><td>${esc(when(x.at))}</td></tr>`).join('') || '<tr><td colspan="3" class="hint">None yet.</td></tr>';
+      $('ackCard').scrollIntoView({ behavior: 'smooth' });
+    } else if (act === 'vers') {
+      versions = (await req('GET', `/${p.id}`)).policy.versions; hideCards(); $('verCard').hidden = false; $('verText').hidden = true; $('vTitle').textContent = `Versions: ${p.title}`;
+      $('vers').innerHTML = [...versions].reverse().map((x) => `<tr><td><b>${esc(x.version)}</b>${x.minor ? ' <span class="tag grey">small fix</span>' : ''}</td><td>${esc(when(x.publishedAt))}</td><td>${esc(x.publishedByName || '')}</td><td>${esc(day(x.effectiveDate))}</td><td>${esc(x.changeNote || '')}${x.requireAck ? '' : ' <span class="hint">(no confirmation asked)</span>'}</td><td><button class="ghost" data-ver="${esc(x.version)}">Read the text</button></td></tr>`).join('');
+      $('verCard').scrollIntoView({ behavior: 'smooth' });
+    } else if (act === 'archive') { if (!window.confirm(`Archive "${p.title}"? Employees will no longer see it. Its versions and confirmations are kept.`)) return; await req('POST', `/${p.id}/archive`, {}); hideCards(); await load(); say('Archived.'); }
+    else if (act === 'restore') { await req('POST', `/${p.id}/restore`, {}); await load(); say('The policy is published again.'); }
+    else if (act === 'delete') { if (!window.confirm(`Delete the draft "${p.title}"?`)) return; await req('DELETE', `/${p.id}`); hideCards(); await load(); say('Draft deleted.'); }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { options = await req('GET', '/options'); $('note').textContent = options.note; $('eCategory').innerHTML = options.categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join(''); $('editForm').elements.body.maxLength = options.bodyMax; await load(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

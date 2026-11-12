@@ -10,9 +10,9 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 56 | 22 |
+| Done | 57 | 22 |
 | Partial | 43 | 24 |
-| Existing, not adapted | 2 | 8 |
+| Existing, not adapted | 1 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
 | **All** | **111** | **111** |
@@ -30,7 +30,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | E Leave and holidays | 6 | 2 | 0 | 0 |
 | F Payroll (Gusto) | 1 | 7 | 0 | 5 |
 | G Benefits | 4 | 2 | 0 | 0 |
-| H Documents and compliance | 6 | 1 | 1 | 0 |
+| H Documents and compliance | 7 | 1 | 0 | 0 |
 | I Performance and engagement | 3 | 1 | 0 | 2 |
 | J Analytics and reporting | 5 | 0 | 1 | 0 |
 | K Connectors | 3 | 11 | 0 | 0 |
@@ -156,7 +156,7 @@ Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefi
 | US-H05 | Done | EEO-1 data | |
 | US-H06 | Done | OSHA log | |
 | US-H07 | Done | I-9 status table; printable audit report `admin-us-i9-report.html` for current and former employees with on-time checks, reverify dates and keep-until dates, CSV, tests | |
-| US-H08 | Existing, not adapted | Old policy library | US adaptation |
+| US-H08 | Done | Policy library with numbered versions, rules, routes and tests; HR page `admin-us-policies.html` (draft, publish, small-fix publish, archive, who has read it with CSV, old versions), employee page `my-policies.html` (English and Spanish, phone size: read and confirm). A new version asks everyone again unless it is published as a small fix; one stored confirmation per person per version, never changed. Run live: 39 route checks and both pages | The system supplies no policy text (on purpose); policy text is plain text only, no file upload or formatting; no email when a policy is published or still unread; no due date for confirming; the policy text itself is written in one language |
 
 ## I. Performance and engagement
 
