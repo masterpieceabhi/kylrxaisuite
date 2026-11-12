@@ -38,16 +38,17 @@ a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding
     </form>
   </section>
   <section class="card"><h2 data-t="reviews"></h2><div id="reviewList"></div></section>
+  <a class="back" href="my-reviews.html" id="cyclesLink"></a>
   <a class="back" href="punch.html" data-t="back"></a>
 </main>
 <script type="module">
 import { auth, onAuthStateChanged } from './firebase-config.js';
 const $ = (id) => document.getElementById(id);
 const T = {
-  en: { title: 'My goals', back: 'Back to the clock', goals: 'My goals', noGoals: 'No goals yet. Add one below, or your manager can add one for you.', newGoal: 'A new goal', due: 'Finish by (optional)', add: 'Add goal', dueBy: 'Finish by {d}', late: 'late', done: 'Done', dropped: 'Dropped', markDone: 'I finished this', save: 'Save progress', from: 'From {n}', progress: 'How far along: {p}%',
+  en: { title: 'My goals', back: 'Back to the clock', cycles: 'My self review and feedback for coworkers', cyclesWaiting: '{n} waiting for you', goals: 'My goals', noGoals: 'No goals yet. Add one below, or your manager can add one for you.', newGoal: 'A new goal', due: 'Finish by (optional)', add: 'Add goal', dueBy: 'Finish by {d}', late: 'late', done: 'Done', dropped: 'Dropped', markDone: 'I finished this', save: 'Save progress', from: 'From {n}', progress: 'How far along: {p}%',
         reviews: 'My reviews', noReviews: 'No reviews have been shared with you yet.', period: '{a} to {b}', by: 'Written by {n}', overall: 'Overall: {n} of 5', well: 'What went well', work: 'What to work on', next: 'Next steps', seen: 'You marked this as seen on {d}.', ackHint: 'Marking it as seen means you have read it. It does not mean you agree.', comment: 'Your comment (optional)', ack: 'I have read this', acked: 'Thank you. Your manager can see that you read it.', saved: 'Saved.', fail: 'Could not load. Try again.',
         r1: 'Does not meet expectations', r2: 'Partly meets expectations', r3: 'Meets expectations', r4: 'Exceeds expectations', r5: 'Outstanding' },
-  es: { title: 'Mis metas', back: 'Volver al reloj', goals: 'Mis metas', noGoals: 'Todavía no hay metas. Agregue una abajo, o su supervisor puede agregarle una.', newGoal: 'Una meta nueva', due: 'Terminar antes de (opcional)', add: 'Agregar meta', dueBy: 'Terminar antes del {d}', late: 'atrasada', done: 'Lista', dropped: 'Descartada', markDone: 'Ya la terminé', save: 'Guardar avance', from: 'De {n}', progress: 'Avance: {p}%',
+  es: { title: 'Mis metas', back: 'Volver al reloj', cycles: 'Mi autoevaluación y opiniones sobre compañeros', cyclesWaiting: '{n} por hacer', goals: 'Mis metas', noGoals: 'Todavía no hay metas. Agregue una abajo, o su supervisor puede agregarle una.', newGoal: 'Una meta nueva', due: 'Terminar antes de (opcional)', add: 'Agregar meta', dueBy: 'Terminar antes del {d}', late: 'atrasada', done: 'Lista', dropped: 'Descartada', markDone: 'Ya la terminé', save: 'Guardar avance', from: 'De {n}', progress: 'Avance: {p}%',
         reviews: 'Mis evaluaciones', noReviews: 'Todavía no le han compartido evaluaciones.', period: '{a} al {b}', by: 'Escrita por {n}', overall: 'General: {n} de 5', well: 'Lo que salió bien', work: 'En qué trabajar', next: 'Próximos pasos', seen: 'Usted la marcó como vista el {d}.', ackHint: 'Marcarla como vista significa que la leyó. No significa que esté de acuerdo.', comment: 'Su comentario (opcional)', ack: 'Ya la leí', acked: 'Gracias. Su supervisor puede ver que la leyó.', saved: 'Guardado.', fail: 'No se pudo cargar. Intente de nuevo.',
         r1: 'No cumple lo esperado', r2: 'Cumple en parte', r3: 'Cumple lo esperado', r4: 'Supera lo esperado', r5: 'Sobresaliente' }
 };
@@ -59,7 +60,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
 // A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
 const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
-let goals = null; let reviews = null; let me = null;
+let goals = null; let reviews = null; let me = null; let cyclesWaiting = 0;
 
 async function req(method, path, body) {
   const res = await fetch(`/api/us/performance${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
@@ -71,11 +72,14 @@ function paint() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('cyclesLink').textContent = `${tr('cycles')}${cyclesWaiting ? ` (${tr('cyclesWaiting', { n: cyclesWaiting })})` : ''}`;
   if (!goals) return;
   $('goalList').innerHTML = goals.map((g) => `<div class="item"><b>${esc(g.title)}</b> ${g.status === 'done' ? `<span class="tag good">${esc(tr('done'))}</span>` : g.status === 'dropped' ? `<span class="tag grey">${esc(tr('dropped'))}</span>` : g.overdue ? `<span class="tag bad">${esc(tr('late'))}</span>` : ''}${g.detail ? `<br><span class="hint">${esc(g.detail)}</span>` : ''}<br><span class="hint">${g.dueDate ? esc(tr('dueBy', { d: day(g.dueDate) })) : ''}${g.createdByName && g.createdByName !== me ? ` · ${esc(tr('from', { n: g.createdByName }))}` : ''}</span>${g.status === 'open' ? `<label>${esc(tr('progress', { p: g.progress }))}<input type="range" min="0" max="100" step="5" value="${esc(g.progress)}" data-range="${esc(g.id)}"></label><div class="row"><button class="soft" data-save="${esc(g.id)}">${esc(tr('save'))}</button><button class="soft" data-done="${esc(g.id)}">${esc(tr('markDone'))}</button></div>` : `<div class="bar"><i style="width:${Number(g.progress) || 0}%"></i></div>`}</div>`).join('') || `<p class="hint">${esc(tr('noGoals'))}</p>`;
   $('reviewList').innerHTML = reviews.map((r) => `<div class="item"><b>${esc(tr('period', { a: day(r.periodStart), b: day(r.periodEnd) }))}</b><br><span class="hint">${esc(tr('by', { n: r.reviewerName || '' }))}</span>${r.overall ? `<p><b>${esc(tr('overall', { n: r.overall }))}</b> <span class="hint">${esc(tr(`r${r.overall}`))}</span></p>` : ''}${r.ratings.map((a) => `<div class="hint">${esc(a.area)}: ${esc(a.rating)}/5${a.comment ? `. ${esc(a.comment)}` : ''}</div>`).join('')}<h3>${esc(tr('well'))}</h3><p class="pre">${esc(r.strengths)}</p>${r.improvements ? `<h3>${esc(tr('work'))}</h3><p class="pre">${esc(r.improvements)}</p>` : ''}${r.nextSteps ? `<h3>${esc(tr('next'))}</h3><p class="pre">${esc(r.nextSteps)}</p>` : ''}${r.status === 'acknowledged' ? `<p class="hint">${esc(tr('seen', { d: day(r.acknowledgedAt) }))}${r.employeeComment ? ` "${esc(r.employeeComment)}"` : ''}</p>` : `<p class="hint">${esc(tr('ackHint'))}</p><label>${esc(tr('comment'))}<textarea rows="2" maxlength="2000" data-comment="${esc(r.id)}"></textarea></label><button class="go" data-ack="${esc(r.id)}">${esc(tr('ack'))}</button>`}</div>`).join('') || `<p class="hint">${esc(tr('noReviews'))}</p>`;
 }
-async function load() { const [g, r] = await Promise.all([req('GET', '/goals'), req('GET', '/reviews')]); goals = g.data; reviews = r.data; me = g.name; paint(); }
+// how many self reviews and coworker forms are waiting (review rounds); the page works the same if this cannot be loaded
+async function loadCycles() { try { const res = await fetch('/api/us/review-cycles/mine', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } }); const j = res.ok ? await res.json() : {}; cyclesWaiting = Number(j.waiting) || 0; } catch (_) { cyclesWaiting = 0; } }
+async function load() { const [g, r] = await Promise.all([req('GET', '/goals'), req('GET', '/reviews'), loadCycles()]); goals = g.data; reviews = r.data; me = g.name; paint(); }
 $('goalForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target.elements;
   try { await req('POST', '/goals', { title: f.title.value, dueDate: f.dueDate.value || undefined }); e.target.reset(); await load(); say(tr('saved')); } catch (err) { say(err.message, false); }
