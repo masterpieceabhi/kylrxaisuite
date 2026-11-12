@@ -244,6 +244,8 @@ app.get('/reset-browser-data', (req, res) => {
 <p><a href="/login.html" style="color:#2563eb;font-weight:600">Go to login</a></p>
 </body></html>`);
 });
+// Never hand out server code, settings, rules, scripts, stored data or logs as static files (middleware/static-guard.js)
+app.use(require('./middleware/static-guard'));
 app.use(express.static(__dirname));
 
 // Route Wiring
