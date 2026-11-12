@@ -203,7 +203,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
 | US-L01 | Partial | Email one-time code; SSO service, routes and settings page (now linked) | SSO depends on Firebase Identity Platform setup (not verified); no TOTP |
-| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production; the server no longer hands out its own source, database rules, scripts, stored data files or logs as static files (`middleware/static-guard.js`, with a test that fails if a page needs a blocked file); `npm run check:production` checks a server's settings before start; `docs/DEPLOY.md` written | `npm audit`: 32 findings, 2 critical, not fixed (listed in `docs/DEPLOY.md`); personal data in tracked files under `reports/`, `data/` and `logs/`; inline scripts allowed; demo password still in `login.js` (localhost only) |
+| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production; the server no longer hands out its own source, database rules, scripts, stored data files or logs as static files (`middleware/static-guard.js`, with a test that fails if a page needs a blocked file); `npm run check:production` checks a server's settings before start; `docs/DEPLOY.md` written | `npm audit`: the non-breaking fixes were applied on 2026-11-12 (32 findings down to 10, none critical); `nodemailer`, `xlsx` and `firebase-admin` still need a major upgrade or a vendor build (see `docs/DEPLOY.md`); personal data in tracked files under `reports/`, `data/` and `logs/`; inline scripts allowed; demo password still in `login.js` (localhost only) |
 | US-L03 | Done | Field-level encryption | |
 | US-L04 | Done | Privacy export and deletion, tests; pages `admin-us-privacy.html` and `my-privacy.html` (English and Spanish) | |
 | US-L05 | Partial | Request logs, metrics, deep health check | Alerting, backups, disaster recovery |
@@ -219,7 +219,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 3. Done on 2026-11-12: `docs/DEPLOY.md`, the static-file guard, the production settings check and the CI workflow (L02, L09). Choosing a host and deploying is still open.
 4. Done on 2026-11-12: the Gusto setup and one payroll were run on the local mock through the page (F01).
 5. Email: checklist reminders, signing links, and notices for new surveys, policies and equipment (needs a mail service decision).
-6. Fix the library findings from `npm audit` (run `npm audit fix`, then the full tests and a look through the app; `xlsx` needs the vendor's build).
+6. Finish the library findings: major upgrades of `nodemailer` and `firebase-admin`, and the vendor's build of `xlsx`. The non-breaking fixes were applied on 2026-11-12. Re-test email, file uploads and PDF creation on the updated libraries.
 7. Take the personal data out of the tracked files under `reports/`, `data/` and `logs/`, and serve attendance reports through a signed-in route.
 8. Choose a host, then follow `docs/DEPLOY.md`. Only one copy of the server can run until the background jobs share a lock.
 
