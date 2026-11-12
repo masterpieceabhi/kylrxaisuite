@@ -2,15 +2,33 @@ const express = require('express');
 const router = express.Router();
 const { db, rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { can, requirePermission, requireAnyPermission } = require('../services/permissions');
 const { resolveCountryCode } = require('../country-config');
 const { encryptField, decryptField } = require('../services/pii-crypto');
+const auditChain = require('../services/audit-chain');
 const {
     validateEmployeeProfile, validateCompanyProfile, validateTaxpayerId, maskTaxpayerId
 } = require('../services/us-validation');
 
-const REVEAL_ROLES = ['Super Admin', 'super_admin', 'hr_admin'];
-const COMPANY_WRITE_ROLES = ['Super Admin', 'super_admin', 'Admin'];
+// Who may do what on these routes (services/permissions.js decides which roles hold each permission):
+//   read the company profile (EIN, entity, industry, fiscal year)   org.settings or payroll.view
+//   change the company profile                                       org.settings
+//   list people / read a person's US profile                         people.read (a person always sees their own)
+//   change a person's US profile                                     people.write
+//   see a full SSN or ITIN                                           pii.reveal
+const COMPANY_READ = requireAnyPermission('org.settings', 'payroll.view');
+const COMPANY_WRITE = requirePermission('org.settings');
+const PEOPLE_READ = requirePermission('people.read');
+const PEOPLE_WRITE = requirePermission('people.write');
+const PII_REVEAL = requirePermission('pii.reveal');
+
+/** A person's US profile: themselves, or anyone who holds people.read */
+function canSeeProfile(user, emp) {
+    if (!user || !emp) return false;
+    const isSelf = Boolean(user.id) && [emp.id, emp.data && emp.data.uid, emp.data && emp.data.userId].filter(Boolean).includes(user.id);
+    return isSelf || can(user, 'people.read');
+}
 
 router.use(verifyToken);
 
@@ -61,16 +79,25 @@ async function findEmployee(orgId, id) {
     return null;
 }
 
+/**
+ * The audit writer for every US route. Each entry joins the tamper-evident chain (services/audit-chain.js); if the chain
+ * cannot be written the entry is still saved without one. This never throws and never fails the request.
+ */
 function audit(orgId, req, action, targetId, extra = {}) {
-    return rawCollection('organizations').doc(orgId).collection('audit_logs').add({
-        action,
-        targetId,
-        actorId: req.user.id || req.user.uid || null,
-        actorRole: req.user.role || null,
-        at: new Date().toISOString(),
-        ip: req.ip || null,
-        ...extra
-    }).catch((e) => logger.error(`Audit write failed: ${e.message}`));
+    try {
+        return auditChain.writeAudit(orgId, {
+            action,
+            targetId: targetId === undefined ? null : targetId,
+            actorId: req.user.id || req.user.uid || null,
+            actorRole: req.user.role || null,
+            at: new Date().toISOString(),
+            ip: req.ip || null,
+            ...extra
+        }).catch((e) => logger.error(`Audit write failed: ${e.message}`));
+    } catch (e) {
+        logger.error(`Audit write failed: ${e.message}`);
+        return Promise.resolve();
+    }
 }
 
 /** Public view of a US profile: the taxpayer ID is never included, only the last 4 digits. */
@@ -90,22 +117,29 @@ function publicProfile(emp) {
 }
 
 /** Company profile (EIN, entity type, work states) */
-router.get('/company/profile', authorize(ADMIN_HR_ROLES), requireUsOrg, (req, res) => {
+router.get('/company/profile', COMPANY_READ, requireUsOrg, (req, res) => {
     res.json({ success: true, orgId: req.orgId, profile: req.org.usProfile || null });
 });
 
-router.put('/company/profile', authorize(COMPANY_WRITE_ROLES), requireUsOrg, async (req, res) => {
+router.put('/company/profile', COMPANY_WRITE, requireUsOrg, async (req, res) => {
     const { errors, value } = validateCompanyProfile(req.body);
     if (errors.length) return res.status(400).json({ success: false, errors });
+    // Two people editing at once: the page sends back the updatedAt it loaded; a newer save wins and the second is told to reload.
+    const expected = req.body && req.body.expectedUpdatedAt;
+    const currentStamp = (req.org.usProfile && req.org.usProfile.updatedAt) || null;
+    if (expected && currentStamp && expected !== currentStamp) {
+        return res.status(409).json({ success: false, error: 'Someone else changed the company profile. Reload the page and try again.' });
+    }
+    const updatedAt = new Date().toISOString();
     await rawCollection('organizations').doc(req.orgId).set({
-        usProfile: { ...value, updatedAt: new Date().toISOString() }
+        usProfile: { ...value, updatedAt }
     }, { merge: true });
     audit(req.orgId, req, 'us_company_profile_updated', req.orgId, { fields: Object.keys(value) });
-    res.json({ success: true, profile: value });
+    res.json({ success: true, profile: { ...(req.org.usProfile || {}), ...value, updatedAt } });
 });
 
 /** List employees with their US profile status (never returns taxpayer IDs) */
-router.get('/employees', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/employees', PEOPLE_READ, requireUsOrg, async (req, res) => {
     const snaps = await Promise.all(PEOPLE_COLLECTIONS.map((name) => db.collection(name).get()));
     const rows = snaps.flatMap((s) => s.docs)
         .filter((d) => d.data().orgId === req.orgId && d.data().employeeId)
@@ -124,13 +158,11 @@ router.get('/employees', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, re
 router.get('/employees/:id/profile', requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
-    const isSelf = [emp.id, emp.data.uid, emp.data.userId].filter(Boolean).includes(req.user.id);
-    const isStaff = ADMIN_HR_ROLES.some((r) => r.toLowerCase().replace(/[\s_-]+/g, '') === String(req.user.role || '').toLowerCase().replace(/[\s_-]+/g, ''));
-    if (!isSelf && !isStaff) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!canSeeProfile(req.user, emp)) return res.status(403).json({ success: false, error: 'You do not have permission to do this' });
     res.json({ success: true, profile: publicProfile({ id: emp.id, data: emp.data, usProfile: emp.data.usProfile }) });
 });
 
-router.put('/employees/:id/profile', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/employees/:id/profile', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
 
@@ -166,7 +198,7 @@ router.put('/employees/:id/profile', authorize(ADMIN_HR_ROLES), requireUsOrg, as
 });
 
 /** Shows the full SSN/ITIN once, with a stated reason; every reveal is written to the audit log. */
-router.post('/employees/:id/taxpayer-id/reveal', authorize(REVEAL_ROLES), requireUsOrg, async (req, res) => {
+router.post('/employees/:id/taxpayer-id/reveal', PII_REVEAL, requireUsOrg, async (req, res) => {
     const reason = String((req.body && req.body.reason) || '').trim();
     if (reason.length < 5) return res.status(400).json({ success: false, error: 'A reason of at least 5 characters is required' });
     const emp = await findEmployee(req.orgId, req.params.id);
@@ -186,6 +218,6 @@ router.post('/employees/:id/taxpayer-id/reveal', authorize(REVEAL_ROLES), requir
 });
 
 // Shared with the other US routers (forms, time)
-router.helpers = { requireUsOrg, findEmployee, audit, exists, orgIdOf, PEOPLE_COLLECTIONS };
+router.helpers = { requireUsOrg, findEmployee, audit, exists, orgIdOf, PEOPLE_COLLECTIONS, canSeeProfile };
 
 module.exports = router;

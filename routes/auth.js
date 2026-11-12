@@ -23,4 +23,9 @@ const { verifyToken, authorize } = require('../middleware/authMiddleware');
 // Admin-only unlock endpoint (protected with verifyToken and Admin role)
 router.get('/unlock/:email', verifyToken, authorize('Admin', 'Super Admin'), unlockAccount);
 
+// Local demo sign-in helper for the quick sign-in buttons on localhost. The route is only added when the server runs
+// against the Firebase emulators and NODE_ENV is not production; it also answers only to this machine (services/local-demo.js).
+const localDemo = require('../services/local-demo');
+if (localDemo.enabled(process.env)) router.get('/dev-demo-login', localDemo.handler);
+
 module.exports = router;

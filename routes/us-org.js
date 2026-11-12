@@ -302,13 +302,34 @@ router.post('/pay-schedules', SCHEDULE_EDIT, requireUsOrg, async (req, res) => {
 router.put('/pay-schedules/:id', SCHEDULE_EDIT, requireUsOrg, async (req, res) => {
     const cur = await store.getOwned('pay_schedules', req.orgId, req.params.id);
     if (!cur) return fail(res, 404, 'Pay schedule not found');
-    const { errors, value } = P.validateSchedule({ ...cur, ...req.body });
+    const { expectedUpdatedAt, ...changes } = req.body || {};
+    const { errors, value } = P.validateSchedule({ ...cur, ...changes });
     if (errors.length) return invalid(res, errors);
+    // Two people editing at once: the page sends back the stamp it loaded, and the second save is told to reload
+    const stamp = cur.updatedAt || cur.createdAt || null;
+    if (expectedUpdatedAt && stamp && expectedUpdatedAt !== stamp) return fail(res, 409, 'Someone else changed this pay schedule. Reload and try again.');
+    const rows = await store.listByOrg('pay_schedules', req.orgId);
+    if (rows.some((s) => s.id !== cur.id && String(s.name).toLowerCase() === value.name.toLowerCase())) return fail(res, 409, 'A pay schedule with this name already exists');
     const people = await store.loadPeople(req.orgId);
     if (value.frequency !== cur.frequency && people.some((p) => p.payScheduleId === cur.id)) return fail(res, 409, 'People are on this schedule. Create a new schedule instead of changing its frequency.');
-    await cur.ref.set({ ...value, updatedAt: now() }, { merge: true });
-    audit(req.orgId, req, 'pay_schedule_updated', cur.id, { fields: Object.keys(req.body || {}) });
-    res.json({ success: true, schedule: { id: cur.id, orgId: req.orgId, ...value } });
+    const updatedAt = now();
+    await cur.ref.set({ ...value, updatedAt, updatedBy: req.user.id || null }, { merge: true });
+    audit(req.orgId, req, 'pay_schedule_updated', cur.id, { fields: Object.keys(changes) });
+    res.json({ success: true, schedule: { id: cur.id, orgId: req.orgId, ...value, updatedAt } });
+});
+
+/** Checks a schedule that is not saved yet and shows its next pay periods, so a mistake is seen before saving. Saves nothing. */
+router.post('/pay-schedules/preview', SCHEDULE_VIEW, requireUsOrg, async (req, res) => {
+    const { from: rawFrom, n: rawN, ...draft } = req.body || {};
+    const { errors, value } = P.validateSchedule({ name: 'Draft', ...draft });
+    if (errors.length) return invalid(res, errors);
+    const from = rawFrom ? String(rawFrom) : await store.todayFor(req.orgId);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return invalid(res, ['from must be YYYY-MM-DD']);
+    let n = Number(rawN || 6); if (!Number.isInteger(n) || n < 1 || n > 60) n = 6;
+    try {
+        const hs = await holidaysAround(req.orgId, P.addDays(from, -60), 800 + n * 35);
+        res.json({ success: true, from, schedule: value, containing: P.periodContaining(value, from, hs), next: P.nextPayDates(value, from, n, hs) });
+    } catch (e) { return invalid(res, ['dates are not valid']); }
 });
 
 router.delete('/pay-schedules/:id', SCHEDULE_EDIT, requireUsOrg, async (req, res) => {

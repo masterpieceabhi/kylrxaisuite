@@ -140,11 +140,13 @@ router.get('/audit/export.csv', ...guard, async (req, res) => {
 /** Verifies the HMAC hash chain, if this company's entries carry one */
 router.get('/audit/verify', ...guard, async (req, res) => {
     const org = rawCollection('organizations').doc(req.orgId);
-    const snap = await org.collection('audit_logs').orderBy('at', 'desc').limit(20000).get();
-    const entries = snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+    // The head is read first: an entry written while this check runs then only makes the log newer than the head, never older
     const headSnap = await org.collection('audit_chain').doc('head').get();
+    const VERIFY_LIMIT = 20000;
+    const snap = await org.collection('audit_logs').orderBy('at', 'desc').limit(VERIFY_LIMIT).get();
+    const entries = snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
     let report;
-    try { report = chain.verifyChain(entries, { head: exists(headSnap) ? headSnap.data() : undefined }); }
+    try { report = chain.verifyChain(entries, { head: exists(headSnap) ? headSnap.data() : undefined, partial: snap.size >= VERIFY_LIMIT }); }
     catch (e) { return res.status(500).json({ success: false, error: 'Integrity key is not configured (AUDIT_CHAIN_KEY)' }); }
     audit(req.orgId, req, 'audit_chain_verified', null, { valid: report.valid, chained: report.chained, unchained: report.unchained });
     res.json({

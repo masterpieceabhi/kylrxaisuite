@@ -113,20 +113,37 @@ if (closeDemoBtn && demoModal) {
 }
 
 // Demo shortcuts exist ONLY on a developer's own machine, talking to the local emulator.
-// They use the throwaway accounts created by `npm run seed:local`; no real credential is kept in this file.
+// No account or password is kept in this file: the buttons ask the local server, and the server only answers when it
+// runs against the Firebase emulators, is not in production and is asked from this same machine (services/local-demo.js).
 const IS_LOCAL_DEMO = ['localhost', '127.0.0.1'].includes(window.location.hostname) && sessionStorage.getItem('kylrx_live_firebase') !== '1';
-const LOCAL_DEMO_PASSWORD = 'LocalTest#2026';
-const LOCAL_DEMO_ACCOUNTS = {
-  superAdmin: 'superadmin@us.demo.local', hrAdmin: 'hr@us.demo.local', manager: 'manager@us.demo.local', employee: 'employee@us.demo.local'
-};
+
+async function localDemoLogin(key) {
+    const res = await fetch(`/api/auth/dev-demo-login${key ? `?account=${encodeURIComponent(key)}` : ''}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return data && data.success ? data : null;
+}
+
+function hideDemoShortcuts() {
+    document.querySelectorAll('[data-demo-shortcut]').forEach((el) => { el.style.display = 'none'; });
+    const quick = document.getElementById('btnQuickSuperAdmin');
+    const panel = quick && quick.parentElement && quick.parentElement.parentElement;
+    if (panel) panel.style.display = 'none';
+    if (credentialsBtn) credentialsBtn.style.display = 'none';
+    if (demoModal) demoModal.style.display = 'none';
+}
 
 function bindDemo(button, key, closeModal) {
     if (!button) return;
+    button.setAttribute('data-demo-shortcut', key);
     if (!IS_LOCAL_DEMO) { button.style.display = 'none'; return; }
-    button.addEventListener('click', () => {
-        if (emailInput) emailInput.value = LOCAL_DEMO_ACCOUNTS[key];
-        if (passwordInput) passwordInput.value = LOCAL_DEMO_PASSWORD;
+    button.addEventListener('click', async () => {
+        let account = null;
+        try { account = await localDemoLogin(key); } catch (_) { account = null; }
         if (closeModal && demoModal) demoModal.style.display = 'none';
+        if (!account) { hideDemoShortcuts(); window.alert('Demo sign-in works only with the local emulators (npm run emulators, npm run seed:local, npm run start:local).'); return; }
+        if (emailInput) emailInput.value = account.email;
+        if (passwordInput) passwordInput.value = account.password;
         loginBtn?.click();
     });
 }
@@ -145,9 +162,10 @@ bindDemo(btnQuickManager, 'manager', false);
 bindDemo(btnQuickEmployee, 'employee', false);
 if (!IS_LOCAL_DEMO) {
     // hide the whole "1-click demo login" panel and the demo-roles button on real deployments
-    const panel = btnQuickSuperAdmin && btnQuickSuperAdmin.parentElement && btnQuickSuperAdmin.parentElement.parentElement;
-    if (panel) panel.style.display = 'none';
-    if (credentialsBtn) credentialsBtn.style.display = 'none';
+    hideDemoShortcuts();
+} else {
+    // on localhost the shortcuts stay only when the local server offers the demo helper (emulators on)
+    localDemoLogin('').then((ok) => { if (!ok) hideDemoShortcuts(); }).catch(hideDemoShortcuts);
 }
 
 // ═══════════ FORGOT PASSWORD MODAL ═══════════════════════════════════════════

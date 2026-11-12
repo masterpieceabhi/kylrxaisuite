@@ -26,13 +26,16 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 .chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
 .pane{display:none;gap:20px}.pane.on{display:grid}
 .was{color:var(--muted);text-decoration:line-through}
+.ptag{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px 4px 2px 0;border-radius:999px;font-size:12px;font-weight:600;background:#e2e8f0;color:#334155}
+.ptag.blue{background:#dbeafe;color:#1e40af}.ptag.green{background:#dcfce7;color:#166534}.ptag.amber{background:#fef3c7;color:#92400e}.ptag.red{background:#fee2e2;color:#b91c1c}.ptag.purple{background:#ede9fe;color:#5b21b6}
+.ptag button{padding:0 4px;background:transparent;color:inherit;font-weight:700;border-radius:999px}
 </style>
 </head>
 <body>
 <header><h1>Profile changes and custom fields</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-org.html">Company structure</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
 <main>
   <div id="msg" role="status"></div>
-  <div class="tabs"><button data-tab="queue" class="on">Change requests</button><button data-tab="fields">Custom fields</button><button data-tab="person">One person's fields</button></div>
+  <div class="tabs"><button data-tab="queue" class="on">Change requests</button><button data-tab="fields">Custom fields</button><button data-tab="tags">Tags</button><button data-tab="person">One person's fields and tags</button></div>
 
   <div id="tab-queue" class="pane on">
     <section class="card">
@@ -70,11 +73,30 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     </section>
   </div>
 
+  <div id="tab-tags" class="pane">
+    <section class="card">
+      <h2>Tags <span class="hint" id="tCount"></span></h2>
+      <p class="hint">Short labels for sorting and filtering people, such as "Bilingual", "Keyholder" or "Night shift". Do not use tags for health, immigration, union or other private facts. Managers can see the tags of their own team.</p>
+      <table><thead><tr><th>Tag</th><th>People</th><th></th></tr></thead><tbody id="tRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="tTitle">Add a tag</h2>
+      <form id="tForm"><div class="grid">
+        <label>Name (24 characters at most)<input name="name" required maxlength="24" placeholder="Bilingual"></label>
+        <label>Color<select name="color"><option value="grey">Grey</option><option value="blue">Blue</option><option value="green">Green</option><option value="amber">Amber</option><option value="red">Red</option><option value="purple">Purple</option></select></label>
+      </div>
+      <div class="row"><button type="submit">Save tag</button><button type="button" class="ghost" id="tCancel" hidden>Cancel edit</button></div></form>
+    </section>
+  </div>
+
   <div id="tab-person" class="pane">
     <section class="card">
       <h2>Fill in custom fields for a person</h2>
       <div class="row" style="margin-top:0"><label>Person<select id="pPick"></select></label><button class="ghost" id="pGo">Show</button></div>
       <form id="pForm" style="margin-top:12px"><div class="grid" id="pFields"></div><div class="row"><button type="submit" id="pSave" hidden>Save</button></div></form>
+      <h3>Tags</h3>
+      <div id="pTags"></div>
+      <div class="row"><label>Add a tag<select id="pTagPick"></select></label><button type="button" class="ghost" id="pTagAdd">Add</button></div>
       <h3>Emergency contacts</h3>
       <p class="hint">Opening these is recorded in the audit log.</p>
       <div class="row"><button class="ghost" id="pContacts">Show emergency contacts</button></div>
@@ -92,6 +114,7 @@ const KIND = { legalName: 'Legal name', homeAddress: 'Home address', bankDetails
 const VIS = { hr_only: 'HR only', manager: 'HR and manager', employee_view: 'Employee can see', employee_edit: 'Employee can change' };
 const TYPE = { text: 'Text', number: 'Number', date: 'Date', select: 'List', boolean: 'Yes or no' };
 let queue = []; let fields = []; let personFields = []; let fEdit = null;
+let tags = []; let tagsCanEdit = false; let tEdit = null; let personTags = [];
 
 async function req(method, path, body) {
   const token = await auth.currentUser.getIdToken();
@@ -125,6 +148,25 @@ async function loadFields() {
   fields = (await req('GET', '/custom-fields?all=true')).data;
   $('fRows').innerHTML = fields.map((f) => `<tr><td><b>${esc(f.label)}</b>${f.helpText ? `<br><span class="hint">${esc(f.helpText)}</span>` : ''}</td><td>${esc(f.key)}</td><td>${esc(TYPE[f.type] || f.type)}${f.type === 'select' ? `<br><span class="hint">${esc(f.options.join(', '))}</span>` : ''}${f.sensitive ? ' <span class="tag warnTag">sensitive</span>' : ''}</td><td>${esc(VIS[f.visibility] || f.visibility)}</td><td>${f.required ? 'Yes' : 'No'}</td><td>${f.active === false ? '<span class="tag grey">off</span>' : '<span class="tag good">on</span>'}</td><td><button class="ghost" data-fedit="${esc(f.id)}">Edit</button> ${f.active === false ? `<button class="ghost" data-fon="${esc(f.id)}">Turn on</button>` : `<button class="no" data-foff="${esc(f.id)}">Turn off</button>`}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No custom fields yet.</td></tr>';
 }
+async function loadTags() {
+  const r = await req('GET', '/tags'); tags = r.data; tagsCanEdit = r.canEdit;
+  $('tCount').textContent = `(${tags.length} of ${r.max})`;
+  $('tRows').innerHTML = tags.map((t) => `<tr><td><span class="ptag ${esc(t.color)}">${esc(t.name)}</span></td><td>${t.people}</td><td>${tagsCanEdit ? `<button class="ghost" data-tedit="${esc(t.id)}">Edit</button> <button class="no" data-tdel="${esc(t.id)}">Remove</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="3" class="hint">No tags yet.</td></tr>';
+  $('tForm').hidden = !tagsCanEdit;
+  drawPersonTags();
+}
+function drawPersonTags() {
+  const have = new Set(personTags.map((t) => t.id));
+  $('pTags').innerHTML = personTags.map((t) => `<span class="ptag ${esc(t.color)}">${esc(t.name)}${tagsCanEdit ? `<button type="button" title="Remove this tag" aria-label="Remove tag ${esc(t.name)}" data-ptagdel="${esc(t.id)}">&times;</button>` : ''}</span>`).join('') || '<span class="hint">No tags on this person.</span>';
+  const free = tags.filter((t) => !have.has(t.id));
+  $('pTagPick').innerHTML = free.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('') || '<option value="">No more tags to add</option>';
+  $('pTagPick').disabled = !free.length || !tagsCanEdit; $('pTagAdd').disabled = !free.length || !tagsCanEdit;
+}
+async function loadPersonTags() {
+  const id = $('pPick').value; if (!id) return;
+  personTags = (await req('GET', `/employees/${id}/tags`)).data; drawPersonTags();
+}
+function resetTagForm() { tEdit = null; $('tForm').reset(); $('tTitle').textContent = 'Add a tag'; $('tCancel').hidden = true; }
 async function loadPeople() {
   const people = (await req('GET', '/employees')).data;
   $('pPick').innerHTML = people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} ${esc(p.employeeId || '')}</option>`).join('');
@@ -158,7 +200,20 @@ $('fForm').addEventListener('submit', async (e) => {
     say(fEdit ? 'Field updated.' : 'Field added.'); resetFieldForm(); await loadFields();
   } catch (err) { say(err.message, false); }
 });
-$('pGo').addEventListener('click', () => loadPerson().catch((err) => say(err.message, false)));
+$('pGo').addEventListener('click', () => loadPerson().then(loadPersonTags).catch((err) => say(err.message, false)));
+$('tCancel').addEventListener('click', resetTagForm);
+$('tForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try {
+    if (tEdit) await req('PUT', `/tags/${tEdit.id}`, { name: el.name.value, color: el.color.value, expectedUpdatedAt: tEdit.updatedAt || undefined });
+    else await req('POST', '/tags', { name: el.name.value, color: el.color.value });
+    say(tEdit ? 'Tag updated.' : 'Tag added.'); resetTagForm(); await loadTags(); await loadPersonTags();
+  } catch (err) { say(err.message, false); }
+});
+$('pTagAdd').addEventListener('click', async () => {
+  const tagId = $('pTagPick').value; if (!tagId) return;
+  try { personTags = (await req('PUT', `/employees/${$('pPick').value}/tags`, { add: [tagId] })).data; drawPersonTags(); await loadTags(); } catch (err) { say(err.message, false); }
+});
 $('pForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target); const values = {};
   for (const d of personFields.filter((x) => x.canEdit)) {
@@ -191,6 +246,14 @@ document.addEventListener('click', async (e) => {
       const r = await req('POST', `/employees/${$('pPick').value}/custom-fields/${encodeURIComponent(v)}/reveal`, { reason });
       const out = document.querySelector(`[data-shown="${CSS.escape(v)}"]`); out.textContent = String(r.value); say('Shown for 30 seconds. This was recorded in the activity log.');
       setTimeout(() => { out.textContent = ''; }, 30000); // not left on screen
+    } else if ((v = hit('tedit'))) {
+      tEdit = tags.find((x) => x.id === v); const el = $('tForm').elements; el.name.value = tEdit.name; el.color.value = tEdit.color;
+      $('tTitle').textContent = `Edit ${tEdit.name}`; $('tCancel').hidden = false; $('tForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((v = hit('tdel'))) {
+      const t = tags.find((x) => x.id === v);
+      if (window.confirm(`Remove the tag "${t.name}"? It is also taken off the ${t.people} ${t.people === 1 ? 'person' : 'people'} who have it.`)) { await req('DELETE', `/tags/${v}`); say('Tag removed.'); resetTagForm(); await loadTags(); await loadPersonTags(); }
+    } else if ((v = hit('ptagdel'))) {
+      personTags = (await req('PUT', `/employees/${$('pPick').value}/tags`, { remove: [v] })).data; drawPersonTags(); await loadTags();
     } else if ((v = hit('ok'))) {
       const r = queue.find((x) => x.id === v);
       const ask = r.field === 'bankDetails' ? `Approve the new bank account for ${r.userName}? Their next pay goes to the account ending ${r.after.accountLast4}. Have you confirmed this with them directly?` : `Approve this ${KIND[r.field].toLowerCase()} change for ${r.userName}?`;
@@ -212,7 +275,8 @@ document.addEventListener('click', async (e) => {
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
-  await step(loadQueue); await step(loadSettings); await step(loadFields); await step(loadPeople); await step(loadPerson);
+  await step(loadQueue); await step(loadSettings); await step(loadFields); await step(loadPeople); await step(loadPerson); await step(loadTags); await step(loadPersonTags);
+  if (window.location.hash === '#tags') document.querySelector('[data-tab="tags"]').click();
 });
 </script>
 </body>

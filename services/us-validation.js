@@ -183,7 +183,48 @@ function validateCompanyProfile(input) {
         value.workStates = Array.from(new Set(states));
     }
     if (body.stateTaxId) value.stateTaxId = String(body.stateTaxId).trim();
+
+    // Optional: industry code (NAICS, 2 to 6 digits). Sending an empty value clears it.
+    if (body.industryCode !== undefined) {
+        const code = validateNaics(body.industryCode);
+        if (!code.valid) errors.push(code.error); else value.industryCode = code.code;
+    }
+    // Optional: month the fiscal year starts (1 = January ... 12 = December). Sending an empty value puts January back.
+    if (body.fiscalYearStartMonth !== undefined) {
+        const m = validateFiscalYearStartMonth(body.fiscalYearStartMonth);
+        if (!m.valid) errors.push(m.error); else value.fiscalYearStartMonth = m.month;
+    }
     return { errors, value };
+}
+
+/** NAICS industry code: 2 to 6 digits (sector down to national industry). Empty means "not set" (code: null). */
+function validateNaics(input) {
+    const s = String(input === null || input === undefined ? '' : input).trim();
+    if (!s) return { valid: true, code: null };
+    if (!/^\d{2,6}$/.test(s)) return { valid: false, error: 'industryCode must be a NAICS code of 2 to 6 digits' };
+    return { valid: true, code: s };
+}
+
+/** Fiscal year start month: a whole number 1 to 12. Empty means January. */
+function validateFiscalYearStartMonth(input) {
+    if (input === null || input === '') return { valid: true, month: 1 };
+    const n = typeof input === 'number' ? input : (/^\d{1,2}$/.test(String(input).trim()) ? Number(String(input).trim()) : NaN);
+    if (!Number.isInteger(n) || n < 1 || n > 12) return { valid: false, error: 'fiscalYearStartMonth must be a month number from 1 to 12' };
+    return { valid: true, month: n };
+}
+
+/** The fiscal year that contains a date: { start, end, label } for a company whose year starts in `startMonth` */
+function fiscalYearFor(dateIso, startMonth = 1) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateIso || ''));
+    const sm = Number.isInteger(startMonth) && startMonth >= 1 && startMonth <= 12 ? startMonth : 1;
+    if (!m) return null;
+    const y = Number(m[1]); const mo = Number(m[2]);
+    const startYear = mo >= sm ? y : y - 1;
+    const endYear = sm === 1 ? startYear : startYear + 1;
+    const endMonth = sm === 1 ? 12 : sm - 1;
+    const lastDay = new Date(Date.UTC(endYear, endMonth, 0)).getUTCDate();
+    const pad = (n) => String(n).padStart(2, '0');
+    return { start: `${startYear}-${pad(sm)}-01`, end: `${endYear}-${pad(endMonth)}-${pad(lastDay)}`, label: sm === 1 ? `FY${startYear}` : `FY${endYear}` };
 }
 
 /** ABA routing number: 9 digits with the 3-7-1 checksum */
@@ -218,5 +259,6 @@ module.exports = {
     validateRoutingNumber, validateDirectDeposit, ACCOUNT_TYPES,
     US_STATES, CLASSIFICATIONS, FLSA_STATUSES, EMPLOYMENT_TYPES, PAY_TYPES, PAY_FREQUENCIES, ENTITY_TYPES,
     validateSsn, validateItin, validateTaxpayerId, maskTaxpayerId, validateEin, validateZip,
-    validateAddress, validateEmployeeProfile, validateCompanyProfile
+    validateAddress, validateEmployeeProfile, validateCompanyProfile,
+    validateNaics, validateFiscalYearStartMonth, fiscalYearFor
 };

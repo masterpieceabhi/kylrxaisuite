@@ -21,6 +21,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 .tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.tag.ok{background:#dcfce7;color:var(--ok)}.tag.no{background:#fee2e2;color:var(--bad)}
 #msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
 .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.ptag{display:inline-block;padding:1px 8px;margin:1px 2px 1px 0;border-radius:999px;font-size:12px;font-weight:600;background:#e2e8f0;color:#334155}
+.ptag.blue{background:#dbeafe;color:#1e40af}.ptag.green{background:#dcfce7;color:#166534}.ptag.amber{background:#fef3c7;color:#92400e}.ptag.red{background:#fee2e2;color:#b91c1c}.ptag.purple{background:#ede9fe;color:#5b21b6}
 </style>
 </head>
 <body>
@@ -40,12 +42,15 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <label>State<input name="state" maxlength="2" placeholder="TX" required></label>
       <label>ZIP<input name="zip" placeholder="78701" required></label>
       <label>Work states (comma separated)<input name="workStates" placeholder="TX, OK" required></label>
-    </div><div class="row"><button type="submit">Save company</button></div></form>
+      <label>Industry code (NAICS, 2 to 6 digits)<input name="industryCode" inputmode="numeric" maxlength="6" pattern="[0-9]{2,6}" placeholder="722511"></label>
+      <label>Fiscal year starts in<select name="fiscalYearStartMonth"><option value="1">January</option><option value="2">February</option><option value="3">March</option><option value="4">April</option><option value="5">May</option><option value="6">June</option><option value="7">July</option><option value="8">August</option><option value="9">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option></select></label>
+    </div><div class="row"><button type="submit">Save company</button><span class="hint">The industry code is the NAICS code on your tax and census filings. Leave it empty if you do not know it yet.</span></div></form>
   </section>
 
   <section class="card" id="peopleCard" style="display:none">
     <h2>Employees</h2>
-    <table><thead><tr><th>ID</th><th>Name</th><th>Type</th><th>Work state</th><th>SSN</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    <div class="row" id="tagFilterRow" style="margin:0 0 12px;display:none"><label>Show people tagged<select id="tagFilter"><option value="">Everyone</option></select></label><span class="hint" id="tagFilterNote"></span><a href="admin-us-changes.html#tags">Edit tags</a></div>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Tags</th><th>Type</th><th>Work state</th><th>SSN</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
     <p class="hint" id="empty" style="display:none">No employees yet. Create one from the dashboard, then come back to complete the US profile.</p>
   </section>
 
@@ -113,6 +118,7 @@ import { auth, onAuthStateChanged } from './firebase-config.js';
 
 const $ = (id) => document.getElementById(id);
 let current = null;
+let companyStamp = null;
 
 function say(text, ok = true) { const m = $('msg'); m.textContent = text; m.className = ok ? 'ok' : 'err'; }
 
@@ -137,11 +143,33 @@ async function loadCompany() {
   const a = profile.businessAddress || {};
   f.line1.value = a.line1 || ''; f.city.value = a.city || ''; f.state.value = a.state || ''; f.zip.value = a.zip || '';
   f.workStates.value = (profile.workStates || []).join(', ');
+  f.industryCode.value = profile.industryCode || ''; f.fiscalYearStartMonth.value = String(profile.fiscalYearStartMonth || 1);
+  companyStamp = profile.updatedAt || null;
 }
 
+const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Tags are extras on this list: if they cannot be loaded the list still shows
+async function loadTagFilter() {
+  try {
+    const r = await api('GET', '/tags');
+    const keep = $('tagFilter').value;
+    $('tagFilter').innerHTML = '<option value="">Everyone</option>' + r.data.map((t) => `<option value="${escHtml(t.id)}">${escHtml(t.name)} (${t.people})</option>`).join('');
+    $('tagFilter').value = r.data.some((t) => t.id === keep) ? keep : '';
+    $('tagFilterRow').style.display = 'flex';
+  } catch (_) { $('tagFilterRow').style.display = 'none'; }
+}
 async function loadPeople() {
-  const { data } = await api('GET', '/employees');
-  $('rows').innerHTML = data.map((e) => `<tr><td>${e.employeeId}</td><td>${e.name || ''}</td><td>${e.classification || '-'}</td><td>${e.workState || '-'}</td><td>${e.taxpayerIdMasked || '-'}</td><td><span class="tag ${e.profileComplete ? 'ok' : 'no'}">${e.profileComplete ? 'Complete' : 'Incomplete'}</span></td><td><button class="ghost" data-id="${e.employeeId}" data-name="${e.name || ''}">Edit</button></td></tr>`).join('');
+  let { data } = await api('GET', '/employees');
+  const tagId = $('tagFilter').value;
+  let tagsOf = new Map();
+  try {
+    const t = await api('GET', `/people/tagged?all=true${tagId ? `&tag=${encodeURIComponent(tagId)}` : ''}`);
+    tagsOf = new Map(t.data.map((p) => [p.id, p.tags]));
+    if (tagId) data = data.filter((e) => tagsOf.has(e.id));
+    $('tagFilterNote').textContent = tagId ? `${data.length} ${data.length === 1 ? 'person' : 'people'} with this tag.` : '';
+  } catch (_) { $('tagFilterNote').textContent = ''; }
+  const chips = (id) => (tagsOf.get(id) || []).map((t) => `<span class="ptag ${escHtml(t.color)}">${escHtml(t.name)}</span>`).join('') || '<span class="hint">-</span>';
+  $('rows').innerHTML = data.map((e) => `<tr><td>${e.employeeId}</td><td>${e.name || ''}</td><td>${chips(e.id)}</td><td>${e.classification || '-'}</td><td>${e.workState || '-'}</td><td>${e.taxpayerIdMasked || '-'}</td><td><span class="tag ${e.profileComplete ? 'ok' : 'no'}">${e.profileComplete ? 'Complete' : 'Incomplete'}</span></td><td><button class="ghost" data-id="${e.employeeId}" data-name="${e.name || ''}">Edit</button></td></tr>`).join('');
   $('empty').style.display = data.length ? 'none' : 'block';
 }
 
@@ -160,13 +188,16 @@ async function openEmployee(id, name) {
 
 $('rows').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (b) openEmployee(b.dataset.id, b.dataset.name).catch((e) => say(e.message, false)); });
 $('cancelBtn').onclick = () => { $('formCard').style.display = 'none'; current = null; };
+$('tagFilter').addEventListener('change', () => loadPeople().catch((e) => say(e.message, false)));
 
 $('companyForm').addEventListener('submit', async (ev) => {
   ev.preventDefault(); const v = formObj(ev.target);
   try {
-    await api('PUT', '/company/profile', { legalName: v.legalName, ein: v.ein, entityType: v.entityType,
+    const saved = await api('PUT', '/company/profile', { legalName: v.legalName, ein: v.ein, entityType: v.entityType,
+      industryCode: v.industryCode.trim(), fiscalYearStartMonth: Number(v.fiscalYearStartMonth), expectedUpdatedAt: companyStamp || undefined,
       businessAddress: { line1: v.line1, city: v.city, state: v.state, zip: v.zip },
       workStates: v.workStates.split(',').map((s) => s.trim()).filter(Boolean) });
+    companyStamp = (saved.profile && saved.profile.updatedAt) || companyStamp;
     say('Company profile saved.');
   } catch (e) { say(e.message, false); }
 });
@@ -282,7 +313,7 @@ onAuthStateChanged(auth, async (user) => {
     const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${token}` } })).json();
     if (!org.success || org.country.code !== 'US') { $('blocked').style.display = 'block'; return; }
     ['companyCard', 'peopleCard', 'todoCard', 'complianceCard', 'addCard', 'bulkCard'].forEach((id) => { $(id).style.display = 'block'; });
-    await loadCompany(); await loadPeople(); await loadCompliance(); await loadTodo();
+    await loadCompany(); await loadTagFilter(); await loadPeople(); await loadCompliance(); await loadTodo();
   } catch (e) { say(e.message, false); }
 });
 </script>

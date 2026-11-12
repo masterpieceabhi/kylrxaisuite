@@ -14,5 +14,6 @@ router.use(require('./us-roles'));
 router.use(require('./us-people-self'));
 router.use(require('./us-comp'));
 router.use(require('./us-contractors'));
+router.use(require('./us-tags'));
 
 module.exports = router;

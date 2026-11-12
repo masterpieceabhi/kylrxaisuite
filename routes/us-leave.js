@@ -277,4 +277,7 @@ router.get('/leave/calendar', LEAVE_VIEWER, requireUsOrg, async (req, res) => {
 // Shared with offboarding (final leave balances)
 router.helpers = { balanceFor, loadPolicies, hireDateOf };
 
+// Paying out unused time off into pay (settings, requests, approval, the list payroll reads)
+router.use(require('./us-leave-payouts'));
+
 module.exports = router;
