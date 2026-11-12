@@ -2,7 +2,7 @@
 
 As of 2026-11-11 (evening) on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
 
-**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (467 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
+**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (473 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
 
 Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = core works, the named pieces are missing; **Existing, not adapted** = old India-app code only; **Not started** = nothing.
 
@@ -10,9 +10,9 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 53 | 22 |
+| Done | 54 | 22 |
 | Partial | 43 | 24 |
-| Existing, not adapted | 5 | 8 |
+| Existing, not adapted | 4 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
 | **All** | **111** | **111** |
@@ -31,7 +31,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | F Payroll (Gusto) | 1 | 7 | 0 | 5 |
 | G Benefits | 4 | 2 | 0 | 0 |
 | H Documents and compliance | 6 | 1 | 1 | 0 |
-| I Performance and engagement | 0 | 1 | 3 | 2 |
+| I Performance and engagement | 1 | 1 | 2 | 2 |
 | J Analytics and reporting | 5 | 0 | 1 | 0 |
 | K Connectors | 3 | 11 | 0 | 0 |
 | L Security, privacy, operations | 2 | 5 | 0 | 2 |
@@ -162,7 +162,7 @@ Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefi
 
 | Id | Status | What is missing |
 |---|---|---|
-| US-I01 | Existing, not adapted | US adaptation of goals and reviews |
+| US-I01 | Done | Goals and written reviews with rules, routes and tests; manager and HR page `admin-us-performance.html`, employee page `my-goals.html` (English and Spanish). Run live: goal added and shown late, review shared, employee marked it seen, private note not sent to the employee. Missing: no email when a review is shared; only HR was tried live, not a manager with their own team |
 | US-I02 | Not started | Review cycles, 360 feedback |
 | US-I03 | Existing, not adapted | US adaptation of surveys |
 | US-I04 | Not started | Recognition and announcements |
@@ -215,7 +215,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 ## Next, in order of value (no outside accounts needed)
 
 1. Holiday pay hours on timesheets and into the payroll feed (needs a company rule for how many hours); rest breaks and missed-break pay (D04).
-2. US versions of the old India modules: goals and reviews, surveys, assets, policy library, report builder (I01, I03, I05, H08, J05).
+2. US versions of the old India modules: surveys, assets, policy library, report builder (I03, I05, H08, J05). Goals and reviews (I01) are done.
 3. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
 4. Run the 14 Gusto setup steps again on the local mock and submit one payroll through the page, to see the register filled in the browser.
 5. Email: checklist reminders and sending signing links (needs a mail service decision).
