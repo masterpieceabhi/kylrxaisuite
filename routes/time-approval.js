@@ -60,7 +60,7 @@ async function holidaysInWeek(orgId, user, weekStart, weekEnd, info) {
 }
 
 /** Everything about one person's workweek: pay-hour split, flags, each day's punches */
-async function weekView(orgId, user, weekStart, info) {
+async function weekView(orgId, user, weekStart, info, attest = null) {
     const weekEnd = addDays(weekStart, 6);
     const sinceIso = new Date(new Date(`${weekStart}T00:00:00Z`).getTime() - 86400000).toISOString();
     const nowIso = new Date().toISOString();
@@ -68,22 +68,29 @@ async function weekView(orgId, user, weekStart, info) {
     const sheet = rules.timesheet(punches, info.tz, nowIso, null);
     const dayRows = sheet.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
     const exempt = Boolean(user.data.usProfile && user.data.usProfile.flsaStatus === 'exempt');
-    const pay = policy.computeWeek(dayRows, info.rules, { exempt });
+    // Paid company holidays add hours where the company turned holiday pay on; a reported missed rest break is flagged (see services/time-policy.js)
+    const holidays = await holidaysInWeek(orgId, user, weekStart, weekEnd, info);
+    const pay = policy.computeWeek(dayRows, info.rules, {
+        exempt, paidHolidays: holidays.filter((h) => h.paid).map((h) => h.date),
+        holidayEligible: policy.holidayPayApplies(info.rules, { exempt, employmentType: user.data.usProfile && user.data.usProfile.employmentType }),
+        missedRestDays: (attest && attest.missedDays) || []
+    });
     const days = pay.days.map((d) => ({
         date: d.date, workedHours: hours(d.workedMinutes), regularHours: hours(d.regularMinutes), overtimeHours: hours(d.overtimeMinutes),
-        doubleTimeHours: hours(d.doubleTimeMinutes), flags: d.flags,
+        doubleTimeHours: hours(d.doubleTimeMinutes), flags: d.flags, restBreaksDue: d.restBreaksDue, premiumHours: hours(d.premiumMinutes),
         breakMinutes: (dayRows.find((x) => x.date === d.date) || {}).breakMinutes || 0,
         punches: punches.filter((p) => p.localDate === d.date).map((p) => ({ id: p.id, type: p.type, time: localTimeOf(p.at, info.tz), source: p.source }))
     }));
     const open = rules.stateOf(punches) !== 'out' && punches.some((p) => p.localDate >= weekStart && p.localDate <= weekEnd);
-    // Holidays are shown so the person approving can add holiday pay where the company gives it; hours are not added automatically
-    const holidays = await holidaysInWeek(orgId, user, weekStart, weekEnd, info);
+    const rest = info.rules.restBreak || policy.DEFAULT_RULES.restBreak;
     days.forEach((d) => { const h = holidays.find((x) => x.date === d.date); if (h) d.holiday = { name: h.name, paid: h.paid }; });
     return {
         weekStart, weekEnd, exempt, openShift: open, holidays,
+        holidayPay: pay.holidayPay.map((h) => ({ date: h.date, hours: hours(h.minutes) })),
+        restBreak: { asked: Boolean(rest.enabled) && days.some((d) => d.restBreaksDue > 0), everyHours: rest.everyHours, minutes: rest.minutes }, restAttest: attest || null,
         forgottenClockOut: rules.isForgottenClockOut(punches, nowIso),
         days, flags: pay.flags,
-        totals: { workedHours: hours(pay.totals.workedMinutes), regularHours: hours(pay.totals.regularMinutes), overtimeHours: hours(pay.totals.overtimeMinutes), doubleTimeHours: hours(pay.totals.doubleTimeMinutes) }
+        totals: { workedHours: hours(pay.totals.workedMinutes), regularHours: hours(pay.totals.regularMinutes), overtimeHours: hours(pay.totals.overtimeMinutes), doubleTimeHours: hours(pay.totals.doubleTimeMinutes), holidayHours: hours(pay.totals.holidayMinutes), premiumHours: hours(pay.totals.premiumMinutes) }
     };
 }
 
@@ -105,7 +112,7 @@ async function targetUser(req, res) {
 
 router.get('/rules', requireOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
-    res.json({ success: true, country: info.country, timeZone: info.tz, rules: info.rules, note: 'Daily overtime, double time and meal-break rules depend on your state. Confirm each setting with a US compliance advisor.' });
+    res.json({ success: true, country: info.country, timeZone: info.tz, rules: info.rules, note: 'Daily overtime, double time, meal and rest breaks, premium pay for missed breaks and holiday pay depend on your state and on your own company policy. Confirm each setting with a US compliance advisor.' });
 });
 
 router.put('/rules', perms.requirePermission('time.manage_rules'), requireOrg, async (req, res) => {
@@ -125,7 +132,7 @@ router.get('/weeks/:weekStart', requireOrg, async (req, res) => {
     const doc = await weekDocRef(user.id, req.params.weekStart).get();
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, userId: user.id, name: user.data.name || null, timeZone: info.tz, today: rules.localDate(new Date().toISOString(), info.tz),
-        ...statusView(exists(doc) ? doc.data() : null), ...(await weekView(req.orgId, user, req.params.weekStart, info)) });
+        ...statusView(exists(doc) ? doc.data() : null), ...(await weekView(req.orgId, user, req.params.weekStart, info, exists(doc) ? doc.data().restAttest || null : null)) });
 });
 
 router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
@@ -140,11 +147,22 @@ router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
     const existing = await ref.get();
     const cur = exists(existing) ? existing.data() : null;
     if (cur && ['submitted', 'approved'].includes(cur.status)) return res.status(409).json({ success: false, error: `This week is already ${cur.status}` });
-    const view = await weekView(req.orgId, user, weekStart, info);
+    let view = await weekView(req.orgId, user, weekStart, info);
     if (view.openShift) return res.status(409).json({ success: false, error: 'Clock out before you send your hours' });
+    // Rest breaks are not punched, so where the company asks, the person says whether they could take them
+    let restAttest = null;
+    if (view.restBreak.asked) {
+        const b = req.body || {};
+        if (b.restBreaks !== 'taken' && b.restBreaks !== 'missed') return res.status(400).json({ success: false, code: 'rest_breaks_needed', error: 'Say whether you were able to take your rest breaks this week' });
+        const due = new Set(view.days.filter((d) => d.restBreaksDue > 0).map((d) => d.date));
+        const missedDays = b.restBreaks === 'missed' ? [...new Set((Array.isArray(b.missedDays) ? b.missedDays : []).map(String))].filter((d) => due.has(d)).sort() : [];
+        if (b.restBreaks === 'missed' && !missedDays.length) return res.status(400).json({ success: false, code: 'rest_breaks_needed', error: 'Choose the days you could not take a rest break' });
+        restAttest = { taken: b.restBreaks === 'taken', missedDays, at: new Date().toISOString() };
+        if (missedDays.length) view = await weekView(req.orgId, user, weekStart, info, restAttest);
+    }
     await ref.set({
         orgId: req.orgId, userId: user.id, employeeId: user.data.employeeId || null, name: user.data.name || null, weekStart,
-        status: 'submitted', submittedAt: new Date().toISOString(), submittedBy: req.user.id, totals: view.totals, flags: view.flags, decisionNote: null, decidedAt: null, decidedBy: null
+        status: 'submitted', submittedAt: new Date().toISOString(), submittedBy: req.user.id, totals: view.totals, flags: view.flags, holidayPay: view.holidayPay, restAttest, decisionNote: null, decidedAt: null, decidedBy: null
     });
     require('../services/events').emit(req.orgId, 'timesheet.submitted', { person_id: user.id, week_start: weekStart, worked_hours: (view.totals && view.totals.workedHours) ?? null });
     res.json({ success: true, status: 'submitted', totals: view.totals });
@@ -175,9 +193,9 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
     const patch = { status: decision === 'approve' ? 'approved' : 'rejected', decidedAt: new Date().toISOString(), decidedBy: req.user.id, decisionNote: note || null };
     if (decision === 'approve') {
         const info = await orgInfo(req.orgId);
-        const view = await weekView(req.orgId, user, weekStart, info);
+        const view = await weekView(req.orgId, user, weekStart, info, snap.data().restAttest || null);
         if (view.openShift) return res.status(409).json({ success: false, error: 'This person is still clocked in' });
-        patch.totals = view.totals; patch.flags = view.flags; patch.exempt = view.exempt; patch.rulesUsed = info.rules;
+        patch.totals = view.totals; patch.flags = view.flags; patch.exempt = view.exempt; patch.rulesUsed = info.rules; patch.holidayPay = view.holidayPay;
     }
     await ref.update(patch);
     rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', targetId: userId, actorId: req.user.id, at: new Date().toISOString(), weekStart }).catch(() => {});
@@ -328,10 +346,11 @@ router.get('/export/hours', perms.requirePermission('time.export'), requireOrg, 
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || String(a.employeeId).localeCompare(String(b.employeeId)))
         .map((w) => ({
             employee_id: w.employeeId || '', name: w.name || '', week_start: w.weekStart, week_end: addDays(w.weekStart, 6), flsa_status: w.exempt ? 'exempt' : 'non_exempt',
-            regular_hours: w.totals.regularHours, overtime_hours: w.totals.overtimeHours, double_time_hours: w.totals.doubleTimeHours, total_hours: w.totals.workedHours
+            regular_hours: w.totals.regularHours, overtime_hours: w.totals.overtimeHours, double_time_hours: w.totals.doubleTimeHours, total_hours: w.totals.workedHours,
+            holiday_hours: w.totals.holidayHours || 0, break_premium_hours: w.totals.premiumHours || 0
         }));
     if (req.query.format === 'csv') {
-        const cols = ['employee_id', 'name', 'week_start', 'week_end', 'flsa_status', 'regular_hours', 'overtime_hours', 'double_time_hours', 'total_hours'];
+        const cols = ['employee_id', 'name', 'week_start', 'week_end', 'flsa_status', 'regular_hours', 'overtime_hours', 'double_time_hours', 'total_hours', 'holiday_hours', 'break_premium_hours'];
         const esc = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
         res.set('Content-Type', 'text/csv; charset=utf-8');
         res.set('Content-Disposition', 'attachment; filename="approved-hours.csv"');

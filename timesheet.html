@@ -38,9 +38,9 @@ input,select{width:100%;padding:14px;border:2px solid var(--line);border-radius:
     <p style="text-align:center;margin:10px 0 0"><span class="chip" id="chip"></span></p>
     <p class="note" id="decision" style="display:none;margin:10px 0 0"></p>
   </section>
-  <section class="card"><div class="totals"><div><b id="tTot">0</b><span id="lTot"></span></div><div><b id="tReg">0</b><span id="lReg"></span></div><div><b id="tOt">0</b><span id="lOt"></span></div></div></section>
+  <section class="card"><div class="totals"><div><b id="tTot">0</b><span id="lTot"></span></div><div><b id="tReg">0</b><span id="lReg"></span></div><div><b id="tOt">0</b><span id="lOt"></span></div></div><p class="s" id="extraPay" style="margin:10px 0 0;display:none"></p></section>
   <section class="card" id="days"></section>
-  <section class="card"><button class="go" id="submit"></button><p class="s" id="submitHelp" style="margin:10px 0 0;text-align:center"></p></section>
+  <section class="card"><div id="restBox" style="display:none;margin-bottom:14px"></div><button class="go" id="submit"></button><p class="s" id="submitHelp" style="margin:10px 0 0;text-align:center"></p></section>
 
   <section class="card" id="fixCard" style="display:none">
     <h2 id="fixT" style="margin:0 0 6px;font-size:20px"></h2><p class="s" id="fixP" style="margin:0"></p>
@@ -66,13 +66,15 @@ const T = {
     noPunch: 'No punches this day.', brk: 'break', fixThis: 'Wrong time? Tap a punch to fix it.', forgot: 'I forgot to punch', fixT: 'Fix a punch', fixAdd: 'Add a missing punch', fixPunch: 'Change the time of this punch: {p}',
     lDate: 'Day', lType: 'What did you forget?', lTime: 'Right time', lWhy: 'What happened?', go: 'Send to my manager', cancel: 'Never mind', hCor: 'My fix requests', none: 'None yet.', cancelReq: 'Cancel',
     in: 'Clock in', out: 'Clock out', break_start: 'Start break', break_end: 'End break', pending: 'Waiting', denied: 'Not approved', cancelled: 'Cancelled', corSent: 'Fix request sent.',
-    missed_meal_break: 'No full meal break', fail: 'Could not reach the server.', back: 'Back', change: 'change', add: 'add', remove: 'remove', rejNote: 'Your manager says: {n}' },
+    missed_meal_break: 'No full meal break', missed_rest_break: 'Rest break not taken (you reported this)',
+    holPay: 'Paid holiday hours: {h}', premPay: 'Extra paid hours for missed breaks: {h}', restQ: 'Your company gives a {m}-minute paid rest break for every {e} hours worked. Were you able to take your rest breaks this week?', restYes: 'Yes, all of them', restNo: 'No, I missed some', restWhich: 'Which days?', restNeed: 'Please say whether you took your rest breaks.', restNeedDays: 'Please choose the days you missed a rest break.', restSaidYes: 'Rest breaks: you said you took them all.', restSaidNo: 'Rest breaks: you reported missing one on {d}.', fail: 'Could not reach the server.', back: 'Back', change: 'change', add: 'add', remove: 'remove', rejNote: 'Your manager says: {n}' },
   es: { title: 'Mis horas', prev: 'Semana anterior', week: 'Semana del', open: 'Abierta', submitted: 'Enviada a su supervisor', approved: 'Aprobada', rejected: 'Necesita corrección', tot: 'horas', reg: 'regulares', ot: 'extra', worked: 'trabajadas',
     submit: 'Enviar mis horas para aprobación', submitHelp: 'Primero registre su salida. Su supervisor revisará sus horas.', sentOk: 'Horas enviadas.', locked: 'Esta semana está aprobada y no se puede cambiar.', openShift: 'Todavía está registrado como adentro.',
     noPunch: 'Sin registros este día.', brk: 'descanso', fixThis: '¿Hora incorrecta? Toque un registro para corregirlo.', forgot: 'Olvidé registrar', fixT: 'Corregir un registro', fixAdd: 'Agregar un registro que falta', fixPunch: 'Cambiar la hora de este registro: {p}',
     lDate: 'Día', lType: '¿Qué olvidó?', lTime: 'Hora correcta', lWhy: '¿Qué pasó?', go: 'Enviar a mi supervisor', cancel: 'Cancelar', hCor: 'Mis solicitudes de corrección', none: 'Ninguna todavía.', cancelReq: 'Cancelar',
     in: 'Entrada', out: 'Salida', break_start: 'Inicio de descanso', break_end: 'Fin de descanso', pending: 'En espera', denied: 'No aprobado', cancelled: 'Cancelado', corSent: 'Solicitud enviada.',
-    missed_meal_break: 'Sin descanso de comida completo', fail: 'No se pudo conectar.', back: 'Volver', change: 'cambiar', add: 'agregar', remove: 'quitar', rejNote: 'Su supervisor dice: {n}' }
+    missed_meal_break: 'Sin descanso de comida completo', missed_rest_break: 'Descanso no tomado (usted lo reportó)',
+    holPay: 'Horas de día festivo pagado: {h}', premPay: 'Horas extra pagadas por descansos no tomados: {h}', restQ: 'Su empresa da un descanso pagado de {m} minutos por cada {e} horas trabajadas. ¿Pudo tomar sus descansos esta semana?', restYes: 'Sí, todos', restNo: 'No, me faltaron algunos', restWhich: '¿Qué días?', restNeed: 'Por favor indique si tomó sus descansos.', restNeedDays: 'Por favor elija los días en que no tomó un descanso.', restSaidYes: 'Descansos: usted indicó que los tomó todos.', restSaidNo: 'Descansos: usted reportó que le faltó uno el {d}.', fail: 'No se pudo conectar.', back: 'Volver', change: 'cambiar', add: 'agregar', remove: 'quitar', rejNote: 'Su supervisor dice: {n}' }
 };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
@@ -117,6 +119,7 @@ function paint() {
   $('submit').disabled = !canSend; $('submit').style.display = st === 'approved' || st === 'submitted' ? 'none' : 'block';
   $('submitHelp').textContent = week.openShift ? tr('openShift') : tr('submitHelp'); $('submitHelp').style.display = st === 'approved' || st === 'submitted' ? 'none' : 'block';
   $('forgot').style.display = lockedWeek ? 'none' : 'inline-block';
+  paintExtras(canSend);
 }
 
 async function load() {
@@ -146,7 +149,37 @@ $('fix').addEventListener('submit', async (e) => {
   try { await api('POST', '/corrections', body); $('fixCard').style.display = 'none'; show('ok', tr('corSent')); await load(); } catch (err) { show('err', err.message); }
 });
 $('cors').addEventListener('click', async (e) => { const b = e.target.closest('[data-cc]'); if (!b) return; try { await api('POST', `/corrections/${b.dataset.cc}/cancel`); await load(); } catch (err) { show('err', err.message); } });
-$('submit').onclick = async () => { try { await api('POST', `/weeks/${weekStart}/submit`); show('ok', tr('sentOk')); await load(); } catch (err) { show('err', err.message); } };
+// Holiday pay, extra pay for missed breaks, and the weekly rest-break question (only where the company turned these on)
+const rest = { week: null, answer: null, days: new Set() };
+function paintExtras(canSend) {
+  const t = week.totals; const lines = [];
+  if (t.holidayHours) lines.push(tr('holPay', { h: hm(t.holidayHours) }));
+  if (t.premiumHours) lines.push(tr('premPay', { h: hm(t.premiumHours) }));
+  if (week.restAttest && !canSend) lines.push(week.restAttest.taken ? tr('restSaidYes') : tr('restSaidNo', { d: week.restAttest.missedDays.map(fmtDay).join(', ') }));
+  const ep = $('extraPay'); ep.style.display = lines.length ? 'block' : 'none'; ep.replaceChildren(...lines.map((l) => { const d = document.createElement('div'); d.textContent = l; return d; }));
+  const box = $('restBox'); const asked = Boolean(week.restBreak && week.restBreak.asked) && canSend;
+  box.style.display = asked ? 'block' : 'none'; if (!asked) { box.replaceChildren(); return; }
+  if (rest.week !== weekStart) { rest.week = weekStart; rest.answer = null; rest.days = new Set(); }
+  const due = week.days.filter((d) => d.restBreaksDue > 0);
+  box.innerHTML = `<p style="margin:0 0 8px;font-weight:700"></p><label style="display:block;margin:6px 0;font-size:17px"><input type="radio" name="restAns" value="taken"${rest.answer === 'taken' ? ' checked' : ''}> <span></span></label><label style="display:block;margin:6px 0;font-size:17px"><input type="radio" name="restAns" value="missed"${rest.answer === 'missed' ? ' checked' : ''}> <span></span></label><div id="restDays" style="display:${rest.answer === 'missed' ? 'block' : 'none'};margin:8px 0 0 26px"><div class="s"></div>${due.map((d) => `<label style="display:block;margin:6px 0;font-size:17px"><input type="checkbox" value="${d.date}"${rest.days.has(d.date) ? ' checked' : ''}> ${fmtDay(d.date)}</label>`).join('')}</div>`;
+  box.querySelector('p').textContent = tr('restQ', { m: week.restBreak.minutes, e: week.restBreak.everyHours });
+  const spans = box.querySelectorAll('label > span'); spans[0].textContent = tr('restYes'); spans[1].textContent = tr('restNo'); box.querySelector('#restDays .s').textContent = tr('restWhich');
+}
+$('restBox').addEventListener('change', (e) => {
+  if (e.target.name === 'restAns') { rest.answer = e.target.value; $('restDays').style.display = rest.answer === 'missed' ? 'block' : 'none'; }
+  else if (e.target.type === 'checkbox') { if (e.target.checked) rest.days.add(e.target.value); else rest.days.delete(e.target.value); }
+});
+$('submit').onclick = async () => {
+  try {
+    let body;
+    if (week.restBreak && week.restBreak.asked) {
+      if (!rest.answer) { show('err', tr('restNeed')); return; }
+      if (rest.answer === 'missed' && !rest.days.size) { show('err', tr('restNeedDays')); return; }
+      body = { restBreaks: rest.answer, missedDays: rest.answer === 'missed' ? [...rest.days] : [] };
+    }
+    await api('POST', `/weeks/${weekStart}/submit`, body); show('ok', tr('sentOk')); await load();
+  } catch (err) { show('err', err.message); }
+};
 $('prev').onclick = async () => { weekStart = addDays(weekStart, -7); await load().catch((e) => show('err', e.message)); };
 $('next').onclick = async () => { const next = addDays(weekStart, 7); if (next > mondayOf(week.today)) return; weekStart = next; await load().catch((e) => show('err', e.message)); };
 $('back').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'punch.html'; };

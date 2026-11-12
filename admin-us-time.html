@@ -40,8 +40,8 @@ code{background:#f1f5f9;padding:2px 6px;border-radius:6px;word-break:break-all}
   </section>
 
   <section class="card">
-    <h2>Overtime and meal-break rules</h2>
-    <div class="hint" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px">Daily overtime, double time and meal breaks depend on your state. Confirm each setting with a US compliance advisor before you rely on it.</div>
+    <h2>Overtime, break and holiday pay rules</h2>
+    <div class="hint" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px">Daily overtime, double time, meal and rest breaks, and extra pay for missed breaks depend on your state. Holiday pay is your own company policy. Confirm each setting with a US compliance advisor before you rely on it.</div>
     <form id="rulesForm"><div class="grid">
       <label>Weekly overtime after (hours)<input name="weekly" type="number" step="0.5" min="1" max="168" required></label>
       <label>Daily overtime<select name="dailyOn"><option value="false">Off</option><option value="true">On</option></select></label>
@@ -50,7 +50,15 @@ code{background:#f1f5f9;padding:2px 6px;border-radius:6px;word-break:break-all}
       <label>Meal-break check<select name="mealOn"><option value="false">Off</option><option value="true">On</option></select></label>
       <label>Meal break needed after (hours worked)<input name="mealAfter" type="number" step="0.5" min="1" max="24"></label>
       <label>Shortest meal break (minutes)<input name="mealMin" type="number" step="5" min="5" max="240"></label>
-    </div><div class="row"><button type="submit">Save rules</button></div></form>
+      <label>Rest breaks (people confirm them each week)<select name="restOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>One rest break for every (hours worked)<input name="restEvery" type="number" step="0.5" min="0.5" max="24"></label>
+      <label>Length of a rest break (minutes)<input name="restMin" type="number" step="1" min="1" max="60"></label>
+      <label>Extra paid hours for a missed break<select name="premOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Extra hours per missed break, per day<input name="premHours" type="number" step="0.25" min="0.25" max="8"></label>
+      <label>Pay for paid company holidays<select name="holOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Hours paid for each holiday<input name="holHours" type="number" step="0.5" min="0.5" max="24"></label>
+      <label>Who gets holiday pay<select name="holWho"><option value="everyone">Every hourly employee</option><option value="full_time">Full-time hourly employees only</option></select></label>
+    </div><p class="hint" style="margin-top:12px">Holiday pay is added for each day marked as a paid holiday on the Company structure page. Holiday hours and extra hours for missed breaks are paid at the regular rate, on top of hours worked, and do not count toward overtime. Salaried exempt staff get neither. Working on a holiday at a higher rate is not calculated.</p><div class="row"><button type="submit">Save rules</button></div></form>
   </section>
 
   <section class="card">
@@ -154,7 +162,7 @@ const mins = (h) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStar
 async function loadApprovals() {
   const r = await api('GET', '/approvals?status=submitted');
   $('apCount').textContent = `(${r.count})`;
-  $('approvals').innerHTML = r.data.map((w) => `<tr><td>${w.name || ''}</td><td>${w.weekStart}</td><td>${mins(w.totals.workedHours)}</td><td>${mins(w.totals.regularHours)}</td><td>${mins(w.totals.overtimeHours)}</td><td>${mins(w.totals.doubleTimeHours)}</td><td>${(w.flags || []).map((f) => f.replace(/_/g, ' ')).join(', ')}</td><td><button data-wa="${w.userId}|${w.weekStart}">Approve</button> <button class="ghost" data-wr="${w.userId}|${w.weekStart}">Send back</button></td></tr>`).join('') || '<tr><td colspan="8" class="hint">Nothing waiting.</td></tr>';
+  $('approvals').innerHTML = r.data.map((w) => `<tr><td>${w.name || ''}</td><td>${w.weekStart}</td><td>${mins(w.totals.workedHours)}</td><td>${mins(w.totals.regularHours)}</td><td>${mins(w.totals.overtimeHours)}</td><td>${mins(w.totals.doubleTimeHours)}</td><td>${[...(w.flags || []).map((f) => f.replace(/_/g, ' ')), w.totals.holidayHours ? `holiday pay ${mins(w.totals.holidayHours)}` : '', w.totals.premiumHours ? `missed-break pay ${mins(w.totals.premiumHours)}` : ''].filter(Boolean).join(', ')}</td><td><button data-wa="${w.userId}|${w.weekStart}">Approve</button> <button class="ghost" data-wr="${w.userId}|${w.weekStart}">Send back</button></td></tr>`).join('') || '<tr><td colspan="8" class="hint">Nothing waiting.</td></tr>';
 }
 async function loadCorrections() {
   const r = await api('GET', '/corrections?scope=pending');
@@ -166,6 +174,8 @@ async function loadRules() {
   const r = await api('GET', '/rules'); const x = r.rules; const f = $('rulesForm');
   f.weekly.value = x.overtimeWeeklyHours; f.dailyOn.value = String(x.dailyOvertime.enabled); f.dailyHours.value = x.dailyOvertime.thresholdHours;
   f.dtHours.value = x.dailyOvertime.doubleTimeThresholdHours || ''; f.mealOn.value = String(x.meal.enabled); f.mealAfter.value = x.meal.requiredAfterHours; f.mealMin.value = x.meal.minimumMinutes;
+  const rb = x.restBreak || { enabled: false, everyHours: 4, minutes: 10 }; const bp = x.breakPremium || { enabled: false, hours: 1 }; const hp = x.holidayPay || { enabled: false, hours: 8, who: 'everyone' };
+  f.restOn.value = String(rb.enabled); f.restEvery.value = rb.everyHours; f.restMin.value = rb.minutes; f.premOn.value = String(bp.enabled); f.premHours.value = bp.hours; f.holOn.value = String(hp.enabled); f.holHours.value = hp.hours; f.holWho.value = hp.who;
 }
 document.addEventListener('click', async (e) => {
   const wa = e.target.closest('[data-wa]'); const wr = e.target.closest('[data-wr]'); const ca = e.target.closest('[data-ca]'); const cd = e.target.closest('[data-cd]');
@@ -179,7 +189,9 @@ document.addEventListener('click', async (e) => {
 $('rulesForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target;
   try {
-    await api('PUT', '/rules', { overtimeWeeklyHours: Number(f.weekly.value), dailyOvertime: { enabled: f.dailyOn.value === 'true', thresholdHours: Number(f.dailyHours.value), doubleTimeThresholdHours: f.dtHours.value ? Number(f.dtHours.value) : null }, meal: { enabled: f.mealOn.value === 'true', requiredAfterHours: Number(f.mealAfter.value), minimumMinutes: Number(f.mealMin.value) } });
+    await api('PUT', '/rules', { overtimeWeeklyHours: Number(f.weekly.value), dailyOvertime: { enabled: f.dailyOn.value === 'true', thresholdHours: Number(f.dailyHours.value), doubleTimeThresholdHours: f.dtHours.value ? Number(f.dtHours.value) : null }, meal: { enabled: f.mealOn.value === 'true', requiredAfterHours: Number(f.mealAfter.value), minimumMinutes: Number(f.mealMin.value) },
+      restBreak: { enabled: f.restOn.value === 'true', everyHours: Number(f.restEvery.value), minutes: Number(f.restMin.value) }, breakPremium: { enabled: f.premOn.value === 'true', hours: Number(f.premHours.value) },
+      holidayPay: { enabled: f.holOn.value === 'true', hours: Number(f.holHours.value), who: f.holWho.value } });
     say('Rules saved.');
   } catch (err) { say(err.message, false); }
 });

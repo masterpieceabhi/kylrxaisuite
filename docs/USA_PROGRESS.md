@@ -10,8 +10,8 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 58 | 22 |
-| Partial | 43 | 24 |
+| Done | 59 | 22 |
+| Partial | 42 | 24 |
 | Existing, not adapted | 0 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
@@ -26,7 +26,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | A Platform and country | 1 | 8 | 0 | 1 |
 | B People and organization | 8 | 2 | 0 | 0 |
 | C Hiring and onboarding | 8 | 2 | 0 | 0 |
-| D Time, attendance, scheduling | 9 | 2 | 0 | 0 |
+| D Time, attendance, scheduling | 10 | 1 | 0 | 0 |
 | E Leave and holidays | 6 | 2 | 0 | 0 |
 | F Payroll (Gusto) | 1 | 7 | 0 | 5 |
 | G Benefits | 4 | 2 | 0 | 0 |
@@ -88,7 +88,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-D01 | Done | Clock in/out, kiosk; new consent, selfie and geofence policy on the server; rules page `admin-us-clock.html`; `punch.html` shows notices, takes the photo and explains work-site blocks; the shared kiosk (`kiosk.html`) does the same | Taking a photo could not be tested (the test browser blocks the camera) |
 | US-D02 | Done | Weekly timesheets and approval | |
 | US-D03 | Done | Overtime engine | |
-| US-D04 | Partial | Meal-break check | Rest breaks; missed-break premium pay |
+| US-D04 | Done | Meal-break check from the punches; rest breaks as a company setting (one per so many hours), confirmed by the person each week when they send their hours, with the missed days flagged for the approver; optional extra paid hours per day for a missed meal break and for a reported missed rest break. All are company settings on `admin-us-time.html`, off by default, with tests; run live through the timesheet page | Rest breaks are the person's own report, not measured from the clock; the settings are one set per company, not per state or location; premium hours are paid at the regular rate and sent to Gusto inside regular hours |
 | US-D05 | Done | Minimum-wage checks with a page, linked in the menu | |
 | US-D06 | Done | Shifts, publish, open-shift claims, swaps, availability, tests; pages `admin-us-schedule.html` and `my-schedule.html` (English and Spanish) | Shift templates and one-day availability exceptions have no screen; a manager can approve their own request |
 | US-D07 | Done | Predictive-scheduling rules and premium report, on the Rules and "Planned and worked" tabs of `admin-us-schedule.html` | Premium amounts are listed only, not sent to payroll |
@@ -106,7 +106,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-E03 | Done | Leave cases (FMLA style), HR and employee pages, linked | |
 | US-E04 | Done | Jury, military, bereavement, parental leave types | State rules are placeholders to be entered |
 | US-E05 | Done | Requests, approvals, calendar | |
-| US-E06 | Done | Company holiday routes, tests, page (`admin-us-org.html`); time-off requests skip the company's holidays; timesheets show the company holidays in the week | Holiday pay hours are not added automatically: the approver adds them where the company gives them |
+| US-E06 | Done | Company holiday routes, tests, page (`admin-us-org.html`); time-off requests skip the company's holidays; timesheets show the company holidays in the week. Holiday pay is a company setting (hours per paid holiday; everyone or full-time only; hourly staff only): the hours are added to the week on top of hours worked, never count toward overtime, appear in the hours export, and go into the payroll feed | Holiday hours reach Gusto inside regular hours (same pay, not listed separately on the stub); a higher rate for working on a holiday is not calculated; no rule such as "must work the day before and after" |
 | US-E07 | Partial | Balances and payout summary | Payout calculation into pay |
 | US-E08 | Partial | Approved leave pushed to Gusto | One way only; no policy sync; mock only |
 
@@ -214,8 +214,8 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 
 ## Next, in order of value (no outside accounts needed)
 
-1. Holiday pay hours on timesheets and into the payroll feed (needs a company rule for how many hours); rest breaks and missed-break pay (D04).
-2. US versions of the old India modules: policy library, report builder (H08, J05). Goals and reviews (I01), surveys (I03) and equipment (I05) are done.
+1. Done on 2026-11-12: holiday pay hours, rest breaks and missed-break pay (D04, E06), as company settings.
+2. Done on 2026-11-12: US versions of the old India modules: goals and reviews (I01), surveys (I03), equipment (I05), policy library (H08), report builder (J05).
 3. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
 4. Run the 14 Gusto setup steps again on the local mock and submit one payroll through the page, to see the register filled in the browser.
 5. Email: checklist reminders and sending signing links (needs a mail service decision).

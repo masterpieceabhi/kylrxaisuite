@@ -197,7 +197,7 @@ function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], perio
     const full = mondays.filter((m) => weekPlacement(m, periodStart, periodEnd) === 'inside');
 
     const rows = [];
-    const totals = { regularHours: 0, overtimeHours: 0, doubleTimeHours: 0, ptoHours: 0, people: 0 };
+    const totals = { regularHours: 0, overtimeHours: 0, doubleTimeHours: 0, ptoHours: 0, holidayHours: 0, premiumHours: 0, people: 0 };
     for (const p of people) {
         if (p.active === false) continue;
         const link = linkOf(p.id);
@@ -208,7 +208,7 @@ function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], perio
         }
         const mine = byUser.get(p.id) || [];
         const approved = new Map(mine.filter((w) => w.status === 'approved').map((w) => [w.weekStart, w]));
-        let regular = 0; let overtime = 0; let doubleTime = 0;
+        let regular = 0; let overtime = 0; let doubleTime = 0; let holiday = 0; let premium = 0;
         const missing = [];
         const pending = [];
         for (const m of full) {
@@ -216,6 +216,7 @@ function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], perio
             if (wk) {
                 const t = wk.totals || {};
                 regular += Number(t.regularHours) || 0; overtime += Number(t.overtimeHours) || 0; doubleTime += Number(t.doubleTimeHours) || 0;
+                holiday += Number(t.holidayHours) || 0; premium += Number(t.premiumHours) || 0;
             } else {
                 const other = mine.find((w) => w.weekStart === m);
                 if (other && other.status === 'submitted') pending.push(m); else if (!salaried) missing.push(m);
@@ -243,20 +244,24 @@ function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], perio
             userId: p.id, name: p.name || null, employeeUuid: link.gustoUuid, jobUuid: (link.meta && link.meta.jobUuid) || null,
             payType: salaried ? 'salary' : 'hourly',
             regularHours: salaried ? 0 : round2(regular), overtimeHours: salaried ? 0 : round2(overtime), doubleTimeHours: salaried ? 0 : round2(doubleTime),
+            // paid holiday hours and premium hours for missed breaks: paid at the regular rate, on top of hours worked
+            holidayHours: salaried ? 0 : round2(holiday), premiumHours: salaried ? 0 : round2(premium),
             pto: Object.entries(pto).map(([name, hours]) => ({ name, hours })), ptoHours
         };
         if (!salaried && !row.jobUuid) issues.push({ severity: 'blocker', code: 'no_job', userId: p.id, message: `${p.name || p.id} has no job/pay rate in Gusto yet. Sync this person again.` });
         rows.push(row);
         totals.regularHours += row.regularHours; totals.overtimeHours += row.overtimeHours; totals.doubleTimeHours += row.doubleTimeHours; totals.ptoHours += ptoHours;
+        totals.holidayHours += row.holidayHours; totals.premiumHours += row.premiumHours;
     }
     totals.people = rows.length;
-    for (const k of ['regularHours', 'overtimeHours', 'doubleTimeHours', 'ptoHours']) totals[k] = round2(totals[k]);
+    for (const k of ['regularHours', 'overtimeHours', 'doubleTimeHours', 'ptoHours', 'holidayHours', 'premiumHours']) totals[k] = round2(totals[k]);
+    if (totals.holidayHours || totals.premiumHours) issues.push({ severity: 'warning', code: 'extra_hours_as_regular', message: `${totals.holidayHours} paid holiday hour(s) and ${totals.premiumHours} premium hour(s) for missed breaks are sent to Gusto as regular hours. The pay is the same, but the pay stub does not list them separately.` });
     return { rows, issues, totals, weeksIncluded: full, ready: !issues.some((i) => i.severity === 'blocker') };
 }
 
 /** Stable fingerprint of a feed: if it changes after prepare, the preview is stale and must be redone */
 function feedHash(rows) {
-    const canon = rows.map((r) => [r.userId, r.regularHours, r.overtimeHours, r.doubleTimeHours, JSON.stringify(r.pto)]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+    const canon = rows.map((r) => [r.userId, r.regularHours, r.overtimeHours, r.doubleTimeHours, JSON.stringify(r.pto), ...(r.holidayHours || r.premiumHours ? [r.holidayHours || 0, r.premiumHours || 0] : [])]).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     return crypto.createHash('sha256').update(JSON.stringify(canon)).digest('hex').slice(0, 24);
 }
 
@@ -270,7 +275,7 @@ function toGustoCompensations(rows, existing = []) {
         const jobUuid = row.jobUuid || ((ec.hourly_compensations || [])[0] || {}).job_uuid || null;
         const hourly = [];
         if (row.payType === 'hourly') {
-            hourly.push({ name: 'Regular Hours', job_uuid: jobUuid, hours: hoursStr(row.regularHours), compensation_multiplier: 1 });
+            hourly.push({ name: 'Regular Hours', job_uuid: jobUuid, hours: hoursStr(round2((row.regularHours || 0) + (row.holidayHours || 0) + (row.premiumHours || 0))), compensation_multiplier: 1 });
             hourly.push({ name: 'Overtime', job_uuid: jobUuid, hours: hoursStr(row.overtimeHours), compensation_multiplier: 1.5 });
             hourly.push({ name: 'Double overtime', job_uuid: jobUuid, hours: hoursStr(row.doubleTimeHours), compensation_multiplier: 2 });
         }
