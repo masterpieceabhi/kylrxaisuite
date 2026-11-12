@@ -7,6 +7,10 @@ const { orgInfo, punchesSince } = require('./time').helpers;
 const timeRules = require('../services/time-rules');
 const L = require('../services/leave-rules');
 const { parseIsoDate, isoDate } = require('../services/us-forms');
+const perms = require('../services/permissions');
+const teamScope = require('../services/team-scope');
+const LEAVE_DECIDER = perms.requireAnyPermission('leave.decide', 'leave.decide_team');
+const LEAVE_VIEWER = perms.requireAnyPermission('leave.decide', 'leave.decide_team', 'leave.view_all');
 
 const MANAGER_ROLES = [...ADMIN_HR_ROLES, 'Manager', 'manager'];
 const ACTIVE = ['pending', 'approved'];
@@ -82,7 +86,7 @@ router.get('/leave/policies', requireUsOrg, async (req, res) => {
     res.json({ success: true, data: (await loadPolicies(req.orgId)).map(publicPolicy) });
 });
 
-router.post('/leave/policies', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/leave/policies', perms.requirePermission('leave.policies'), requireUsOrg, async (req, res) => {
     const { errors, value } = L.validatePolicy(req.body);
     if (errors.length) return res.status(400).json({ success: false, errors });
     const ref = await rawCollection('leave_policies').add({ ...value, orgId: req.orgId, active: true, createdAt: new Date().toISOString(), createdBy: req.user.id });
@@ -90,7 +94,7 @@ router.post('/leave/policies', authorize(ADMIN_HR_ROLES), requireUsOrg, async (r
     res.status(201).json({ success: true, policy: publicPolicy({ id: ref.id, ...value }) });
 });
 
-router.put('/leave/policies/:id', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/leave/policies/:id', perms.requirePermission('leave.policies'), requireUsOrg, async (req, res) => {
     const ref = rawCollection('leave_policies').doc(req.params.id);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Policy not found' });
@@ -101,7 +105,7 @@ router.put('/leave/policies/:id', authorize(ADMIN_HR_ROLES), requireUsOrg, async
     res.json({ success: true, policy: publicPolicy({ id: ref.id, ...value }) });
 });
 
-router.delete('/leave/policies/:id', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.delete('/leave/policies/:id', perms.requirePermission('leave.policies'), requireUsOrg, async (req, res) => {
     const ref = rawCollection('leave_policies').doc(req.params.id);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Policy not found' });
@@ -129,8 +133,11 @@ async function balancesResponse(req, res, targetId) {
 
 router.get('/leave/balances', requireUsOrg, (req, res) => balancesResponse(req, res, req.user.id));
 
-router.get('/leave/balances/:userId', requireUsOrg, (req, res) => {
-    if (req.params.userId !== req.user.id && !hasRole(req.user, MANAGER_ROLES)) return res.status(403).json({ success: false, error: 'Not allowed' });
+router.get('/leave/balances/:userId', requireUsOrg, async (req, res) => {
+    if (req.params.userId !== req.user.id && !perms.can(req.user, 'leave.view_all')) {
+        const person = await findEmployee(req.orgId, req.params.userId);
+        if (!person || !perms.canManage(req.user, { ...person.data, id: person.id }, 'leave')) return res.status(403).json({ success: false, error: 'Not allowed' });
+    }
     return balancesResponse(req, res, req.params.userId);
 });
 
@@ -168,16 +175,16 @@ router.get('/leave/requests', requireUsOrg, async (req, res) => {
     let rows;
     if (scope === 'mine') rows = await loadRequests(req.orgId, 'userId', req.user.id);
     else {
-        if (!hasRole(req.user, MANAGER_ROLES)) return res.status(403).json({ success: false, error: 'Not allowed' });
+        if (!perms.can(req.user, 'leave.decide') && !perms.can(req.user, 'leave.decide_team') && !perms.can(req.user, 'leave.view_all')) return res.status(403).json({ success: false, error: 'Not allowed' });
         const snap = await rawCollection('leave_requests').where('orgId', '==', req.orgId).get();
-        rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        rows = await teamScope.filterRows(req.user, req.orgId, snap.docs.map((d) => ({ id: d.id, ...d.data() })), 'leave');
     }
     if (req.query.status) rows = rows.filter((r) => r.status === req.query.status);
     rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     res.json({ success: true, count: rows.length, data: rows.slice(0, 300) });
 });
 
-router.put('/leave/requests/:id/decision', authorize(MANAGER_ROLES), requireUsOrg, async (req, res) => {
+router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (req, res) => {
     const decision = String((req.body && req.body.decision) || '');
     if (!['approve', 'deny'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or deny' });
     const ref = rawCollection('leave_requests').doc(req.params.id);
@@ -185,6 +192,8 @@ router.put('/leave/requests/:id/decision', authorize(MANAGER_ROLES), requireUsOr
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Request not found' });
     const r = { id: snap.id, ...snap.data() };
     if (r.userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot decide your own request' });
+    const owner = await findEmployee(req.orgId, r.userId);
+    if (!owner || !perms.canManage(req.user, { ...owner.data, id: owner.id }, 'leave')) return res.status(403).json({ success: false, error: 'You can only decide time off for people who report to you' });
     if (r.status !== 'pending') return res.status(409).json({ success: false, error: `This request is already ${r.status}` });
 
     if (decision === 'approve') {
@@ -224,7 +233,7 @@ router.post('/leave/requests/:id/cancel', requireUsOrg, async (req, res) => {
 
 /* ------------------------------ adjustments and calendar ------------------------------ */
 
-router.post('/leave/adjustments', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/leave/adjustments', perms.requirePermission('leave.decide'), requireUsOrg, async (req, res) => {
     const { userId, policyId, hours, reason } = req.body || {};
     const h = Number(hours);
     if (!Number.isFinite(h) || h === 0 || Math.abs(h) > 400) return res.status(400).json({ success: false, error: 'hours must be a non-zero number (negative removes time)' });
@@ -243,13 +252,13 @@ router.post('/leave/adjustments', authorize(ADMIN_HR_ROLES), requireUsOrg, async
 });
 
 /** Who is off on which days (approved and pending), for coverage planning */
-router.get('/leave/calendar', authorize(MANAGER_ROLES), requireUsOrg, async (req, res) => {
+router.get('/leave/calendar', LEAVE_VIEWER, requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
     const today = todayIn(info.tz);
     const from = parseIsoDate(req.query.from) ? req.query.from : today;
     const to = parseIsoDate(req.query.to) ? req.query.to : isoDate(new Date(new Date(`${from}T00:00:00Z`).getTime() + 30 * 86400000));
     const snap = await rawCollection('leave_requests').where('orgId', '==', req.orgId).get();
-    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    const rows = (await teamScope.filterRows(req.user, req.orgId, snap.docs.map((d) => ({ id: d.id, ...d.data() })), 'leave'))
         .filter((r) => ACTIVE.includes(r.status) && r.endDate >= from && r.startDate <= to)
         .map((r) => ({ id: r.id, name: r.name, employeeId: r.employeeId, type: r.type, policyName: r.policyName, status: r.status, startDate: r.startDate, endDate: r.endDate, hours: r.hours }))
         .sort((a, b) => a.startDate.localeCompare(b.startDate));

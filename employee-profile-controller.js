@@ -157,7 +157,7 @@
 
         const rowsHtml = state.documents.map(doc => {
             const meta = typeLabels[doc.docType] || typeLabels['OTHER'];
-            const formattedDate = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent';
+            const formattedDate = doc.uploadedAt ? new Date(doc.uploadedAt).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent';
             const sizeStr = formatBytes(doc.fileSize);
 
             return `
@@ -883,10 +883,10 @@
         }
 
         if (grossEl) {
-            grossEl.textContent = '₹' + Number(structure.grossMonthly || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            grossEl.textContent = '₹' + Number(structure.grossMonthly || 0).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
         if (ctcEl) {
-            ctcEl.textContent = '₹' + Number(structure.annualCTC || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            ctcEl.textContent = '₹' + Number(structure.annualCTC || 0).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         // Populate Timeline Dropdown
@@ -936,7 +936,7 @@
                         : '<span style="font-size: 0.72rem; font-weight: 700; color: #047857; background: #d1fae5; padding: 2px 6px; border-radius: 6px;">Earning</span>';
 
                     const amtStr = (comp.amount !== null && comp.amount !== undefined)
-                        ? '₹' + Number(comp.amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        ? '₹' + Number(comp.amount).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                         : '—';
                     const pctStr = (comp.percentage !== null && comp.percentage !== undefined)
                         ? `${Number(comp.percentage)}%`
@@ -957,7 +957,7 @@
                             <td style="padding: 8px 12px; text-align: right; font-family: monospace; font-weight: 600; color: #0891b2;">${escapeHtml(pctStr)}</td>
                             <td style="padding: 8px 12px; text-align: right; font-family: monospace; font-weight: 600;">${escapeHtml(amtStr)}</td>
                             <td style="padding: 8px 12px; text-align: right; font-family: monospace; font-weight: 800; color: #0f172a;">
-                                ₹${Number(computed).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ₹${Number(computed).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                         </tr>
                     `;

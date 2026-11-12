@@ -13,7 +13,7 @@ const { parseIsoDate, isoDate } = require('../services/us-forms');
 const MAX_PEOPLE_FOR_LEAVE = 300;
 
 router.use(verifyToken);
-router.use('/reports', authorize(ADMIN_HR_ROLES), requireUsOrg);
+router.use('/reports', require('../services/permissions').requirePermission('reports.view'), requireUsOrg);
 
 const addDays = (iso, n) => { const d = parseIsoDate(iso); d.setUTCDate(d.getUTCDate() + n); return isoDate(d); };
 const validDate = (v) => (parseIsoDate(v) ? v : null);

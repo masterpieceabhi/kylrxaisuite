@@ -467,6 +467,9 @@ function renderCategoryDetails(key, data) {
     }
 
     if (key === 'statutoryConfig') {
+        if (window.KylrxFmt && KylrxFmt.code() !== 'IN') {
+            return `<div style="font-size:0.78rem; color:var(--text-muted);">Not applicable. India statutory items (PF, ESIC, professional tax, gratuity) do not apply to this company; US payroll taxes are handled through the payroll provider.</div>`;
+        }
         return `
             <div class="cat-item-row"><span class="cat-item-label">Employees' Provident Fund (EPF)</span><span class="cat-item-val">${data.epfEnabled ? 'Covered (12%)' : 'Exempt'}</span></div>
             <div class="cat-item-row"><span class="cat-item-label">ESIC Healthcare</span><span class="cat-item-val">${data.esiEnabled ? 'Covered' : 'Exempt / Above Wage Ceiling'}</span></div>
@@ -485,6 +488,11 @@ function renderCategoryDetails(key, data) {
     }
 
     if (key === 'documentRequirements') {
+        // US companies see the US equivalents of the India sample documents
+        const US_DOCS = { 'PAN Card': 'SSN / Taxpayer ID (W-4)', 'Aadhaar Identity Proof': 'I-9 identity and work authorization', 'Aadhaar Proof': 'I-9 identity and work authorization',
+            'GST Registration Certificate': 'W-9 (contractor taxpayer ID)', 'Cancelled Cheque / Bank Statement': 'Direct deposit form (routing and account number)',
+            'Cancelled Cheque for Vendor Account': 'Direct deposit form or voided check', 'Bank Proof': 'Direct deposit form', 'Previous Relieving Letter': 'Previous employment verification' };
+        if (window.KylrxFmt && KylrxFmt.code() !== 'IN') data = data.map(d => US_DOCS[d] || d);
         return `
             <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Mandatory Onboarding Document Vault (${data.length} Docs):</div>
             <div class="chip-tags">

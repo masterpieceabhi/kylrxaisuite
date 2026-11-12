@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pay and contractors | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:flex-start;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.box{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Pay and contractors</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-payroll.html">Payroll</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="pay" class="on">Job and pay changes <span id="payCount"></span></button>
+    <button data-tab="bank">Direct deposit</button>
+    <button data-tab="con">Contractors</button>
+    <button data-tab="tax">1099 summary</button>
+  </div>
+
+  <div id="tab-pay" class="pane on">
+    <section class="card" id="queueCard">
+      <h2>Waiting for approval</h2>
+      <p class="hint">A pay change above the limit needs a second person. You cannot approve a change you entered yourself.</p>
+      <table><thead><tr><th>Person</th><th>Change</th><th>Starts</th><th>Reason</th><th></th></tr></thead><tbody id="pendRows"></tbody></table>
+      <h3>Approved and waiting for their start date</h3>
+      <table><thead><tr><th>Person</th><th>Change</th><th>Starts</th><th></th></tr></thead><tbody id="schedRows"></tbody></table>
+      <div class="row"><label>A raise above this percent needs approval<input id="thr" type="number" min="0" max="1000" step="0.5" style="width:110px"></label><button class="ghost" id="thrSave">Save</button></div>
+    </section>
+    <section class="card">
+      <h2>One person's job and pay history</h2>
+      <div class="row" style="margin-top:0"><label>Person<select id="pUser"></select></label><button class="ghost" id="pGo">Show</button></div>
+      <p id="pNow" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Starts</th><th>Why</th><th>What changed</th><th>Pay change</th><th>Status</th><th></th></tr></thead><tbody id="pRows"></tbody></table>
+      <h3>Add a change</h3>
+      <form id="pForm"><div class="grid">
+        <label>Starts on<input name="effectiveDate" type="date" required></label>
+        <label>Why<select name="reason"><option value="raise">Raise</option><option value="promotion">Promotion</option><option value="transfer">Transfer</option><option value="correction">Correction</option><option value="hire">Hire (first record)</option></select></label>
+        <label>New job title<input name="jobTitle" maxlength="120"></label>
+        <label>New department<select name="departmentId" id="pDept"></select></label>
+        <label>New location<select name="workLocationId" id="pLoc"></select></label>
+        <label>New manager<select name="managerId" id="pMgr"></select></label>
+        <label>Paid by<select name="payType"><option value="">No change</option><option value="hourly">The hour</option><option value="salary">Salary (per year)</option></select></label>
+        <label>New pay rate ($)<input name="payRate" type="number" min="0.01" step="0.01"></label>
+        <label>Paid every<select name="payFrequency"><option value="">No change</option><option value="weekly">Week</option><option value="biweekly">Two weeks</option><option value="semimonthly">Half month</option><option value="monthly">Month</option></select></label>
+        <label>Note<input name="note" maxlength="500"></label>
+      </div>
+      <p class="hint">Fill in only what changes. A future date is saved now and takes effect on that day. History that is already in effect is never edited: add a correction instead.</p>
+      <div class="row"><button type="submit">Save change</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-bank" class="pane">
+    <section class="card">
+      <h2>Where a person's pay goes</h2>
+      <div class="warn">Confirm any bank change with the employee in person or on a phone number you already have. This page does not send bank details to payroll; if you pay through Gusto, the account there is the one that gets paid.</div>
+      <div class="row" style="margin-top:0"><label>Person<select id="bUser"></select></label><button class="ghost" id="bGo">Show</button></div>
+      <div id="bAccounts"></div>
+      <div class="row"><button class="ghost" id="bAdd">Add another account</button></div>
+      <label class="chk" style="margin-top:12px"><input type="checkbox" id="bAuth"> The employee has authorized deposits into these accounts and I have their signed form</label>
+      <div class="row"><button id="bSave">Save accounts</button><label>Try a paycheck of $<input id="bNet" type="number" min="1" step="0.01" value="1000" style="width:110px"></label><button class="ghost" id="bPreview">Show the split</button></div>
+      <table style="margin-top:8px"><tbody id="bOut"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-con" class="pane">
+    <section class="card">
+      <h2>Contractors (1099)</h2>
+      <table><thead><tr><th>Name</th><th>Email</th><th>W-9</th><th>Status</th><th></th></tr></thead><tbody id="cRows"></tbody></table>
+      <form id="cForm" style="margin-top:12px"><h3 id="cTitle">Add a contractor</h3><div class="grid">
+        <label>Name<input name="name" required maxlength="120"></label>
+        <label>Business name (optional)<input name="businessName" maxlength="120"></label>
+        <label>Email<input name="email" type="email"></label>
+        <label>Notes<input name="notes" maxlength="500"></label>
+        <label class="chk"><input type="checkbox" name="backupWithholding"> Backup withholding applies</label>
+      </div><div class="row"><button type="submit">Save contractor</button><button type="button" class="ghost" id="cCancel" hidden>Cancel edit</button></div></form>
+    </section>
+    <section class="card" id="oneCard" hidden>
+      <h2 id="oneTitle"></h2>
+      <p id="oneW9"></p>
+      <h3>Record a W-9</h3>
+      <p class="hint">Enter what is on the signed form the contractor gave you. The taxpayer ID is stored encrypted and only its last 4 digits are shown afterwards.</p>
+      <form id="w9Form" autocomplete="off"><div class="grid">
+        <label>Legal name (as on their tax return)<input name="legalName" required></label>
+        <label>Business name (optional)<input name="businessName"></label>
+        <label>Tax classification<select name="taxClassification" id="w9Class"></select></label>
+        <label id="w9OtherL" hidden>Describe<input name="taxClassificationOther" maxlength="80"></label>
+        <label>Kind of taxpayer ID<select name="tinType"><option>SSN</option><option>EIN</option><option>ITIN</option></select></label>
+        <label>Taxpayer ID<input name="tin" required inputmode="numeric" autocomplete="off"></label>
+        <label>Street address<input name="line1" required></label>
+        <label>Suite or unit<input name="line2"></label>
+        <label>City<input name="city" required></label>
+        <label>State (2 letters)<input name="state" required maxlength="2"></label>
+        <label>ZIP<input name="zip" required></label>
+        <label>Name signed on the form<input name="signature" required></label>
+      </div>
+      <label class="chk" style="margin-top:10px"><input type="checkbox" name="certified"> The contractor signed the form's certification under penalties of perjury</label>
+      <div class="row"><button type="submit">Save W-9</button></div></form>
+      <h3>Payments</h3>
+      <table><thead><tr><th>Date</th><th>Amount</th><th>How</th><th>For</th><th>Note</th><th></th></tr></thead><tbody id="payRows"></tbody></table>
+      <form id="payForm"><div class="grid" style="margin-top:10px">
+        <label>Date paid<input name="date" type="date" required></label>
+        <label>Amount ($)<input name="amount" type="number" min="0.01" step="0.01" required></label>
+        <label>How<select name="method"><option value="ach">Bank transfer</option><option value="check">Check</option><option value="wire">Wire</option><option value="cash">Cash</option><option value="card">Card</option><option value="other">Other</option></select></label>
+        <label>For<select name="category"><option value="nonemployee_compensation">Work done (counts for 1099-NEC)</option><option value="reimbursement">Expense repayment</option><option value="rent">Rent</option><option value="royalties">Royalties</option><option value="other_income">Other income</option></select></label>
+        <label>Note<input name="description" maxlength="300"></label>
+      </div><div class="row"><button type="submit" class="ghost">Add payment</button><span class="hint">This is a record only. It does not move money.</span></div></form>
+    </section>
+  </div>
+
+  <div id="tab-tax" class="pane">
+    <section class="card">
+      <h2>Year totals for 1099 forms</h2>
+      <div class="warn" id="taxNote"></div>
+      <div class="row" style="margin-top:0"><label>Year<input id="tYear" type="number" min="2000" max="2100" style="width:110px"></label><button class="ghost" id="tGo">Show</button><button class="ghost" id="tCsv">Download CSV (last 4 digits)</button><button class="no" id="tCsvFull">Download with full taxpayer IDs</button></div>
+      <p id="tSum" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Contractor</th><th>Payments</th><th>Total paid</th><th>Counts for 1099-NEC</th><th>W-9</th><th>Flags</th></tr></thead><tbody id="tRows"></tbody></table>
+      <div class="row"><label>Amount in a year that needs a 1099-NEC ($)<input id="sThr" type="number" min="0" step="1" style="width:120px"></label><label>Backup withholding rate (%)<input id="sRate" type="number" min="0" max="100" step="0.5" style="width:100px"></label><button class="ghost" id="sSave">Save</button></div>
+      <p class="hint">This page totals payments. It does not file 1099 forms with the IRS or send copies to contractors.</p>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const CLASS = { individual: 'Individual or sole proprietor', c_corp: 'C corporation', s_corp: 'S corporation', partnership: 'Partnership', trust_estate: 'Trust or estate', llc_c: 'LLC taxed as C corporation', llc_s: 'LLC taxed as S corporation', llc_p: 'LLC taxed as partnership', other: 'Other' };
+const FREQ = { weekly: 'week', biweekly: 'two weeks', semimonthly: 'half month', monthly: 'month' };
+let people = []; let depts = []; let locs = []; let contractors = []; let one = null; let cEdit = null; let bankRows = []; let seesPay = true;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Request failed (${res.status})`); } return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function saveFile(res, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+const nameOf = (list, id) => (list.find((x) => x.id === id) || {}).name || '';
+function changeText(r) {
+  const out = [];
+  if (r.jobTitle !== undefined) out.push(`Title: ${r.jobTitle}`);
+  if (r.departmentId !== undefined) out.push(`Department: ${r.departmentId ? nameOf(depts, r.departmentId) || 'changed' : 'none'}`);
+  if (r.workLocationId !== undefined) out.push(`Location: ${r.workLocationId ? nameOf(locs, r.workLocationId) || 'changed' : 'none'}`);
+  if (r.managerId !== undefined) out.push(`Manager: ${r.managerId ? nameOf(people, r.managerId) || 'changed' : 'none'}`);
+  if (r.payRate !== undefined) out.push(`Pay: ${money(r.payRate)}${r.payType ? (r.payType === 'hourly' ? ' an hour' : ' a year') : ''}`); else if (r.payType !== undefined) out.push(`Paid by: ${r.payType === 'hourly' ? 'the hour' : 'salary'}`);
+  if (r.payFrequency !== undefined) out.push(`Paid every ${FREQ[r.payFrequency] || r.payFrequency}`);
+  return out.map(esc).join('<br>') || '<span class="hint">pay details hidden</span>';
+}
+const pct = (p) => (p === null || p === undefined ? '' : `${p > 0 ? '+' : ''}${Math.round(p * 10) / 10}%`);
+
+// --------------------------------------------------------------- pay changes
+async function loadQueue() {
+  let q;
+  try { q = await req('GET', '/comp-history/queue'); } catch (_) { seesPay = false; $('queueCard').hidden = true; return; }
+  $('payCount').textContent = q.pending.length ? `(${q.pending.length})` : '';
+  $('pendRows').innerHTML = q.pending.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${changeText(r)}${r.payChangePercent !== undefined && r.payChangePercent !== null ? `<br><span class="tag warnTag">${esc(pct(r.payChangePercent))}</span>` : ''}</td><td>${esc(day(r.effectiveDate))}</td><td>${esc(words(r.reason))}${r.note ? `<br><span class="hint">${esc(r.note)}</span>` : ''}</td><td><button data-cok="${esc(r.id)}">Approve</button> <button class="no" data-cno="${esc(r.id)}">Reject</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing is waiting.</td></tr>';
+  $('schedRows').innerHTML = q.scheduled.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${changeText(r)}</td><td>${esc(day(r.effectiveDate))}</td><td><button class="no" data-ccancel="${esc(r.id)}">Withdraw</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No future-dated changes.</td></tr>';
+  try { $('thr').value = (await req('GET', '/people-data/settings')).settings.compApprovalPercent; } catch (_) { /* read-only roles */ }
+}
+async function loadHistory() {
+  const id = $('pUser').value; if (!id) return;
+  const r = await req('GET', `/employees/${id}/comp-history`); const c = r.current;
+  $('pNow').innerHTML = c ? `<b>Now:</b> ${esc(c.jobTitle || 'no title')}${c.payRate ? `, ${money(c.payRate)} ${c.payType === 'hourly' ? 'an hour' : 'a year'}` : ''}${c.payFrequency ? `, paid every ${esc(FREQ[c.payFrequency])}` : ''}${r.canSeePay ? '' : ' <span class="hint">(your role does not show pay)</span>'}` : '<span class="hint">No job and pay history yet. Add a Hire record to start it.</span>';
+  const ST = { approved: 'good', pending_approval: 'warnTag', rejected: 'badTag', cancelled: 'grey' };
+  $('pRows').innerHTML = r.timeline.map((x) => `<tr><td>${esc(day(x.effectiveDate))}${x.future ? ' <span class="tag blueTag">future</span>' : ''}</td><td>${esc(words(x.reason))}${x.note ? `<br><span class="hint">${esc(x.note)}</span>` : ''}</td><td>${changeText(x)}</td><td>${esc(pct(x.payChangePercent))}</td><td><span class="tag ${ST[x.status] || 'grey'}">${esc(words(x.status))}</span>${x.decisionNote ? `<br><span class="hint">${esc(x.decisionNote)}</span>` : ''}</td><td>${!x.applied && ['approved', 'pending_approval'].includes(x.status) ? `<button class="no" data-ccancel="${esc(x.id)}">Withdraw</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing yet.</td></tr>';
+}
+$('pGo').addEventListener('click', () => loadHistory().catch((err) => say(err.message, false)));
+$('pForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const body = { effectiveDate: f.effectiveDate.value, reason: f.reason.value, note: f.note.value };
+  if (f.jobTitle.value.trim()) body.jobTitle = f.jobTitle.value;
+  ['departmentId', 'workLocationId', 'managerId'].forEach((k) => { if (f[k].value === '-') body[k] = null; else if (f[k].value) body[k] = f[k].value; });
+  ['payType', 'payRate', 'payFrequency'].forEach((k) => { if (f[k].value) body[k] = f[k].value; });
+  try {
+    const r = await req('POST', `/employees/${$('pUser').value}/comp-history`, body); e.target.reset(); f.effectiveDate.value = localToday();
+    say(r.needsApproval ? `Saved. It is above the ${r.approvalThresholdPercent}% limit, so another person has to approve it.` : r.scheduled ? 'Saved. It takes effect on its start date.' : 'Saved and in effect.'); await loadHistory(); await loadQueue();
+  } catch (err) { say(err.message, false); }
+});
+$('thrSave').addEventListener('click', async () => { try { await req('PUT', '/people-data/settings', { compApprovalPercent: Number($('thr').value) }); say('Saved.'); } catch (err) { say(err.message, false); } });
+
+// ------------------------------------------------------------ direct deposit
+function paintBank() {
+  $('bAccounts').innerHTML = bankRows.map((a, i) => `<div class="box" data-acct="${i}"><div class="grid">
+    <label>Bank name<input data-b="bankName" value="${esc(a.bankName || '')}"></label>
+    <label>Routing number<input data-b="routingNumber" inputmode="numeric" maxlength="9" value="${esc(a.routingNumber || '')}"></label>
+    <label>Account number<input data-b="accountNumber" inputmode="numeric" maxlength="17" autocomplete="off" placeholder="${a.accountLast4 ? `on file, ends ${esc(a.accountLast4)}. Type to replace` : ''}"></label>
+    <label>Kind<select data-b="accountType"><option value="checking"${a.accountType === 'checking' ? ' selected' : ''}>Checking</option><option value="savings"${a.accountType === 'savings' ? ' selected' : ''}>Savings</option></select></label>
+    <label>Gets<select data-b="alloc"><option value="remainder"${a.allocation.type === 'remainder' ? ' selected' : ''}>Everything that is left</option><option value="percent"${a.allocation.type === 'percent' ? ' selected' : ''}>A percent of pay</option><option value="amount"${a.allocation.type === 'amount' ? ' selected' : ''}>A fixed dollar amount</option></select></label>
+    <label>Percent or amount<input data-b="value" type="number" min="0" step="0.01" value="${esc(a.allocation.value ?? '')}"></label>
+  </div>${bankRows.length > 1 ? `<div class="row"><button class="no" data-brm="${i}">Remove this account</button></div>` : ''}</div>`).join('') || '<p class="hint">No direct deposit on file. Add an account.</p>';
+}
+function readBank() {
+  return [...document.querySelectorAll('[data-acct]')].map((box, i) => { const g = (k) => box.querySelector(`[data-b="${k}"]`).value.trim(); const t = g('alloc'); const prior = bankRows[i];
+    return { ...(prior.id && prior.id !== 'legacy' ? { id: prior.id } : {}), bankName: g('bankName'), routingNumber: g('routingNumber'), ...(g('accountNumber') ? { accountNumber: g('accountNumber') } : {}), accountType: g('accountType'), accountLast4: prior.accountLast4, allocation: { type: t, value: t === 'remainder' ? null : Number(g('value')) } }; });
+}
+async function loadBank() {
+  const r = await req('GET', `/employees/${$('bUser').value}/direct-deposit/splits`);
+  bankRows = r.accounts.length ? r.accounts : [{ allocation: { type: 'remainder', value: null }, accountType: 'checking' }]; $('bAuth').checked = false; $('bOut').innerHTML = ''; paintBank();
+}
+$('bGo').addEventListener('click', () => loadBank().catch((err) => say(err.message, false)));
+$('bAdd').addEventListener('click', () => { if (bankRows.length >= 5) { say('At most 5 accounts.', false); return; } bankRows = [...readBank(), { allocation: { type: 'percent', value: null }, accountType: 'savings' }]; paintBank(); });
+$('bSave').addEventListener('click', async () => {
+  try { const accounts = readBank().map(({ accountLast4, ...a }) => a); const r = await req('PUT', `/employees/${$('bUser').value}/direct-deposit/splits`, { accounts, authorization: $('bAuth').checked }); bankRows = r.accounts; $('bAuth').checked = false; paintBank(); say('Accounts saved.'); } catch (err) { say(err.message.replace(/accounts\[(\d)\]\.?/g, (_, n) => `Account ${Number(n) + 1}: `), false); }
+});
+$('bPreview').addEventListener('click', async () => {
+  try { const r = await req('GET', `/employees/${$('bUser').value}/direct-deposit/splits/preview?net=${encodeURIComponent($('bNet').value)}`); $('bOut').innerHTML = r.accounts.map((a) => `<tr><td>${esc(a.bankName)} ${esc(a.accountMasked)}</td><td>${esc(words(a.accountType))}</td><td><b>${money(a.amount)}</b></td></tr>`).join('') + (r.fixedShortfall ? '<tr><td colspan="3"><span class="tag warnTag">The paycheck is too small to cover the fixed amounts in full</span></td></tr>' : ''); } catch (err) { say(err.message, false); }
+});
+
+// ---------------------------------------------------------------- contractors
+async function loadContractors() {
+  contractors = (await req('GET', '/contractors')).data;
+  $('cRows').innerHTML = contractors.map((c) => `<tr><td><b>${esc(c.name)}</b>${c.businessName ? `<br><span class="hint">${esc(c.businessName)}</span>` : ''}</td><td>${esc(c.email || '')}</td><td>${c.w9Status === 'received' ? `<span class="tag good">on file, ends ${esc(c.tinLast4 || '')}</span>` : '<span class="tag warnTag">missing</span>'}${c.backupWithholding ? ' <span class="tag blueTag">backup withholding</span>' : ''}</td><td>${c.active === false ? '<span class="tag grey">inactive</span>' : '<span class="tag good">active</span>'}</td><td><button class="ghost" data-copen="${esc(c.id)}">W-9 and payments</button> <button class="ghost" data-cedit="${esc(c.id)}">Edit</button> <button class="ghost" data-ctoggle="${esc(c.id)}">${c.active === false ? 'Make active' : 'Make inactive'}</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No contractors yet.</td></tr>';
+}
+function resetCForm() { cEdit = null; $('cForm').reset(); $('cTitle').textContent = 'Add a contractor'; $('cCancel').hidden = true; }
+$('cCancel').addEventListener('click', resetCForm);
+$('cForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const body = { name: f.name.value, businessName: f.businessName.value, email: f.email.value, notes: f.notes.value, backupWithholding: f.backupWithholding.checked };
+  try { if (cEdit) await req('PUT', `/contractors/${cEdit}`, body); else await req('POST', '/contractors', body); say(cEdit ? 'Contractor updated.' : 'Contractor added. Record their W-9 before you pay them.'); resetCForm(); await loadContractors(); } catch (err) { say(err.message, false); }
+});
+async function openContractor(id) {
+  const r = await req('GET', `/contractors/${id}`); one = r.contractor; $('oneCard').hidden = false; $('oneTitle').textContent = one.name;
+  const w = r.w9;
+  $('oneW9').innerHTML = w && w.status === 'received' ? `<span class="tag good">W-9 on file</span> ${esc(w.legalName)}, ${esc(CLASS[w.taxClassification] || w.taxClassification)}, ${esc(w.tinType)} ${esc(w.tinMasked || '')}. ${w.likelyExemptFrom1099 ? '<span class="hint">Corporations are usually not sent a 1099-NEC; confirm with your tax advisor.</span>' : ''} <button class="no" data-w9void="${esc(one.id)}">Mark this W-9 as no longer valid</button>` : `<span class="tag warnTag">No valid W-9 on file</span>${w && w.status === 'void' ? ` <span class="hint">The last one was voided: ${esc(w.voidReason || '')}</span>` : ''}`;
+  $('w9Form').reset(); $('w9OtherL').hidden = true; $('payForm').elements.date.value = localToday();
+  try {
+    const p = (await req('GET', `/contractors/${id}/payments`)).data;
+    $('payRows').innerHTML = p.map((x) => `<tr><td>${esc(day(x.date))}</td><td>${x.voided ? `<s>${money(x.amount)}</s>` : money(x.amount)}</td><td>${esc(words(x.method))}</td><td>${esc(words(x.category))}</td><td>${esc(x.description || '')}${x.voided ? `<br><span class="tag grey">voided: ${esc(x.voidReason || '')}</span>` : ''}</td><td>${x.voided ? '' : `<button class="no" data-pvoid="${esc(x.id)}">Void</button>`}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No payments recorded.</td></tr>';
+  } catch (_) { $('payRows').innerHTML = '<tr><td colspan="6" class="hint">Your role does not show payments.</td></tr>'; }
+  $('oneCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('w9Class').addEventListener('change', () => { $('w9OtherL').hidden = $('w9Class').value !== 'other'; });
+$('w9Form').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  const body = { legalName: f.legalName.value, businessName: f.businessName.value, taxClassification: f.taxClassification.value, taxClassificationOther: f.taxClassificationOther.value, tinType: f.tinType.value, tin: f.tin.value, address: { line1: f.line1.value, line2: f.line2.value, city: f.city.value, state: f.state.value, zip: f.zip.value }, signature: f.signature.value, certified: f.certified.checked };
+  try { await req('PUT', `/contractors/${one.id}/w9`, body); say('W-9 saved.'); await loadContractors(); await openContractor(one.id); } catch (err) { say(err.message, false); }
+});
+$('payForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { const r = await req('POST', `/contractors/${one.id}/payments`, { date: f.date.value, amount: Number(f.amount.value), method: f.method.value, category: f.category.value, description: f.description.value }); say(r.countsForNec ? 'Payment recorded. It counts toward the 1099-NEC total.' : 'Payment recorded. It does not count toward the 1099-NEC total.'); f.amount.value = ''; f.description.value = ''; await openContractor(one.id); } catch (err) { say(err.message, false); }
+});
+
+// ----------------------------------------------------------------------- 1099
+async function loadSummary() {
+  const r = await req('GET', `/contractors/summary?year=${$('tYear').value}`);
+  $('sThr').value = r.settings.necThreshold; $('sRate').value = r.settings.backupWithholdingRate;
+  $('tSum').textContent = `${r.reportableCount} contractor${r.reportableCount === 1 ? '' : 's'} at or over ${money(r.settings.necThreshold)} in ${r.year}.`;
+  $('tRows').innerHTML = r.data.map((t) => `<tr><td><b>${esc(t.name)}</b></td><td>${esc(t.paymentCount)}</td><td>${money(t.totalPaid)}</td><td>${money(t.necTotal)}</td><td>${t.w9Status === 'received' ? `ends ${esc(t.tinLast4 || '')}` : '<span class="tag warnTag">missing</span>'}</td><td>${t.over1099Threshold ? '<span class="tag blueTag">needs a 1099-NEC</span> ' : ''}${t.backupWithholdingSuggested ? '<span class="tag badTag">paid with no W-9: ask about backup withholding</span> ' : ''}${t.backupWithholding ? '<span class="tag grey">backup withholding</span>' : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No contractors.</td></tr>';
+}
+$('tGo').addEventListener('click', () => loadSummary().catch((err) => say(err.message, false)));
+$('tCsv').addEventListener('click', async () => { try { await saveFile(await req('GET', `/contractors/summary.csv?year=${$('tYear').value}`, null, true), `1099-summary-${$('tYear').value}.csv`); } catch (err) { say(err.message, false); } });
+$('tCsvFull').addEventListener('click', async () => {
+  if (!window.confirm('Download a file with full taxpayer IDs? The download is recorded. Delete the file when you are done with it.')) return;
+  try { await saveFile(await req('GET', `/contractors/summary.csv?year=${$('tYear').value}&fullTin=true`, null, true), `1099-summary-${$('tYear').value}-full.csv`); } catch (err) { say(err.message, false); }
+});
+$('sSave').addEventListener('click', async () => { try { await req('PUT', '/contractors/settings', { necThreshold: Number($('sThr').value), backupWithholdingRate: Number($('sRate').value) }); say('Saved.'); await loadSummary(); } catch (err) { say(err.message, false); } });
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('cok'))) { await req('POST', `/comp-history/${t.dataset.cok}/approve`, {}); say('Approved.'); await loadQueue(); await loadHistory(); } else if ((t = el('cno'))) { const note = window.prompt('Why is this rejected?'); if (!note) return; await req('POST', `/comp-history/${t.dataset.cno}/reject`, { note }); say('Rejected.'); await loadQueue(); await loadHistory(); } else if ((t = el('ccancel'))) { if (window.confirm('Withdraw this change?')) { await req('POST', `/comp-history/${t.dataset.ccancel}/cancel`, {}); say('Withdrawn.'); await loadQueue(); await loadHistory(); } } else if ((t = el('brm'))) { bankRows = readBank(); bankRows.splice(Number(t.dataset.brm), 1); paintBank(); } else if ((t = el('copen'))) await openContractor(t.dataset.copen);
+    else if ((t = el('cedit'))) { const c = contractors.find((x) => x.id === t.dataset.cedit); const f = $('cForm').elements; cEdit = c.id; f.name.value = c.name; f.businessName.value = c.businessName || ''; f.email.value = c.email || ''; f.notes.value = c.notes || ''; f.backupWithholding.checked = Boolean(c.backupWithholding); $('cTitle').textContent = `Edit ${c.name}`; $('cCancel').hidden = false; $('cForm').scrollIntoView({ behavior: 'smooth' }); } else if ((t = el('ctoggle'))) { const c = contractors.find((x) => x.id === t.dataset.ctoggle); await req('PUT', `/contractors/${c.id}`, { active: c.active === false }); await loadContractors(); } else if ((t = el('w9void'))) { const reason = window.prompt('Why is this W-9 no longer valid?'); if (!reason) return; await req('POST', `/contractors/${t.dataset.w9void}/w9/void`, { reason }); say('W-9 marked as not valid.'); await loadContractors(); await openContractor(one.id); } else if ((t = el('pvoid'))) { const reason = window.prompt('Why is this payment voided?'); if (!reason) return; await req('POST', `/contractor-payments/${t.dataset.pvoid}/void`, { reason }); say('Payment voided.'); await openContractor(one.id); }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  $('tYear').value = new Date().getFullYear(); $('pForm').elements.effectiveDate.value = localToday();
+  $('w9Class').innerHTML = Object.entries(CLASS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(async () => {
+    people = (await req('GET', '/employees')).data; const o = people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} ${esc(p.employeeId || '')}</option>`).join('');
+    $('pUser').innerHTML = o; $('bUser').innerHTML = o; $('pMgr').innerHTML = `<option value="">No change</option><option value="-">No manager</option>${o}`;
+  });
+  await step(async () => { depts = (await req('GET', '/departments')).data; $('pDept').innerHTML = `<option value="">No change</option><option value="-">None</option>${depts.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}`; });
+  await step(async () => { locs = (await req('GET', '/locations')).data; $('pLoc').innerHTML = `<option value="">No change</option><option value="-">None</option>${locs.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}`; });
+  await step(loadQueue); await step(loadHistory); await step(loadBank); await step(loadContractors);
+  if (seesPay) await step(loadSummary); else document.querySelector('[data-tab=tax]').hidden = true;
+  $('taxNote').textContent = 'Confirm the reporting threshold and the backup withholding rate with a US tax advisor.';
+});
+</script>
+</body>
+</html>

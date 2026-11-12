@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile changes and custom fields | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.was{color:var(--muted);text-decoration:line-through}
+</style>
+</head>
+<body>
+<header><h1>Profile changes and custom fields</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-org.html">Company structure</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs"><button data-tab="queue" class="on">Change requests</button><button data-tab="fields">Custom fields</button><button data-tab="person">One person's fields</button></div>
+
+  <div id="tab-queue" class="pane on">
+    <section class="card">
+      <h2>Requests from employees</h2>
+      <div class="warn">Before approving a bank change, confirm it with the employee in person or by a phone number you already have. Fake bank-change requests are a common payroll fraud.</div>
+      <div class="row" style="margin-top:0"><label>Show<select id="qStatus"><option value="pending">Waiting for review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="cancelled">Cancelled</option><option value="">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>What</th><th>On file now</th><th>Asked for</th><th>Reason</th><th>Sent</th><th></th></tr></thead><tbody id="qRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Changes that skip review</h2>
+      <p class="hint">Tick a kind of change to save it straight away without HR review. Bank changes always need review.</p>
+      <div class="row"><label class="chk"><input type="checkbox" id="autoAddress"> Home address</label><label class="chk"><input type="checkbox" id="autoName"> Legal name</label><button id="autoSave">Save</button></div>
+    </section>
+  </div>
+
+  <div id="tab-fields" class="pane">
+    <section class="card">
+      <h2>Custom fields on a person's record</h2>
+      <table><thead><tr><th>Label</th><th>Key</th><th>Type</th><th>Who sees it</th><th>Required</th><th>Status</th><th></th></tr></thead><tbody id="fRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="fTitle">Add a field</h2>
+      <form id="fForm"><div class="grid">
+        <label>Label<input name="label" required maxlength="80" placeholder="Uniform size"></label>
+        <label>Key (lowercase, no spaces)<input name="key" required pattern="[a-z][a-z0-9_]{1,39}" placeholder="uniform_size"></label>
+        <label>Type<select name="type" id="fType"><option value="text">Text</option><option value="number">Number</option><option value="date">Date</option><option value="select">Pick from a list</option><option value="boolean">Yes or no</option></select></label>
+        <label id="fOptsL" hidden>Choices (one per line)<textarea name="options" rows="3"></textarea></label>
+        <label>Who sees it<select name="visibility"><option value="hr_only">HR only</option><option value="manager">HR and the person's manager</option><option value="employee_view">Employee can see</option><option value="employee_edit">Employee can see and change</option></select></label>
+        <label>Help text (optional)<input name="helpText" maxlength="200"></label>
+        <label class="chk"><input type="checkbox" name="required"> Required</label>
+        <label class="chk"><input type="checkbox" name="sensitive"> Sensitive (stored encrypted, shown masked)</label>
+      </div>
+      <p class="hint">The key, the type and the sensitive setting cannot be changed later. Do not create fields for Social Security numbers or bank details; those have their own protected places.</p>
+      <div class="row"><button type="submit">Save field</button><button type="button" class="ghost" id="fCancel" hidden>Cancel edit</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-person" class="pane">
+    <section class="card">
+      <h2>Fill in custom fields for a person</h2>
+      <div class="row" style="margin-top:0"><label>Person<select id="pPick"></select></label><button class="ghost" id="pGo">Show</button></div>
+      <form id="pForm" style="margin-top:12px"><div class="grid" id="pFields"></div><div class="row"><button type="submit" id="pSave" hidden>Save</button></div></form>
+      <h3>Emergency contacts</h3>
+      <p class="hint">Opening these is recorded in the audit log.</p>
+      <div class="row"><button class="ghost" id="pContacts">Show emergency contacts</button></div>
+      <table style="margin-top:8px"><tbody id="pContactRows"></tbody></table>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const KIND = { legalName: 'Legal name', homeAddress: 'Home address', bankDetails: 'Bank account' };
+const VIS = { hr_only: 'HR only', manager: 'HR and manager', employee_view: 'Employee can see', employee_edit: 'Employee can change' };
+const TYPE = { text: 'Text', number: 'Number', date: 'Date', select: 'List', boolean: 'Yes or no' };
+let queue = []; let fields = []; let personFields = []; let fEdit = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const show = (r, v) => {
+  if (!v) return '<span class="hint">nothing on file</span>';
+  if (r.field === 'legalName') return esc([v.legalFirstName, v.legalMiddleName, v.legalLastName].filter(Boolean).join(' '));
+  if (r.field === 'homeAddress') return `${esc([v.line1, v.line2].filter(Boolean).join(', '))}<br>${esc(v.city)}, ${esc(v.state)} ${esc(v.zip)}`;
+  return `${esc(v.bankName)}<br>${esc(v.accountType || '')} ending ${esc(v.accountLast4)}<br><span class="hint">routing ${esc(v.routingNumber)}</span>`;
+};
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+
+async function loadQueue() {
+  const s = $('qStatus').value;
+  queue = (await req('GET', `/change-requests${s ? `?status=${s}` : ''}`)).data;
+  $('qRows').innerHTML = queue.map((r) => {
+    const state = r.status === 'pending' ? `<button data-ok="${esc(r.id)}">Approve</button> <button class="no" data-rej="${esc(r.id)}">Reject</button>`
+      : `<span class="tag ${r.status === 'approved' ? 'good' : r.status === 'rejected' ? 'badTag' : 'grey'}">${esc(r.status)}${r.autoApproved ? ' (no review needed)' : ''}</span>${r.decisionNote && !r.autoApproved ? `<br><span class="hint">${esc(r.decisionNote)}</span>` : ''}`;
+    return `<tr><td><b>${esc(r.userName || '')}</b><br><span class="hint">${esc(r.employeeId || '')}</span></td><td>${esc(KIND[r.field] || r.field)}</td><td class="was">${show(r, r.before)}</td><td>${show(r, r.after)}</td><td>${esc(r.reason)}${r.supportingDocument ? `<br><span class="hint">Document: ${esc(r.supportingDocument.name)}</span>` : ''}</td><td>${esc(when(r.createdAt))}</td><td>${state}</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="hint">Nothing here.</td></tr>';
+}
+async function loadSettings() {
+  const s = (await req('GET', '/people-data/settings')).settings.profileChange.autoApprove;
+  $('autoAddress').checked = s.includes('homeAddress'); $('autoName').checked = s.includes('legalName');
+}
+async function loadFields() {
+  fields = (await req('GET', '/custom-fields?all=true')).data;
+  $('fRows').innerHTML = fields.map((f) => `<tr><td><b>${esc(f.label)}</b>${f.helpText ? `<br><span class="hint">${esc(f.helpText)}</span>` : ''}</td><td>${esc(f.key)}</td><td>${esc(TYPE[f.type] || f.type)}${f.type === 'select' ? `<br><span class="hint">${esc(f.options.join(', '))}</span>` : ''}${f.sensitive ? ' <span class="tag warnTag">sensitive</span>' : ''}</td><td>${esc(VIS[f.visibility] || f.visibility)}</td><td>${f.required ? 'Yes' : 'No'}</td><td>${f.active === false ? '<span class="tag grey">off</span>' : '<span class="tag good">on</span>'}</td><td><button class="ghost" data-fedit="${esc(f.id)}">Edit</button> ${f.active === false ? `<button class="ghost" data-fon="${esc(f.id)}">Turn on</button>` : `<button class="no" data-foff="${esc(f.id)}">Turn off</button>`}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No custom fields yet.</td></tr>';
+}
+async function loadPeople() {
+  const people = (await req('GET', '/employees')).data;
+  $('pPick').innerHTML = people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} ${esc(p.employeeId || '')}</option>`).join('');
+}
+async function loadPerson() {
+  const id = $('pPick').value; if (!id) return;
+  personFields = (await req('GET', `/employees/${id}/custom-fields`)).data; $('pContactRows').innerHTML = '';
+  $('pSave').hidden = !personFields.some((f) => f.canEdit);
+  $('pFields').innerHTML = personFields.map((f) => {
+    const v = f.value ?? ''; const name = `cf_${f.key}`; const dis = f.canEdit ? '' : ' disabled';
+    let input;
+    if (f.type === 'select') input = `<select name="${esc(name)}"${dis}><option value="">Not set</option>${f.options.map((o) => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    else if (f.type === 'boolean') input = `<select name="${esc(name)}"${dis}><option value="">Not set</option><option value="true"${v === true ? ' selected' : ''}>Yes</option><option value="false"${v === false ? ' selected' : ''}>No</option></select>`;
+    else input = `<input name="${esc(name)}"${dis} type="${f.type === 'date' ? 'date' : f.type === 'number' && !f.sensitive ? 'number' : 'text'}" ${f.sensitive ? `placeholder="${esc(v || 'not set')}" autocomplete="off"` : `value="${esc(v)}"`}>`;
+    return `<label>${esc(f.label)}${f.required ? ' *' : ''}${input}${f.sensitive ? '<span class="hint">Shown masked. Type a new value to replace it.</span>' : ''}</label>`;
+  }).join('') || '<p class="hint">No custom fields yet. Add them on the Custom fields tab.</p>';
+}
+
+$('qStatus').addEventListener('change', () => loadQueue().catch((err) => say(err.message, false)));
+$('autoSave').addEventListener('click', async () => {
+  try { await req('PUT', '/people-data/settings', { profileChange: { autoApprove: [$('autoAddress').checked && 'homeAddress', $('autoName').checked && 'legalName'].filter(Boolean) } }); say('Saved.'); } catch (err) { say(err.message, false); }
+});
+$('fType').addEventListener('change', () => { $('fOptsL').hidden = $('fType').value !== 'select'; });
+function resetFieldForm() { fEdit = null; const f = $('fForm'); f.reset(); ['key', 'type', 'sensitive'].forEach((k) => { f.elements[k].disabled = false; }); $('fOptsL').hidden = true; $('fTitle').textContent = 'Add a field'; $('fCancel').hidden = true; }
+$('fCancel').addEventListener('click', resetFieldForm);
+$('fForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  const body = { label: el.label.value, key: el.key.value, type: el.type.value, options: el.options.value.split('\n').map((s) => s.trim()).filter(Boolean), visibility: el.visibility.value, helpText: el.helpText.value, required: el.required.checked, sensitive: el.sensitive.checked };
+  try {
+    if (fEdit) await req('PUT', `/custom-fields/${fEdit}`, body); else await req('POST', '/custom-fields', body);
+    say(fEdit ? 'Field updated.' : 'Field added.'); resetFieldForm(); await loadFields();
+  } catch (err) { say(err.message, false); }
+});
+$('pGo').addEventListener('click', () => loadPerson().catch((err) => say(err.message, false)));
+$('pForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target); const values = {};
+  for (const d of personFields.filter((x) => x.canEdit)) {
+    const raw = f.get(`cf_${d.key}`);
+    if (d.sensitive && raw === '') continue;
+    if (raw === '' && !d.hasValue) continue;
+    values[d.key] = raw === '' ? null : d.type === 'boolean' ? raw === 'true' : d.type === 'number' ? Number(raw) : raw;
+  }
+  if (!Object.keys(values).length) { say('Nothing to save.', false); return; }
+  try { await req('PUT', `/employees/${$('pPick').value}/custom-fields`, { values }); say('Saved.'); await loadPerson(); } catch (err) { say(err.message, false); }
+});
+$('pContacts').addEventListener('click', async () => {
+  try {
+    const rows = (await req('GET', `/employees/${$('pPick').value}/emergency-contacts`)).data;
+    $('pContactRows').innerHTML = rows.map((c) => `<tr><td><b>${esc(c.name)}</b>${c.isPrimary ? ' <span class="tag good">call first</span>' : ''}</td><td>${esc(c.relationship)}</td><td>${esc(c.phone)}</td><td>${esc(c.email || '')}</td></tr>`).join('') || '<tr><td class="hint">No emergency contacts on file.</td></tr>';
+  } catch (err) { say(err.message, false); }
+});
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const hit = (k) => { const el = e.target.closest(`[data-${k}]`); return el ? el.dataset[k] : null; };
+  let v;
+  try {
+    if ((v = hit('ok'))) {
+      const r = queue.find((x) => x.id === v);
+      const ask = r.field === 'bankDetails' ? `Approve the new bank account for ${r.userName}? Their next pay goes to the account ending ${r.after.accountLast4}. Have you confirmed this with them directly?` : `Approve this ${KIND[r.field].toLowerCase()} change for ${r.userName}?`;
+      if (window.confirm(ask)) { await req('POST', `/change-requests/${v}/approve`, {}); say('Approved and saved to the record.'); await loadQueue(); }
+    } else if ((v = hit('rej'))) {
+      const note = window.prompt('Tell the employee why this is not approved:');
+      if (note !== null) { await req('POST', `/change-requests/${v}/reject`, { note }); say('Rejected. The employee can see your note.'); await loadQueue(); }
+    } else if ((v = hit('fedit'))) {
+      const d = fields.find((x) => x.id === v); const el = $('fForm').elements; fEdit = d.id;
+      el.label.value = d.label; el.key.value = d.key; el.type.value = d.type; el.options.value = (d.options || []).join('\n'); el.visibility.value = d.visibility; el.helpText.value = d.helpText || ''; el.required.checked = Boolean(d.required); el.sensitive.checked = Boolean(d.sensitive);
+      ['key', 'type', 'sensitive'].forEach((k) => { el[k].disabled = true; }); $('fOptsL').hidden = d.type !== 'select';
+      $('fTitle').textContent = `Edit ${d.label}`; $('fCancel').hidden = false; $('fForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((v = hit('foff'))) {
+      if (window.confirm('Turn this field off? Saved values are kept but no longer shown.')) { await req('DELETE', `/custom-fields/${v}`); await loadFields(); }
+    } else if ((v = hit('fon'))) { await req('PUT', `/custom-fields/${v}`, { active: true }); await loadFields(); }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(loadQueue); await step(loadSettings); await step(loadFields); await step(loadPeople); await step(loadPerson);
+});
+</script>
+</body>
+</html>

@@ -50,6 +50,7 @@ const automationEngine = require("./services/automation-engine");
 
 const app = express();
 app.set('trust proxy', 1);
+app.use(require('./middleware/observability')); // request ids, JSON request logs, metrics
 const PORT = process.env.PORT || 3000;
 
 // 0. Firebase Auth reverse proxy (/__/auth/*, /__/firebase/*) so Google sign-in can use
@@ -282,6 +283,30 @@ app.use("/api/us", require("./routes/us-offboarding"));
 app.use("/api/us", require("./routes/us-reports"));
 app.use("/api/us", require("./routes/us-vault"));
 app.use("/api/us", require("./routes/us-compliance"));
+app.use("/api/us", require("./routes/us-billing"));
+app.use("/api/us", require("./routes/us-privacy"));
+app.use("/api/us", require("./routes/us-audit"));
+app.use("/api/us", require("./routes/us-retention"));
+app.use("/api", require("./routes/ops")); // health/deep, metrics, status, billing webhook, platform operator
+app.use("/api/us", require("./routes/us-benefits"));
+app.use("/api/us", require("./routes/us-leave-cases"));
+app.use("/api/us", require("./routes/us-wages"));
+app.use("/api/us", require("./routes/us-tips"));
+app.use("/api/us", require("./routes/us-people-data"));
+app.use("/api/us", require("./routes/us-hiring"));
+app.use("/api/us", require("./routes/us-esign"));
+// PUBLIC (no login): careers page and e-signature page APIs, rate limited inside the router
+app.use("/api/public", require("./routes/public-recruiting"));
+app.use("/api/us", require("./routes/us-clock-policy"));
+app.use("/api/us", require("./routes/us-schedule"));
+app.use("/api/sso", require("./routes/sso"));
+app.use("/api/support", require("./routes/support-access"));
+app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors
+app.use("/api/us/gusto", require("./routes/us-gusto")); // payroll through Gusto: connect, company setup, people sync, payroll runs
+app.use("/api/webhooks/gusto", require("./routes/us-gusto").webhookReceiver); // public: checked by Gusto's signature
+app.use("/api/v1", require("./routes/api-v1")); // public REST API (API key or OAuth token; no catch-all, so /api/v1/esic etc. still resolve)
+app.use("/oauth", require("./routes/oauth")); // OAuth 2.0 token and revocation
+app.use("/scim/v2", require("./routes/scim")); // SCIM 2.0 provisioning (Okta, Entra ID, Google Workspace)
 app.use("/api/manager-goals", managerGoalsRoutes);
 app.use("/api/employee-goals", employeeGoalsRoutes);
 app.use("/api/custom-templates", customTemplatesRoutes);
@@ -432,7 +457,17 @@ async function startServer() {
     
     // Initialize the centralized automation engine
     automationEngine.start();
-    
+
+    // Outbound webhooks (event outbox -> signed deliveries with retries) and scheduled connector syncs
+    try {
+      require('./services/webhooks').start();
+      require('./services/connectors/runtime').startScheduler();
+      if (require('./routes/us-gusto').startJobs()) logger.info('[Gusto] Event poll job started');
+      logger.info('[Integrations] Webhook delivery worker and connector scheduler started');
+    } catch (intErr) {
+      logger.error(`[Integrations] Could not start background workers: ${intErr.message}`);
+    }
+
     // Onboarding Document submission Reminder scheduler (Twice daily: every 12 hours)
     const { runReminderJob } = require("./utils/reminder-scheduler");
     setInterval(() => {

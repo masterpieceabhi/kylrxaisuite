@@ -11,6 +11,8 @@ const crypto = require('crypto');
 
 const VERSION = 'v1';
 let devKeyWarned = false;
+let devKey = null;
+let devKeyFor = null;
 
 function getKey() {
     const raw = process.env.PII_ENCRYPTION_KEY;
@@ -31,7 +33,12 @@ function getKey() {
         devKeyWarned = true;
         console.warn('PII_ENCRYPTION_KEY not set: using a key derived from JWT_SECRET (local testing only).');
     }
-    return crypto.scryptSync(process.env.JWT_SECRET, 'kylrx-pii-dev', 32);
+    // scrypt is deliberately slow (about 100 ms); derive once per secret, not once per field
+    if (!devKey || devKeyFor !== process.env.JWT_SECRET) {
+        devKeyFor = process.env.JWT_SECRET;
+        devKey = crypto.scryptSync(devKeyFor, 'kylrx-pii-dev', 32);
+    }
+    return devKey;
 }
 
 function encryptField(plain, context) {

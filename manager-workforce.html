@@ -236,6 +236,7 @@
         }
     </style>
     <link rel="stylesheet" href="sidebar-lock.css">
+<script src="country-format.js"></script>
 </head>
 <body>
     
@@ -1548,7 +1549,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
                             <div>
                                 <div style="font-weight:800; font-size:0.9rem;">${r.employeeName || 'Team Member'}</div>
-                                <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Time unknown'}</div>
+                                <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Time unknown'}</div>
                             </div>
                             <span style="background:#fef3c7; color:#d97706; font-size:0.7rem; font-weight:800; padding:4px 10px; border-radius:100px;">Pending</span>
                         </div>

@@ -223,6 +223,7 @@
         .profile-role { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; }
     </style>
     <link rel="stylesheet" href="sidebar-lock.css">
+<script src="country-format.js"></script>
 </head>
 <body>
         <script>
@@ -429,7 +430,7 @@
             const sel = document.getElementById('monthFilter');
             months.forEach(m => {
                 const dt = new Date(m + '-01');
-                const label = dt.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                const label = dt.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { month: 'long', year: 'numeric' });
                 const opt = document.createElement('option');
                 opt.value = m;
                 opt.textContent = label;
@@ -441,7 +442,7 @@
         const fmtTime = (ts) => {
             if (!ts) return '—';
             const d = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
-            return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+            return d.toLocaleTimeString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { hour: '2-digit', minute: '2-digit', hour12: true });
         };
 
         // Format duration in hours
@@ -496,12 +497,12 @@
             records.forEach(r => {
                 const month = (r.date || '').substring(0, 7);
                 if (month && month !== lastMonth) {
-                    const label = new Date(month + '-01').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+                    const label = new Date(month + '-01').toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { month: 'long', year: 'numeric' });
                     html += `<tr class="month-header"><td colspan="5">${label}</td></tr>`;
                     lastMonth = month;
                 }
                 const dt = r.date ? new Date(r.date) : new Date();
-                const dayLabel = !isNaN(dt.getTime()) ? dt.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
+                const dayLabel = !isNaN(dt.getTime()) ? dt.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { weekday: 'short', day: 'numeric', month: 'short' }) : '—';
                 let actionHtml = '<span style="color:var(--text-muted); font-size:0.75rem;">—</span>';
                 if (r.regularized) {
                     actionHtml = `<span style="font-size:0.72rem; font-weight:800; color:#059669; background:#ecfdf5; padding:3px 8px; border-radius:6px; border:1px solid #a7f3d0;">Regularized</span>`;

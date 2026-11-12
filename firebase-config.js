@@ -236,6 +236,7 @@ if (db && typeof db.collection !== 'function') {
 }
 if (typeof window !== 'undefined') {
   window.db = db;
+  window.auth = auth; // classic (non-module) scripts need the signed-in user to call the API
   // Many services (holiday calendar, cost center, shifts, finance, ...) destructure these from
   // window.firebaseFirestore; nothing defined it, so their saves silently stayed in memory.
   window.firebaseFirestore = {

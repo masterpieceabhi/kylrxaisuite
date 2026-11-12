@@ -1385,9 +1385,8 @@ window.renderLucideIcons = renderLucideIcons;
   try {
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        try {
-          await signInWithEmailAndPassword(auth, 'superadmin@kylrx.ai', 'Kylrx#SuperAdmin2026!Secured');
-        } catch (_) {}
+        window.location.replace('login.html');
+        return;
       }
       setupFirestoreListeners();
       await loadBackendData();

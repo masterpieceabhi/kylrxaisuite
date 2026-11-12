@@ -93,7 +93,7 @@ export async function updateCandidate(id, patch, options = {}) {
                     updates.onboardingStatus = "invited";
 
                     const inviteLink = `${window.location.origin}/onboarding-invite.html?token=${onboardingToken}&id=${empId}`;
-                    const deadline = expiryDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    const deadline = expiryDate.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: '2-digit', month: 'short', year: 'numeric' });
                     const emailBody = `
                         <div style="font-family: 'Outfit', sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e5e7eb; border-radius: 20px; background-color: #ffffff;">
                             <div style="text-align: center; margin-bottom: 20px;">

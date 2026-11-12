@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payroll (Gusto) | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}button.pay{background:#166534}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#f1f5f9;color:var(--muted)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.danger{background:#fef2f2;border:1px solid #fecaca;color:var(--bad);border-radius:8px;padding:10px 12px;margin:12px 0}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.big{font-size:22px;font-weight:700}.stat{border:1px solid var(--line);border-radius:10px;padding:12px}
+.step{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:start;padding:12px 0;border-bottom:1px solid var(--line)}
+.step .n{width:26px;height:26px;border-radius:50%;background:#f1f5f9;display:grid;place-items:center;font-weight:700;font-size:12px}
+.step.done .n{background:#dcfce7;color:var(--ok)}.step form{margin-top:10px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Payroll (Gusto)</h1><div><a href="admin-us-time.html">Timesheets</a> &nbsp;|&nbsp; <a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <section class="card">
+    <div class="warn" id="note">Gusto calculates pay, files payroll taxes and moves the money. Review every total before you submit.</div>
+    <div class="grid" id="statusGrid"></div>
+    <div class="danger" id="modeWarn" hidden></div>
+    <div class="danger" id="cfgWarn" hidden></div>
+  </section>
+
+  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
+
+  <div id="tab-setup" style="display:grid;gap:20px">
+    <section class="card" id="connectCard" hidden>
+      <h2>Connect this company to Gusto</h2>
+      <p class="hint">This creates the company in Gusto. Only the owner can do this. The company name and EIN come from the Company profile.</p>
+      <form id="connectForm"><div class="grid">
+        <label>Payroll contact first name<input name="firstName" required></label>
+        <label>Payroll contact last name<input name="lastName" required></label>
+        <label>Contact email (leave empty to use yours)<input name="email" type="email"></label>
+      </div><div class="row"><button type="submit">Connect to Gusto</button></div></form>
+    </section>
+    <section class="card" id="stepsCard" hidden>
+      <h2>Setup steps</h2>
+      <p class="hint">Work from top to bottom. A step opens when the ones before it are finished.</p>
+      <div id="steps"></div>
+      <div class="row"><button class="ghost" id="refreshSetup">Check again with Gusto</button></div>
+    </section>
+  </div>
+
+  <div id="tab-people" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>People in Gusto</h2>
+      <p class="hint">A person needs a complete US profile (address, date of birth, SSN, pay) and a W-4 before they can be sent. Gusto pays only people who have finished onboarding there.</p>
+      <div class="row" style="margin:0 0 12px"><button id="syncPeople">Send people to Gusto</button><button class="ghost" id="pullPeople">Compare with Gusto</button><button class="ghost" id="syncTimeOff">Send approved time off</button></div>
+      <table><thead><tr><th>Person</th><th>Type</th><th>In Gusto</th><th>Finished there</th><th>State</th><th>What is needed</th><th>Last sent</th></tr></thead><tbody id="people"></tbody></table>
+      <div id="pullOut" class="hint" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <div id="tab-run" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Pay period</h2>
+      <div class="grid">
+        <label>First day<input id="pStart" type="date"></label>
+        <label>Last day<input id="pEnd" type="date"></label>
+      </div>
+      <div class="row"><button class="ghost" id="loadFeed">Show the hours that would be sent</button><button id="prepare" disabled>Prepare in Gusto</button></div>
+      <p class="hint">Only approved timesheet weeks are sent. Preparing calculates the payroll in Gusto; nothing is paid until you submit.</p>
+    </section>
+    <section class="card" id="feedCard" hidden>
+      <h2>Hours for this period</h2>
+      <div id="feedIssues"></div>
+      <table><thead><tr><th>Person</th><th>Regular</th><th>Overtime</th><th>Double time</th><th>Paid time off</th></tr></thead><tbody id="feedRows"></tbody></table>
+    </section>
+    <section class="card" id="previewCard" hidden>
+      <h2>Review before you submit</h2>
+      <div class="grid" id="totals"></div>
+      <div id="cutoff" style="margin-top:12px"></div>
+      <div id="prevIssues"></div>
+      <h3>Per person</h3>
+      <table><thead><tr><th>Person</th><th>Gross pay</th><th>Net pay</th></tr></thead><tbody id="prevPeople"></tbody></table>
+      <div class="danger">Submitting pays these people. Type the word <b>PAY</b> to confirm you reviewed the totals above.</div>
+      <div class="row"><input id="confirmWord" placeholder="Type PAY" autocomplete="off" style="width:120px"><label style="display:flex;gap:6px;align-items:center;color:var(--ink);font-weight:500" id="lateWrap" hidden><input type="checkbox" id="acceptLate"> I understand the deadline has passed and pay may arrive late</label><button class="pay" id="submitPay" disabled>Submit payroll</button><button class="no" id="discard">Discard this preparation</button></div>
+    </section>
+  </div>
+
+  <div id="tab-history" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Payrolls</h2><table><thead><tr><th>Period</th><th>Pay date</th><th>Status</th><th>Gross</th><th>Net</th><th>Prepared</th><th>Submitted</th><th></th></tr></thead><tbody id="history"></tbody></table></section>
+    <section class="card"><h2>Payroll taxes and forms</h2><p class="hint">Read from Gusto. Gusto files and pays these; nothing is filed from this screen.</p>
+      <table><thead><tr><th>Tax</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead><tbody id="taxes"></tbody></table>
+      <h3>Company forms</h3><table><thead><tr><th>Form</th><th>Signed</th></tr></thead><tbody id="forms"></tbody></table>
+    </section>
+    <section class="card"><h2>Check hours against Gusto</h2><p class="hint">Uses the pay period on the "Run payroll" tab.</p><div class="row" style="margin-top:0"><button class="ghost" id="reconcile">Compare</button></div><div id="recOut" style="margin-top:10px"></div></section>
+  </div>
+
+  <div id="tab-health" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Open problems</h2><table><thead><tr><th>When</th><th>About</th><th>What happened</th><th>Tries</th><th></th></tr></thead><tbody id="errors"></tbody></table></section>
+    <section class="card"><h2>Updates from Gusto</h2>
+      <div id="hook" class="hint"></div>
+      <div class="row"><button class="ghost" id="subscribe">Turn on updates from Gusto</button><button class="ghost" id="poll">Fetch missed updates now</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Received</th><th>Event</th><th>Status</th><th>Problem</th></tr></thead><tbody id="events"></tbody></table>
+    </section>
+    <section class="card" id="discCard" hidden><h2>Disconnect</h2><p class="hint">Stops all payroll actions from this product. It does not delete anything in Gusto.</p><div class="row" style="margin-top:0"><input id="discWord" placeholder="Type DISCONNECT" autocomplete="off"><button class="no" id="disconnect">Disconnect from Gusto</button></div></section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const money = (n) => (n === null || n === undefined || n === '' ? '' : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const tag = (text, cls) => `<span class="tag ${cls}">${esc(text)}</span>`;
+let status = null; let prepared = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/gusto${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`); e.data = json; e.status = res.status; throw e; }
+  return json;
+}
+const guard = (fn) => async (ev) => { const b = ev && ev.currentTarget; if (b && b.tagName === 'BUTTON') b.disabled = true; try { await fn(ev); } catch (e) { say(e.message, false); } finally { if (b && b.tagName === 'BUTTON' && b.id !== 'submitPay' && b.id !== 'prepare') b.disabled = false; } };
+
+/* ---------- status ---------- */
+async function loadStatus() {
+  status = await req('GET', '/status');
+  const c = status.connection;
+  $('note').textContent = status.note;
+  $('statusGrid').innerHTML = [
+    ['Connection', c.connected ? tag('Connected', 'good') : tag(c.status === 'reauth_required' ? 'Needs reconnecting' : 'Not connected', 'warnTag')],
+    ['Company in Gusto', esc(c.companyName || '-')],
+    ['Gusto approval', c.connected ? (c.approved ? tag('Approved', 'good') : tag('Not approved yet', 'warnTag')) : '-'],
+    ['Company bank account', c.bankLast4 ? `ending ${esc(c.bankLast4)}` : '-'],
+    ['Open problems', status.openErrors ? tag(String(status.openErrors), 'badTag') : tag('None', 'good')]
+  ].map(([k, v]) => `<div class="stat"><div class="hint">${k}</div><div style="margin-top:4px;font-weight:600">${v}</div></div>`).join('');
+  const mw = $('modeWarn');
+  mw.hidden = status.mode === 'production';
+  mw.textContent = status.mode === 'mock' ? 'Practice mode: this server talks to a pretend Gusto. No real company is created and nobody is paid.' : status.mode === 'demo' ? 'Demo mode: this server talks to Gusto\'s demo environment. Nobody is paid.' : '';
+  const cw = $('cfgWarn');
+  cw.hidden = status.configured;
+  cw.textContent = status.configured ? '' : `Gusto is not set up on this server yet: ${status.configProblems.join('; ')}`;
+  $('connectCard').hidden = c.connected || !status.can.connect;
+  $('stepsCard').hidden = !c.connected;
+  $('discCard').hidden = !c.connected || !status.can.connect;
+  for (const id of ['syncPeople', 'pullPeople', 'syncTimeOff', 'prepare', 'poll']) $(id).hidden = !status.can.run;
+  $('subscribe').hidden = !status.can.connect;
+  if (!c.connected && !status.can.connect) say('This company is not connected to Gusto yet. The owner connects it on this page.', false);
+}
+
+/* ---------- setup ---------- */
+const STEP_FORMS = {
+  terms: () => '<p class="hint">By continuing you accept Gusto\'s terms of service for this company. Your name, the time and your network address are recorded.</p>',
+  federal_tax: () => '<div class="grid"><label>Federal filing form<select name="filingForm"><option value="941">941 (most companies)</option><option value="944">944 (very small, told by the IRS)</option></select></label></div><p class="hint">Legal name, EIN and company type come from the Company profile.</p>',
+  industry: () => '<div class="grid"><label>Industry code (NAICS, 6 digits)<input name="naicsCode" inputmode="numeric" maxlength="6" required></label><label>Industry name<input name="title" required></label></div>',
+  bank: () => '<div class="grid"><label>Routing number<input name="routingNumber" inputmode="numeric" maxlength="9" autocomplete="off" required></label><label>Account number<input name="accountNumber" inputmode="numeric" maxlength="17" autocomplete="off" required></label><label>Type<select name="accountType"><option value="checking">Checking</option><option value="savings">Savings</option></select></label></div><p class="hint">The account number goes straight to Gusto. Only the last 4 digits are kept here.</p>',
+  bank_verify: () => '<div class="grid"><label>First small deposit ($)<input name="deposit1" type="number" step="0.01" min="0.01" max="0.99" required></label><label>Second small deposit ($)<input name="deposit2" type="number" step="0.01" min="0.01" max="0.99" required></label></div><p class="hint">Gusto sends two small deposits to the company account in 1 to 2 business days. Enter the two amounts.</p>',
+  pay_schedule: () => '<div class="grid"><label>How often<select name="frequency"><option value="weekly">Every week</option><option value="biweekly" selected>Every other week</option><option value="semimonthly">Twice a month</option><option value="monthly">Monthly</option></select></label><label>Last day of the first pay period<input name="anchorEndOfPayPeriod" type="date" required></label><label>First pay date<input name="anchorPayDate" type="date" required></label></div>',
+  employee_onboarded: () => '<p class="hint">Marks the next person as finished in Gusto. Use the People tab to see who is left.</p>',
+  state_taxes: () => '<div class="grid"><label>State (2 letters)<input name="state" maxlength="2" required></label><label>State tax account number<input name="state_tax_id" autocomplete="off"></label><label>Unemployment tax rate (%)<input name="sui_rate" type="number" step="0.001" min="0"></label></div><p class="hint">Use the numbers on the letters from your state. Confirm with your accountant.</p>',
+  signatory: () => '<div class="grid"><label>First name<input name="firstName" required></label><label>Last name<input name="lastName" required></label><label>Email<input name="email" type="email" required></label><label>Title<input name="title" required></label><label>Date of birth<input name="birthday" type="date" required></label><label>SSN<input name="ssn" inputmode="numeric" autocomplete="off" placeholder="123-45-6789" required></label></div><p class="hint">The person who signs tax forms for the company. The SSN goes straight to Gusto and is not kept here.</p>',
+  forms: () => '<div class="grid"><label>Type your full name to sign<input name="signatureText" required></label></div><label style="display:flex;gap:6px;align-items:center;color:var(--ink);font-weight:500;margin-top:8px"><input type="checkbox" name="agree" required> I am the signatory and I agree to sign the company forms electronically</label>'
+};
+const BUTTON = { terms: 'Accept and continue', locations: 'Send the company address', employees: 'Send people to Gusto', finish: 'Send the company to Gusto for approval', approval: 'Check approval' };
+function stepBody(form) {
+  const o = Object.fromEntries(new FormData(form).entries());
+  const key = form.dataset.step;
+  if (key === 'state_taxes') { const st = String(o.state || '').toUpperCase(); return { states: { [st]: { state_tax_id: o.state_tax_id, sui_rate: o.sui_rate } } }; }
+  if (key === 'forms') return { agree: o.agree === 'on', signatureText: o.signatureText };
+  return o;
+}
+async function loadSetup(live) {
+  if (!status.connection.connected) return;
+  const s = await req('GET', `/setup${live ? '?live=true' : ''}`);
+  const cls = { done: 'good', ready: 'warnTag', waiting: 'warnTag', blocked: 'grey', error: 'badTag' };
+  const word = { done: 'Done', ready: 'Ready', waiting: 'Waiting', blocked: 'Not yet', error: 'Problem' };
+  $('steps').innerHTML = s.steps.map((st, i) => {
+    const open = status.can.connect && ['ready', 'error', 'waiting'].includes(st.status) && st.key !== 'company' && !(st.key === 'approval');
+    return `<div class="step ${st.status === 'done' ? 'done' : ''}"><div class="n">${i + 1}</div><div><b>${esc(st.label)}</b> ${tag(word[st.status] || st.status, cls[st.status] || 'grey')}
+      <div class="hint">${esc(st.help || '')}</div>${st.note ? `<div style="margin-top:4px">${esc(st.note)}</div>` : ''}${st.blockedBy && st.blockedBy.length ? `<div class="hint">First: ${st.blockedBy.map(esc).join(', ')}</div>` : ''}
+      ${open ? `<form data-step="${esc(st.key)}">${(STEP_FORMS[st.key] || (() => ''))()}<div class="row"><button type="submit">${esc(BUTTON[st.key] || 'Save this step')}</button></div></form>` : ''}</div><div></div></div>`;
+  }).join('');
+  if (s.stale) $('steps').insertAdjacentHTML('afterbegin', `<div class="hint">Last checked ${esc(when(s.checkedAt))}. Press "Check again with Gusto" for the current state.</div>`);
+}
+$('steps').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target; const btn = form.querySelector('button'); btn.disabled = true;
+  try { await req('POST', `/setup/${form.dataset.step}`, stepBody(form)); say('Saved.'); await loadStatus(); await loadSetup(true); } catch (e) { say(e.message, false); btn.disabled = false; }
+});
+$('connectForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const o = Object.fromEntries(new FormData(ev.target).entries());
+  try { await req('POST', '/connect', { admin: { firstName: o.firstName, lastName: o.lastName, email: o.email || undefined } }); say('Connected. Now finish the setup steps.'); await loadStatus(); await loadSetup(true); } catch (e) { say(e.message, false); }
+});
+$('refreshSetup').addEventListener('click', guard(async () => { await loadSetup(true); await loadStatus(); }));
+
+/* ---------- people ---------- */
+async function loadPeople() {
+  const r = await req('GET', '/people');
+  const cls = { synced: 'good', blocked: 'badTag', error: 'badTag', not_sent: 'grey' };
+  const word = { synced: 'Up to date', blocked: 'Cannot be sent', error: 'Problem', not_sent: 'Not sent yet' };
+  $('people').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}${p.active ? '' : ' <span class="hint">(left)</span>'}</td><td>${esc(p.classification || '')} ${esc(p.payType || '')}</td><td>${p.inGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${p.finishedInGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${tag(word[p.syncState] || p.syncState, cls[p.syncState] || 'grey')}</td><td>${esc((p.blockedReasons || []).join('; ') || p.lastError || (p.drift && p.drift.length ? `Different in Gusto: ${p.drift.map((d) => d.field || d).join(', ')}` : ''))}</td><td>${esc(when(p.lastSyncedAt))}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No people with a US profile yet.</td></tr>';
+}
+$('syncPeople').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/people', {}); say(`Sent ${r.synced}, already up to date ${r.unchanged}, cannot be sent ${r.blocked}, problems ${r.errors}.`, !r.errors); await loadPeople(); await loadStatus(); }));
+$('pullPeople').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/pull', {}); $('pullOut').textContent = `Gusto has ${r.gustoCount} people. Updated ${r.updated}. In Gusto but not matched here: ${r.unmatched.map((u) => u.name || u.email).join(', ') || 'none'}. Linked here but missing in Gusto: ${r.missingInGusto.length}.`; await loadPeople(); }));
+$('syncTimeOff').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/time-off', {}); say(`Time off: sent ${r.synced}, already there ${r.unchanged}, skipped ${r.skipped}, problems ${r.errors}.`, !r.errors); }));
+
+/* ---------- run payroll ---------- */
+const issueList = (issues) => (issues && issues.length ? `<div class="warn">${issues.map((i) => `${i.severity === 'blocker' ? '<b>Must fix:</b> ' : ''}${esc(i.message)}`).join('<br>')}</div>` : '');
+const periodOf = () => { const start = $('pStart').value; const end = $('pEnd').value; if (!start || !end) throw new Error('Choose the first and last day of the pay period.'); return { start, end }; };
+$('loadFeed').addEventListener('click', guard(async () => {
+  const p = periodOf();
+  const f = await req('GET', `/payroll/feed?start=${p.start}&end=${p.end}`);
+  $('feedCard').hidden = false; $('previewCard').hidden = true; prepared = null;
+  $('feedIssues').innerHTML = issueList(f.issues);
+  $('feedRows').innerHTML = f.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.regularHours}</td><td>${r.overtimeHours}</td><td>${r.doubleTimeHours}</td><td>${r.ptoHours || 0}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No approved hours in this period.</td></tr>';
+  $('prepare').disabled = !(f.ready && f.rows.length && status.can.run);
+}));
+function showPreview(p) {
+  prepared = p; $('previewCard').hidden = false;
+  const t = p.totals || {};
+  $('totals').innerHTML = [['Gross pay', t.gross_pay], ['Net pay to people', t.net_pay], ['Employee taxes', t.employee_taxes], ['Employer taxes', t.employer_taxes], ['Taken from the company account', t.company_debit]].map(([k, v]) => `<div class="stat"><div class="hint">${k}</div><div class="big">${money(v)}</div></div>`).join('');
+  const c = p.cutoff || {};
+  $('cutoff').innerHTML = c.message ? `<div class="${c.status === 'passed' || c.status === 'urgent' ? 'danger' : 'warn'}">${esc(c.message)}</div>` : '';
+  $('lateWrap').hidden = c.status !== 'passed';
+  $('prevIssues').innerHTML = issueList(p.issues) + (p.blockers && p.blockers.length ? `<div class="danger"><b>Gusto will not accept this payroll yet:</b><br>${p.blockers.map(esc).join('<br>')}</div>` : '') + (p.stale ? '<div class="danger">Hours changed after this was prepared. Prepare it again.</div>' : '');
+  $('prevPeople').innerHTML = (p.employees || []).map((e) => `<tr><td>${esc(e.name || e.employeeUuid)}${e.excluded ? ' <span class="hint">(left out)</span>' : ''}</td><td>${money(e.gross)}</td><td>${money(e.net)}</td></tr>`).join('');
+  $('confirmWord').value = ''; canSubmit();
+}
+const canSubmit = () => { const p = prepared; $('submitPay').disabled = !(p && p.canSubmit !== false && !p.stale && !(p.blockers && p.blockers.length) && $('confirmWord').value.trim() === 'PAY' && (p.cutoff && p.cutoff.status === 'passed' ? $('acceptLate').checked : true)); };
+$('confirmWord').addEventListener('input', canSubmit); $('acceptLate').addEventListener('change', canSubmit);
+$('prepare').addEventListener('click', guard(async () => { const p = periodOf(); const r = await req('POST', '/payroll/prepare', p); showPreview(r); say('Prepared. Review the totals, then submit.'); $('prepare').disabled = false; }));
+$('submitPay').addEventListener('click', guard(async () => {
+  const id = prepared.payrollUuid;
+  try { const r = await req('POST', `/payroll/${id}/submit`, { confirm: true, confirmPayrollId: id, acceptLate: $('acceptLate').checked }); say(`Payroll submitted. Gross pay ${money(r.totals && r.totals.gross_pay)}.`); $('previewCard').hidden = true; prepared = null; await loadHistory(); }
+  catch (e) { if (e.data && e.data.code === 'stale_hours') { prepared.stale = true; showPreview(prepared); } throw e; }
+}));
+$('discard').addEventListener('click', guard(async () => { if (!prepared) return; await req('POST', `/payroll/${prepared.payrollUuid}/cancel`, {}); $('previewCard').hidden = true; prepared = null; say('Discarded. Nothing was paid.'); }));
+
+/* ---------- history, taxes, reconciliation ---------- */
+async function loadHistory() {
+  const r = await req('GET', '/payroll/history');
+  const cls = { submitted: 'good', paid: 'good', prepared: 'warnTag', cancelled: 'grey', discarded: 'grey', submitting: 'warnTag' };
+  $('history').innerHTML = r.data.map((h) => `<tr><td>${esc(day(h.periodStart))} to ${esc(day(h.periodEnd))}</td><td>${esc(day(h.checkDate))}</td><td>${tag(h.status, cls[h.status] || 'grey')}</td><td>${money(h.totals && h.totals.gross_pay)}</td><td>${money(h.totals && h.totals.net_pay)}</td><td>${esc(when(h.preparedAt))}</td><td>${esc(when(h.submittedAt))}</td><td>${h.status === 'prepared' ? `<button class="ghost" data-open="${esc(h.payrollUuid)}">Open</button>` : ''}${h.status === 'submitted' && status.can.run ? `<button class="ghost" data-refresh="${esc(h.payrollUuid)}">Update</button> <button class="no" data-cancel="${esc(h.payrollUuid)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No payrolls yet.</td></tr>';
+}
+$('history').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.open) { const p = await req('GET', `/payroll/${b.dataset.open}`); showPreview({ ...p, payrollUuid: b.dataset.open }); show('run'); }
+  if (b.dataset.refresh) { const r = await req('POST', `/payroll/${b.dataset.refresh}/refresh`, {}); say(`Status in Gusto: ${r.status}.`); await loadHistory(); }
+  if (b.dataset.cancel) { if (!window.confirm('Cancel this submitted payroll in Gusto? This only works before Gusto has started paying.')) return; await req('POST', `/payroll/${b.dataset.cancel}/cancel`, {}); say('Cancelled.'); await loadHistory(); }
+}));
+async function loadTaxes() {
+  if (!status.connection.connected) return;
+  const r = await req('GET', '/taxes');
+  $('taxes').innerHTML = (r.payments || []).map((t) => `<tr><td>${esc(t.tax_name || t.name || '')}</td><td>${money(t.amount)}</td><td>${esc(t.status || '')}</td><td>${esc(day(t.due_date))}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nothing yet.</td></tr>';
+  $('forms').innerHTML = (r.forms || []).map((f) => `<tr><td>${esc(f.title || '')}</td><td>${f.signed ? tag('Signed', 'good') : tag('Not signed', 'warnTag')}</td></tr>`).join('') || '<tr><td colspan="2" class="hint">Nothing yet.</td></tr>';
+}
+$('reconcile').addEventListener('click', guard(async () => {
+  const p = periodOf();
+  const r = await req('GET', `/payroll/reconciliation?start=${p.start}&end=${p.end}`);
+  $('recOut').innerHTML = !r.hasPayroll ? '<div class="hint">Gusto has no payroll for this period yet.</div>' : `<div>${r.mismatches ? tag(`${r.mismatches} difference(s)`, 'badTag') : tag('Hours match', 'good')} ${r.missingLinks && r.missingLinks.length ? tag(`${r.missingLinks.length} people not in Gusto`, 'warnTag') : ''}</div>${(r.diffs || []).length ? `<table style="margin-top:8px"><thead><tr><th>Person</th><th>Hours here (regular / overtime / double)</th><th>Hours in Gusto</th><th></th></tr></thead><tbody>${r.diffs.map((d) => `<tr><td>${esc(d.name || d.userId)}</td><td>${d.ours.regular} / ${d.ours.overtime} / ${d.ours.doubleTime}</td><td>${d.inGusto ? `${d.gusto.regular} / ${d.gusto.overtime} / ${d.gusto.doubleTime}` : 'not on this payroll'}</td><td>${d.match ? tag('Match', 'good') : tag('Different', 'badTag')}</td></tr>`).join('')}</tbody></table>` : ''}`;
+}));
+
+/* ---------- problems and connection ---------- */
+async function loadHealth() {
+  const e = await req('GET', '/errors');
+  $('errors').innerHTML = e.data.map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(x.scope)}</td><td>${esc(x.message)}</td><td>${x.attempts}</td><td>${status.can.run && ['person', 'time_off', 'location'].includes(x.scope) ? `<button class="ghost" data-retry="${esc(x.id)}">Try again</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No open problems.</td></tr>';
+  const h = await req('GET', '/webhooks/health');
+  const s = h.subscription;
+  $('hook').innerHTML = `Updates from Gusto: ${s.status === 'verified' ? tag('On', 'good') : s.status === 'pending' ? tag('Waiting for Gusto to confirm', 'warnTag') : tag('Off', 'grey')} &nbsp; Last update received: ${esc(when(h.lastReceivedAt) || 'never')} &nbsp; Rejected (bad signature): ${h.rejectedSignatures}`;
+  $('events').innerHTML = h.recent.map((x) => `<tr><td>${esc(when(x.receivedAt))}</td><td>${esc(x.type || '')}</td><td>${esc(x.status)}</td><td>${esc(x.lastError || '')}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No updates received yet.</td></tr>';
+}
+$('errors').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-retry]'); if (!b) return; await req('POST', `/errors/${b.dataset.retry}/retry`, {}); say('Tried again.'); await loadHealth(); await loadStatus(); }));
+$('subscribe').addEventListener('click', guard(async () => { await req('POST', '/webhooks/subscribe', {}); say('Asked Gusto to send updates.'); await loadHealth(); }));
+$('poll').addEventListener('click', guard(async () => { const r = await req('POST', '/webhooks/poll', {}); say(`Fetched ${r.fetched} updates, ${r.added} were new.`); await loadHealth(); }));
+$('disconnect').addEventListener('click', guard(async () => { if ($('discWord').value.trim() !== 'DISCONNECT') throw new Error('Type DISCONNECT to confirm.'); await req('POST', '/disconnect', { confirm: true }); say('Disconnected from Gusto.'); await loadStatus(); await loadSetup(false); }));
+
+/* ---------- tabs ---------- */
+const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, history: async () => { await loadHistory(); await loadTaxes(); }, health: loadHealth };
+function show(tab) {
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;
+  LOADERS[tab]().catch((e) => say(e.message, false));
+}
+$('tabs').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) show(b.dataset.tab); });
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try { await loadStatus(); await loadSetup(false); } catch (e) { say(e.status === 409 ? 'Payroll through Gusto is for US companies.' : e.message, false); }
+});
+</script>
+</body>
+</html>

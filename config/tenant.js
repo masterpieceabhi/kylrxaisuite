@@ -22,7 +22,9 @@ const NO_ORG = '__no_org__';
 
 // Read filtering goes live with the orgId data migration (scripts/migrate-tenant-orgid.js);
 // before that existing documents have no orgId. Stamping new documents is always on.
-const READ_SCOPING = () => process.env.TENANT_READ_SCOPING === 'on';
+// On by default in production (set TENANT_READ_SCOPING=off only for a database not yet migrated);
+// off by default elsewhere unless TENANT_READ_SCOPING=on
+const READ_SCOPING = () => (process.env.NODE_ENV === 'production' ? process.env.TENANT_READ_SCOPING !== 'off' : process.env.TENANT_READ_SCOPING === 'on');
 
 function currentTenant() {
     return tenantStorage.getStore();

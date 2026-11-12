@@ -324,6 +324,7 @@
             filter: brightness(0.95);
         }
     </style>
+<script src="country-format.js"></script>
 </head>
 
 <body>
@@ -504,13 +505,13 @@
                     html = `
                         <div class="form-group full"><label>Account Holder Name</label><input type="text" name="bank_name" value="${formData.bank_name || ''}"></div>
                         <div class="form-group"><label>Account Number</label><input type="text" name="bank_acc" value="${formData.bank_acc || ''}"></div>
-                        <div class="form-group"><label>IFSC / SWIFT Code</label><input type="text" name="bank_ifsc" value="${formData.bank_ifsc || ''}"></div>
+                        <div class="form-group"><label>IFSC / SWIFT Code / ABA Routing Number</label><input type="text" name="bank_ifsc" value="${formData.bank_ifsc || ''}"></div>
                     `;
                     break;
                 case 'ids':
                     html = `
                         <div class="form-group full" style="border: 1px solid var(--border); padding: 1.5rem; border-radius: 16px; margin-bottom: 1rem;">
-                            <label style="font-weight: 800; font-size: 1rem; color: var(--text-main);">Identity Proof (Aadhar / PAN / Passport) *</label>
+                            <label style="font-weight: 800; font-size: 1rem; color: var(--text-main);">Government ID (Aadhaar / PAN / Passport in India; driver license / state ID / Passport in the US) *</label>
                             <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">Upload a scanned copy of your official identity card.</p>
                             <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 10px;">
                                 <input type="file" id="file_identity" onchange="simulateDocUpload('Identity Proof', this)" style="display: none;">

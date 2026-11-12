@@ -2311,10 +2311,11 @@
             updateFirebaseConnectionStatus(true, `Connected: ${user.email}`);
             initFirebaseStatutorySync();
           } else {
-            console.log("⚡ Auto-authenticating Super Admin credential (superadmin@kylrx.ai)...");
+            // No automatic sign-in: a real session is required
+            window.location.replace('login.html');
+            return;
             try {
-              const cred = await signInWithEmailAndPassword(auth, 'superadmin@kylrx.ai', 'Kylrx#SuperAdmin2026!Secured');
-              console.log("✅ Super Admin authenticated successfully:", cred.user.email);
+              const cred = null;
               updateFirebaseConnectionStatus(true, `Connected: ${cred.user.email}`);
               initFirebaseStatutorySync();
             } catch (err) {

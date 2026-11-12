@@ -29,8 +29,41 @@ const ALLOWED_ROLES = [
     'hr_payroll',
     'hr_admin',
     'super_admin',
-    'client_executive'
+    'client_executive',
+    'payroll_admin',
+    'accountant',
+    'auditor',
+    'executive'
 ];
+
+/**
+ * Vendor support token (granted by the customer owner): read-only, one company, checked against the
+ * grant on every request so revoking it takes effect immediately, and every request is logged.
+ */
+async function handleSupportSession(decoded, req, res, next) {
+    try {
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+            return res.status(403).json({ success: false, error: 'Support access is read-only' });
+        }
+        const { rawCollection } = require('../config/firebase');
+        const grant = await rawCollection('support_grants').doc(String(decoded.grantId)).get();
+        const exists = typeof grant.exists === 'function' ? grant.exists() : grant.exists;
+        if (!exists || grant.data().revokedAt || grant.data().expiresAt <= new Date().toISOString() || grant.data().orgId !== decoded.orgId) {
+            return res.status(403).json({ success: false, error: 'This support access has ended' });
+        }
+        req.user = {
+            id: decoded.id, uid: decoded.id, email: decoded.email, name: 'Support (read-only)', role: 'auditor',
+            orgId: decoded.orgId, support: true, supportGrantId: decoded.grantId
+        };
+        rawCollection('organizations').doc(decoded.orgId).collection('audit_logs').add({
+            action: 'support_access_request', actorId: decoded.id, at: new Date().toISOString(), method: req.method, path: String(req.originalUrl || '').split('?')[0].slice(0, 200)
+        }).catch(() => {});
+        return next();
+    } catch (error) {
+        logger.error(`Support session error: ${error.message}`);
+        return res.status(401).json({ success: false, error: 'Token is invalid or expired' });
+    }
+}
 
 const verifyToken = async (req, res, next) => {
     try {
@@ -63,6 +96,9 @@ const verifyToken = async (req, res, next) => {
                     error: 'Unauthorized: MFA verification pending. Please verify OTP to obtain access token.',
                     mfaRequired: true
                 });
+            }
+            if (decoded && decoded.type === 'support_session') {
+                return await handleSupportSession(decoded, req, res, next);
             }
             userId = decoded.id;
         } catch (jwtError) {

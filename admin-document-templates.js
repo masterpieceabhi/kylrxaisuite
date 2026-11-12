@@ -197,7 +197,7 @@ function renderTemplateGrid(templates) {
             <div class="template-card-footer">
                 <div class="template-version-info">
                     <span>${latestVersion?.versionNumber || 'v1.0'}</span> · ${t.versions?.length || 1} version${(t.versions?.length || 1) > 1 ? 's' : ''}
-                    ${approvedVersion ? ` · Active since ${new Date(approvedVersion.effectiveFrom).toLocaleDateString('en-IN')}` : ''}
+                    ${approvedVersion ? ` · Active since ${new Date(approvedVersion.effectiveFrom).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}` : ''}
                 </div>
                 <div class="template-actions" onclick="event.stopPropagation()">
                     <button class="btn btn-secondary btn-sm" onclick="previewTemplate('${t.key}')" title="Preview Document">
@@ -309,7 +309,7 @@ function renderSidePanel(template) {
                         <p>${v.changeNotes || 'Standard production release'}</p>
                         <small>
                             Created by <strong>${v.createdBy || 'HR Admin'}</strong> · 
-                            Effective: ${new Date(v.effectiveFrom).toLocaleDateString('en-IN')}
+                            Effective: ${new Date(v.effectiveFrom).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}
                             ${v.approvedBy ? ` · Approved by <strong>${v.approvedBy}</strong>` : ''}
                         </small>
                     </div>
@@ -477,7 +477,7 @@ function renderPreviewContent(data) {
                 </div>
                 <div style="text-align:right;font-size:0.75rem;color:#64748b;">
                     <div>Version: <strong>${data.versionNumber || 'v1.0'}</strong></div>
-                    <div>Effective: <strong>${new Date(data.effectiveFrom || Date.now()).toLocaleDateString('en-IN')}</strong></div>
+                    <div>Effective: <strong>${new Date(data.effectiveFrom || Date.now()).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</strong></div>
                     <div style="color:#059669;font-weight:700;display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:2px;">
                         <i data-lucide="shield-check" style="width:13px;height:13px;"></i> Sealed &amp; Verified
                     </div>
@@ -509,7 +509,7 @@ function generateClientPreview(template, versionNumber) {
     const mappings = ver.fieldMappings || template.fieldMappings || [];
     let html = ver.initialBody || template.initialBody || `
         <div style="line-height:1.8;">
-            <p>Date: <strong>${new Date().toLocaleDateString('en-IN')}</strong></p>
+            <p>Date: <strong>${new Date().toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</strong></p>
             <p>Dear <strong>Rahul Deshmukh</strong>,</p>
             <p>This is the official simulated preview of <strong>${template.name}</strong>.</p>
             <p>All token interpolation keys and approval constraints have been validated.</p>
@@ -824,7 +824,7 @@ function renderGeneratedDocsTable(docs) {
                     ${doc.sha256?.substring(0, 10)}… <i data-lucide="copy" style="width:10px;height:10px;margin-left:2px;"></i>
                 </span>
             </td>
-            <td style="color:var(--text-muted);font-size:12px;">${new Date(doc.generatedAt || Date.now()).toLocaleString('en-IN')}</td>
+            <td style="color:var(--text-muted);font-size:12px;">${new Date(doc.generatedAt || Date.now()).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</td>
             <td>
                 <button class="btn btn-secondary btn-sm" onclick="viewGeneratedDoc('${doc.docId}')" style="padding:4px 10px;font-size:11px;">
                     <i data-lucide="eye" style="width:12px;height:12px;"></i> View

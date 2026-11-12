@@ -5,6 +5,7 @@ const { sendEmail } = require('../utils/email');
 const buRulesService = require('../services/bu-employee-type-rules-service');
 const employeeProfileService = require('../services/employee-profile-service');
 const managerAssignmentService = require('../services/manager-assignment-service');
+const { allocateEmployeeIds } = require('../services/us-people-service');
 
 /**
  * Helper to get next sequential ID for departments
@@ -105,7 +106,17 @@ exports.createEmployee = async (req, res, next) => {
         }
 
         // 2. Generate ID and Password
-        const employeeId = generateEmployeeId(deptCode);
+        // Sequential, atomic IDs (EMP0001, EMP0002, ...) per company, same counter the setup wizard uses
+        const callerOrgId = req.user && req.user.orgId;
+        let employeeId;
+        if (callerOrgId) {
+            try {
+                [employeeId] = await allocateEmployeeIds(callerOrgId, 1);
+            } catch (idErr) {
+                console.warn('[AdminController] Sequential ID allocation failed, using fallback:', idErr.message);
+            }
+        }
+        if (!employeeId) employeeId = generateEmployeeId(deptCode);
         const finalPassword = password || generateSecurePassword(name);
 
         // 3. Create or Update Firebase Auth User (with timeout race)
@@ -215,7 +226,8 @@ exports.createEmployee = async (req, res, next) => {
             email,
             phone: phone || '',
             address: req.body.address || '',
-            tempPassword: finalPassword, // Storing for admin visibility
+            // The temporary password is returned once in the response and emailed; it is never stored
+            ...(callerOrgId ? { orgId: callerOrgId } : {}),
             departmentId: departmentId || '',
             departmentName: deptName,
             departmentCode: deptCode,
@@ -283,6 +295,11 @@ exports.triggerEmailInvite = async (req, res, next) => {
         if (!userDoc.exists) return res.status(404).json({ success: false, message: 'User not found' });
         
         const data = userDoc.data();
+        if (req.user && req.user.orgId && data.orgId && data.orgId !== req.user.orgId) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        // Passwords are not stored, so issue a fresh temporary password and send that
+        const inviteTempPassword = generateSecurePassword(data.name || 'User');
         const role = data.role || 'employee';
         const roleTitle = (role === 'manager') ? 'Manager' : (role === 'hrms' ? 'HRMS Administrator' : (role === 'superadmin' ? 'Super Admin' : (role === 'hradmin' ? 'HR Admin' : 'Employee')));
         const portalPage = 'login.html';
@@ -306,7 +323,7 @@ exports.triggerEmailInvite = async (req, res, next) => {
                         <p style="margin: 6px 0;"><strong>Employee ID:</strong> <code>${data.employeeId || id}</code></p>
                         <p style="margin: 6px 0;"><strong>Official Email:</strong> ${data.email}</p>
                         <p style="margin: 6px 0;"><strong>Role:</strong> ${roleTitle}</p>
-                        <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <code style="background-color: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-family: monospace;">${data.tempPassword || data.password || 'TemporaryPass@2026!'}</code></p>
+                        <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <code style="background-color: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-family: monospace;">${inviteTempPassword}</code></p>
                     </div>
 
                     <div style="text-align: center; margin: 24px 0;">
@@ -319,8 +336,12 @@ exports.triggerEmailInvite = async (req, res, next) => {
             `
         });
 
+        // Change the login password only after the email went out, so a failed send never locks the person out
+        await admin.auth().updateUser(id, { password: inviteTempPassword });
         await db.collection('users').doc(id).update({
             invite_status: 'sent',
+            must_change_password: true,
+            is_temporary_password: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -371,15 +392,14 @@ exports.updateEmployee = async (req, res, next) => {
         }
 
         // 2. Clean up data for Firestore
-        const tempPassword = updateData.password; // Keep track for visibility
         delete updateData.employeeId;
         delete updateData.uid;
         delete updateData.createdAt;
-        delete updateData.password; // Don't store plain password, store in tempPassword field
+        delete updateData.password; // Never store a plain password
+        delete updateData.tempPassword;
 
         await db.collection('users').doc(id).update({
             ...updateData,
-            ...(tempPassword ? { tempPassword } : {}),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -2283,7 +2303,10 @@ const DEFAULT_ATTENDANCE_POLICIES = [
 ];
 
 function getPolicyOrgId(req) {
-    return req.query.orgId || req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+    // The signed-in company always wins (a caller must not read another company's policies by passing an orgId).
+    // req.body is undefined on GET requests in Express 5, so it is read defensively.
+    return (req.user && req.user.orgId) || req.tenantOrgId ||
+        (req.query && req.query.orgId) || (req.body && req.body.orgId) || req.headers['x-org-id'] || 'org_kylrx';
 }
 
 function calculateDistanceMeters(lat1, lon1, lat2, lon2) {

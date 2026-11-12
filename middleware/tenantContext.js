@@ -46,6 +46,7 @@ async function resolveOrgId(req) {
         }
         try {
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            if (decoded && decoded.type === 'support_session' && decoded.orgId) return decoded.orgId;
             if (decoded && decoded.id) return await orgIdForUser(decoded.id) || LEGACY_ORG_ID;
         } catch (_) {}
     }

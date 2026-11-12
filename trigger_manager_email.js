@@ -10,7 +10,7 @@ async function sendManagerCredentials() {
         role: "Cybersecurity Manager",
         departmentCode: "UNIT-CYB-863",
         phone: "+918310425800",
-        tempPassword: "UNIT-CYB-863-Manager-John@2026!",
+        tempPassword: process.env.TEST_TEMP_PASSWORD || "set-TEST_TEMP_PASSWORD-before-running",
         status: "Completed"
     };
 

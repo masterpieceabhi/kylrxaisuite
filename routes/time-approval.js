@@ -7,6 +7,9 @@ const { orgInfo, punchesSince, weekIsLocked } = require('./time').helpers;
 const rules = require('../services/time-rules');
 const policy = require('../services/time-policy');
 const { parseIsoDate, isoDate } = require('../services/us-forms');
+const perms = require('../services/permissions');
+const teamScope = require('../services/team-scope');
+const APPROVER = perms.requireAnyPermission('time.approve', 'time.approve_team');
 
 const MANAGER_ROLES = [...ADMIN_HR_ROLES, 'Manager', 'manager'];
 const RULE_ROLES = ['Super Admin', 'super_admin', 'hr_admin', 'Admin'];
@@ -68,9 +71,11 @@ const statusView = (doc) => (doc ? {
 
 async function targetUser(req, res) {
     const userId = req.query.userId && req.query.userId !== req.user.id ? String(req.query.userId) : req.user.id;
-    if (userId !== req.user.id && !hasRole(req.user, MANAGER_ROLES)) { res.status(403).json({ success: false, error: 'Not allowed' }); return null; }
     const u = await userDoc(req.orgId, userId);
     if (!u) { res.status(404).json({ success: false, error: 'Person not found' }); return null; }
+    if (userId !== req.user.id && !perms.can(req.user, 'time.view_all') && !perms.canManage(req.user, { ...u.data, id: u.id }, 'time')) {
+        res.status(403).json({ success: false, error: 'Not allowed' }); return null;
+    }
     return u;
 }
 
@@ -81,7 +86,7 @@ router.get('/rules', requireOrg, async (req, res) => {
     res.json({ success: true, country: info.country, timeZone: info.tz, rules: info.rules, note: 'Daily overtime, double time and meal-break rules depend on your state. Confirm each setting with a US compliance advisor.' });
 });
 
-router.put('/rules', authorize(RULE_ROLES), requireOrg, async (req, res) => {
+router.put('/rules', perms.requirePermission('time.manage_rules'), requireOrg, async (req, res) => {
     const { errors, value } = policy.validateTimeRules(req.body);
     if (errors.length) return res.status(400).json({ success: false, errors });
     await rawCollection('organizations').doc(req.orgId).set({ usProfile: { timeRules: value } }, { merge: true });
@@ -122,15 +127,15 @@ router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
     res.json({ success: true, status: 'submitted', totals: view.totals });
 });
 
-router.get('/approvals', authorize(MANAGER_ROLES), requireOrg, async (req, res) => {
+router.get('/approvals', APPROVER, requireOrg, async (req, res) => {
     const status = ['submitted', 'approved', 'rejected', 'open'].includes(req.query.status) ? req.query.status : 'submitted';
     const snap = await rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get();
-    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((w) => w.status === status)
+    const rows = (await teamScope.filterRows(req.user, req.orgId, snap.docs.map((d) => ({ id: d.id, ...d.data() })), 'time')).filter((w) => w.status === status)
         .sort((a, b) => b.weekStart.localeCompare(a.weekStart) || String(a.name).localeCompare(String(b.name)));
     res.json({ success: true, status, count: rows.length, data: rows.slice(0, 300) });
 });
 
-router.put('/weeks/:userId/:weekStart/decision', authorize(MANAGER_ROLES), requireOrg, async (req, res) => {
+router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
     if (!isMonday(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
     if (userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot approve your own hours' });
@@ -140,6 +145,7 @@ router.put('/weeks/:userId/:weekStart/decision', authorize(MANAGER_ROLES), requi
     if (decision === 'reject' && note.length < 3) return res.status(400).json({ success: false, error: 'Say what needs fixing (at least 3 characters)' });
     const user = await userDoc(req.orgId, userId);
     if (!user) return res.status(404).json({ success: false, error: 'Person not found' });
+    if (!perms.canManage(req.user, { ...user.data, id: user.id }, 'time')) return res.status(403).json({ success: false, error: 'You can only approve hours for people who report to you' });
     const ref = weekDocRef(userId, weekStart);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().status !== 'submitted') return res.status(409).json({ success: false, error: 'This week is not waiting for a decision' });
@@ -155,7 +161,7 @@ router.put('/weeks/:userId/:weekStart/decision', authorize(MANAGER_ROLES), requi
     res.json({ success: true, status: patch.status });
 });
 
-router.post('/weeks/:userId/:weekStart/reopen', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.post('/weeks/:userId/:weekStart/reopen', perms.requirePermission('time.approve'), requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
     const reason = String((req.body && req.body.reason) || '').trim();
     if (!isMonday(weekStart) || reason.length < 5) return res.status(400).json({ success: false, error: 'A Monday weekStart and a reason of at least 5 characters are required' });
@@ -230,15 +236,16 @@ router.get('/corrections', requireOrg, async (req, res) => {
     const scope = String(req.query.scope || 'mine');
     let q = rawCollection('punch_corrections').where('orgId', '==', req.orgId);
     if (scope === 'mine') q = q.where('userId', '==', req.user.id);
-    else if (!hasRole(req.user, MANAGER_ROLES)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    else if (!perms.can(req.user, 'time.approve') && !perms.can(req.user, 'time.approve_team') && !perms.can(req.user, 'time.view_all')) return res.status(403).json({ success: false, error: 'Not allowed' });
     const snap = await q.get();
     let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (scope !== 'mine') rows = await teamScope.filterRows(req.user, req.orgId, rows, 'time');
     if (scope === 'pending') rows = rows.filter((r) => r.status === 'pending');
     rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     res.json({ success: true, count: rows.length, data: rows.slice(0, 200) });
 });
 
-router.put('/corrections/:id/decision', authorize(MANAGER_ROLES), requireOrg, async (req, res) => {
+router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) => {
     const decision = String((req.body && req.body.decision) || '');
     if (!['approve', 'deny'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or deny' });
     const ref = rawCollection('punch_corrections').doc(req.params.id);
@@ -246,6 +253,8 @@ router.put('/corrections/:id/decision', authorize(MANAGER_ROLES), requireOrg, as
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Request not found' });
     const c = snap.data();
     if (c.userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot decide your own correction' });
+    const owner = await userDoc(req.orgId, c.userId);
+    if (!owner || !perms.canManage(req.user, { ...owner.data, id: owner.id }, 'time')) return res.status(403).json({ success: false, error: 'You can only decide fixes for people who report to you' });
     if (c.status !== 'pending') return res.status(409).json({ success: false, error: `This request is already ${c.status}` });
     const patch = { status: decision === 'approve' ? 'approved' : 'denied', decidedBy: req.user.id, decidedAt: new Date().toISOString(), decisionNote: String((req.body && req.body.note) || '').slice(0, 300) };
 
@@ -285,7 +294,7 @@ router.post('/corrections/:id/cancel', requireOrg, async (req, res) => {
 
 /* -------------------------------- payroll hours export -------------------------------- */
 
-router.get('/export/hours', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.get('/export/hours', perms.requirePermission('time.export'), requireOrg, async (req, res) => {
     const from = parseIsoDate(req.query.from) ? req.query.from : '0000-01-01';
     const to = parseIsoDate(req.query.to) ? req.query.to : '9999-12-31';
     const snap = await rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get();

@@ -19,25 +19,31 @@ button{border:0;border-radius:12px;background:var(--blue);color:#fff;font:700 16
 </head>
 <body>
 <header><b id="title"></b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
-<main><div id="msg" role="status"></div><section class="card"><h2 id="h"></h2><div id="list"></div></section><a class="back" href="#" id="back"></a></main>
+<main><div id="msg" role="status"></div><section class="card" id="signCard" hidden><h2 id="hs"></h2><div id="signList"></div></section><section class="card"><h2 id="h"></h2><div id="list"></div></section><a class="back" href="#" id="back"></a></main>
 <script type="module">
 import { auth, onAuthStateChanged } from './firebase-config.js';
-const T = { en: { title: 'My documents', h: 'Documents shared with you', none: 'Nothing shared with you yet.', get: 'Download', company: 'Company', back: 'Back', fail: 'Could not load your documents.' },
-            es: { title: 'Mis documentos', h: 'Documentos compartidos con usted', none: 'Aún no hay documentos compartidos.', get: 'Descargar', company: 'Empresa', back: 'Volver', fail: 'No se pudieron cargar sus documentos.' } };
+const T = { en: { title: 'My documents', h: 'Documents shared with you', none: 'Nothing shared with you yet.', get: 'Download', company: 'Company', back: 'Back', fail: 'Could not load your documents.', hs: 'Documents to sign', signNow: 'Read and sign', due: 'Sign by', st_signed: 'Signed', st_declined: 'Declined', st_expired: 'Expired. Ask HR to send it again.', st_voided: 'Cancelled', st_locked: 'Locked. Ask HR to send it again.', linkFail: 'Could not open this document. Try again.' },
+            es: { title: 'Mis documentos', h: 'Documentos compartidos con usted', none: 'Aún no hay documentos compartidos.', get: 'Descargar', company: 'Empresa', back: 'Volver', fail: 'No se pudieron cargar sus documentos.', hs: 'Documentos para firmar', signNow: 'Leer y firmar', due: 'Firmar antes del', st_signed: 'Firmado', st_declined: 'Rechazado', st_expired: 'Vencido. Pida a Recursos Humanos que lo envíe de nuevo.', st_voided: 'Cancelado', st_locked: 'Bloqueado. Pida a Recursos Humanos que lo envíe de nuevo.', linkFail: 'No se pudo abrir este documento. Intente de nuevo.' } };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en'; try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
-const $ = (id) => document.getElementById(id); const tr = (k) => T[lang][k]; let docs = [];
+const $ = (id) => document.getElementById(id); const tr = (k) => T[lang][k]; let docs = []; let toSign = [];
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 async function authed(path) { const token = await auth.currentUser.getIdToken(); return fetch(`/api/us${path}`, { headers: { Authorization: `Bearer ${token}` } }); }
 function paint() {
   document.documentElement.lang = lang; document.title = tr('title'); $('title').textContent = tr('title'); $('h').textContent = tr('h'); $('back').textContent = tr('back');
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('signCard').hidden = toSign.length === 0; $('hs').textContent = tr('hs');
+  $('signList').innerHTML = toSign.map((d) => { const open = d.status === 'pending' || d.status === 'viewed'; return `<div class="row"><div><b>${esc(d.templateName)}</b><p class="s">${open ? `${esc(tr('due'))} ${esc(String(d.expiresAt).slice(0, 10))}` : esc(tr(`st_${d.status}`) || d.status)}</p></div>${open ? `<button data-sign="${esc(d.id)}">${esc(tr('signNow'))}</button>` : ''}</div>`; }).join('');
   $('list').innerHTML = docs.length ? docs.map((d) => `<div class="row"><div><b>${esc(d.title)}</b><p class="s">${esc(d.scope === 'company' ? tr('company') : d.categoryLabel)} · ${esc(String(d.uploadedAt).slice(0, 10))}</p></div><button data-id="${d.id}" data-n="${esc(d.fileName)}">${tr('get')}</button></div>`).join('') : `<p class="s">${tr('none')}</p>`;
 }
 $('list').addEventListener('click', async (e) => { const b = e.target.closest('[data-id]'); if (!b) return; const r = await authed(`/vault/documents/${b.dataset.id}/download`); if (!r.ok) return; const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = b.dataset.n; a.click(); });
-$('back').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'punch.html'; };
+$('signList').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-sign]'); if (!b) return;
+  try { const token = await auth.currentUser.getIdToken(); const r = await fetch(`/api/us/esign/my/${encodeURIComponent(b.dataset.sign)}/link`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); const j = await r.json(); if (!r.ok || !/^\/sign\.html\?t=[\w-]+$/.test(new URL(j.signUrl, location.href).pathname + new URL(j.signUrl, location.href).search)) throw new Error(); location.href = j.signUrl; } catch (_) { const m = $('msg'); m.textContent = tr('linkFail'); m.style.display = 'block'; }
+});
+$('back').onclick =(e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'punch.html'; };
 document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }; });
 paint();
-onAuthStateChanged(auth, async (user) => { if (!user) { window.location.replace('login.html'); return; } try { const r = await authed('/vault/documents'); const j = await r.json(); if (!r.ok) throw new Error(); docs = j.data; paint(); } catch (_) { const m = $('msg'); m.textContent = tr('fail'); m.style.display = 'block'; } });
+onAuthStateChanged(auth, async (user) => { if (!user) { window.location.replace('login.html'); return; } try { const r = await authed('/vault/documents'); const j = await r.json(); if (!r.ok) throw new Error(); docs = j.data; paint(); try { const s = await authed('/esign/my'); if (s.ok) { toSign = (await s.json()).data.slice(0, 20); paint(); } } catch (_) {} } catch (_) { const m = $('msg'); m.textContent = tr('fail'); m.style.display = 'block'; } });
 </script>
 </body>
 </html>

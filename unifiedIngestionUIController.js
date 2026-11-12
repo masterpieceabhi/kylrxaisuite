@@ -173,6 +173,30 @@
         if (window.lucide) window.lucide.createIcons();
     }
 
+    /** The signed-in company (never a hard-coded demo company) */
+    function activeOrgId() {
+        let fromStorage = null;
+        try { fromStorage = localStorage.getItem('orgId') || localStorage.getItem('current_org_id') || localStorage.getItem('tenant_id'); } catch (_) {}
+        return window.KylrxActiveOrgId || fromStorage || '';
+    }
+
+    /** Saves job and roster rows through the server, which stamps the company and creates missing people */
+    async function importJobRosterOnServer(rows, onProgress) {
+        const auth = window.auth || (window.firebaseAuth || null);
+        const user = auth && auth.currentUser;
+        if (!user) throw new Error('You are signed out. Sign in again and retry.');
+        const token = await user.getIdToken();
+        const res = await fetch('/api/admin/job-roster/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify({ rows })
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok && !body.errors) throw new Error(body.message || body.error || ('Import failed (' + res.status + ')'));
+        if (onProgress) onProgress(body.successCount || 0, body.totalCount || rows.length);
+        return body;
+    }
+
     /**
      * File Upload Handler for Job Roster
      */
@@ -184,7 +208,7 @@
                 const parser = window.KylrxJobRosterParser || window.jobRosterParser;
                 if (!parser) throw new Error("jobRosterParser script is not loaded.");
                 
-                const result = parser.parse(e.target.result);
+                const result = parser.parse(e.target.result, { orgId: activeOrgId() });
                 state.jobRoster.parsedResult = result;
                 renderJobRosterPreview(result, file.name);
                 showToast(`Parsed ${result.count} records (${result.validCount} valid).`, result.validCount > 0 ? 'success' : 'error');
@@ -404,15 +428,20 @@
         }
 
         try {
-            const result = await service.dispatchUnifiedIngestion(templateType, validRows, {
-                actorId: localStorage.getItem('user_id') || 'SUPER_ADMIN',
-                orgId: localStorage.getItem('tenant_id') || 'ORG_KYLRX_CORP',
-                onProgress: (current, total) => {
-                    if (btnConfirm) {
-                        btnConfirm.innerHTML = `<i data-lucide="loader-2" style="width: 16px; height: 16px;"></i> Ingesting ${current}/${total}...`;
-                    }
+            const orgId = activeOrgId();
+            if (!orgId) throw new Error('Could not find your company. Sign in again.');
+            const onProgress = (current, total) => {
+                if (btnConfirm) {
+                    btnConfirm.innerHTML = `<i data-lucide="loader-2" style="width: 16px; height: 16px;"></i> Ingesting ${current}/${total}...`;
                 }
-            });
+            };
+            const result = tabKey === 'jobRoster'
+                ? await importJobRosterOnServer(validRows, onProgress)
+                : await service.dispatchUnifiedIngestion(templateType, validRows, {
+                    actorId: localStorage.getItem('user_id') || 'SUPER_ADMIN',
+                    orgId,
+                    onProgress
+                });
 
             if (result.success) {
                 showToast(`Successfully committed ${result.successCount} records to Cloud Firestore!`, 'success');

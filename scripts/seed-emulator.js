@@ -38,7 +38,10 @@ const ROLES = [
     { prefix: 'superadmin', name: 'Super Admin', role: 'super_admin', claims: { super_admin: true } },
     { prefix: 'hr', name: 'HR Admin', role: 'hr_admin', claims: {} },
     { prefix: 'manager', name: 'Manager', role: 'manager', claims: {} },
-    { prefix: 'employee', name: 'Employee', role: 'employee', claims: {} }
+    { prefix: 'employee', name: 'Employee', role: 'employee', claims: {} },
+    { prefix: 'payroll', name: 'Payroll Admin', role: 'payroll_admin', claims: {} },
+    { prefix: 'accountant', name: 'Accountant', role: 'accountant', claims: {} },
+    { prefix: 'auditor', name: 'Auditor', role: 'auditor', claims: {} }
 ];
 
 (async () => {

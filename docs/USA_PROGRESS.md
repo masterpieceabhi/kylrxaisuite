@@ -1,161 +1,222 @@
 # USA build progress
 
-As of 2026-11-11 on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
+As of 2026-11-11 (evening) on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
 
-Status meanings: **Done** = built and tested; **Partial** = core works, pieces missing; **Existing, not adapted** = code exists from the India app but is not set up or tested for US; **Not started**; **Later** = deliberately postponed (Gusto payroll and connectors).
+**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (453 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
+
+Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = core works, the named pieces are missing; **Existing, not adapted** = old India-app code only; **Not started** = nothing.
 
 ## Totals
 
-| Status | Count |
-|---|---|
-| Done | 22 |
-| Partial | 24 |
-| Existing, not adapted | 8 |
-| Not started | 29 |
-| Later (Gusto/connectors) | 28 |
-| **All** | **111** |
+| Status | Count | Was (morning of 2026-11-11) |
+|---|---|---|
+| Done | 44 | 22 |
+| Partial | 52 | 24 |
+| Existing, not adapted | 5 | 8 |
+| Not started | 10 | 29 |
+| Later (Gusto/connectors) | 0 | 28 |
+| **All** | **111** | **111** |
 
-Not counting the postponed Gusto and connector work, there are 83 functions: 22 done, 24 partial, 8 existing-not-adapted, 29 not started.
+**The main gap is pages.** Most of the "Partial" items have finished, tested, mounted server code and no screen. The second gap is anything that needs a real outside account (Gusto demo credentials, accounting vendors, Stripe, a background-check vendor).
 
 ## By module
 
-| Module | Done | Partial | Existing | Not started | Later |
-|---|---|---|---|---|---|
-| A Platform and country | 1 | 8 | 0 | 1 | 0 |
-| B People and organization | 3 | 3 | 1 | 3 | 0 |
-| C Hiring and onboarding | 3 | 1 | 2 | 4 | 0 |
-| D Time, attendance, scheduling | 4 | 2 | 0 | 5 | 0 |
-| E Leave and holidays | 3 | 2 | 0 | 2 | 1 |
-| F Payroll (Gusto) | 0 | 0 | 0 | 0 | 13 |
-| G Benefits | 0 | 0 | 0 | 6 | 0 |
-| H Documents and compliance | 3 | 4 | 1 | 0 | 0 |
-| I Performance and engagement | 0 | 1 | 3 | 2 | 0 |
-| J Analytics and reporting | 4 | 1 | 1 | 0 | 0 |
-| K Connectors | 0 | 0 | 0 | 0 | 14 |
-| L Security, privacy, operations | 1 | 2 | 0 | 6 | 0 |
+| Module | Done | Partial | Existing | Not started |
+|---|---|---|---|---|
+| A Platform and country | 1 | 8 | 0 | 1 |
+| B People and organization | 8 | 2 | 0 | 0 |
+| C Hiring and onboarding | 8 | 2 | 0 | 0 |
+| D Time, attendance, scheduling | 8 | 3 | 0 | 0 |
+| E Leave and holidays | 5 | 3 | 0 | 0 |
+| F Payroll (Gusto) | 0 | 8 | 0 | 5 |
+| G Benefits | 4 | 2 | 0 | 0 |
+| H Documents and compliance | 4 | 3 | 1 | 0 |
+| I Performance and engagement | 0 | 1 | 3 | 2 |
+| J Analytics and reporting | 4 | 1 | 1 | 0 |
+| K Connectors | 0 | 14 | 0 | 0 |
+| L Security, privacy, operations | 2 | 5 | 0 | 2 |
 
-## Done (22)
+## A. Platform and country
 
-- US-A08 SSN/ITIN encryption at rest, masking (last 4), reveal with audit log. - SSN/ITIN and I-9 document numbers encrypted, masked, reveal needs a reason and is logged
-- US-B02 Worker classification: W-2 employee vs 1099 contractor; exempt vs non-exempt; full/part time. - W-2 vs 1099, exempt vs non-exempt, full/part time with rule checks
-- US-B07 Bulk import (CSV/Excel) with validation and preview. - CSV/Excel upload with a check-first step, row-by-row errors and a template
-- US-B09 Termination and rehire flows with last-day logic. - Termination with last day, scheduled access shut-off, leave cancelled, final summary, cancel before last day, rehire with I-9 guidance
-- US-C04 Form W-4 collection and storage (federal and state withholding forms). - Federal W-4 with signature, history, plain language EN/ES (state forms not included)
-- US-C05 Form I-9: Section 1 by day one, Section 2 within 3 business days, document upload, expiry tracking, reverification alerts. - I-9 Sections 1 and 2, 3-business-day deadline, expiry and retention dates, HR status table
-- US-C08 Direct-deposit form and bank validation. - Direct deposit with routing-number check, encrypted account number, shown as last 4 only
-- US-D01 Clock in/out (web, mobile) with optional geofence and IP rules. - Any role, big-button phone page, shared-tablet PIN kiosk, EN/ES, floating clock button
-- US-D02 Timesheets with weekly approval by manager. - Weekly timesheet per person, send for approval, approve or send back with a note, approved weeks lock, HR can reopen with a reason
-- US-D03 Overtime engine: over 40 hours per workweek at 1.5x; state daily/double-time rules (e.g. California). - Weekly overtime, optional daily overtime and double time, exempt staff paid straight time; thresholds are company settings to confirm per state
-- US-D10 Attendance exceptions: late, missed punch, regularization. - Forgotten clock-out flag; employees request add, change or remove a punch; manager or HR approves; nothing editable after the week is approved
-- US-E01 PTO/vacation policies and accrual engine. - PTO policies with accrual, caps, carryover, waiting period
-- US-E02 Paid sick leave by state/city: accrual, carryover, caps, usage rules. - Paid sick policies work; state/city rules must be entered and confirmed by an advisor
-- US-E05 Leave requests, approvals, calendar and team view. - Requests, approve/deny/cancel, balances, team calendar
-- US-H01 Document vault by employee and company with retention rules. - Encrypted company and employee documents with categories, visibility rules, confidential files, expiry alerts, retention dates, legal hold, audit trail
-- US-H05 EEO-1 and demographic reporting data. - Voluntary EEO self-identification kept apart from the personnel file, job categories, EEO-1 style counts with CSV (filing itself is done on the EEOC site)
-- US-H06 OSHA incident log (300/300A) basics. - Workers report injuries, HR classifies, OSHA 300 log and 300A summary with incidence rates, CSV; no Form 301 incident report
-- US-J01 Headcount, turnover, tenure dashboards. - Headcount now, by department, worker type, state and tenure, 12-month trend, turnover rate with voluntary/involuntary split, CSV
-- US-J02 Labor cost and overtime reports. - Hours, overtime share and estimated wages by week, department and person from approved timesheets, CSV (wages only, an estimate)
-- US-J03 Time-off liability report. - Unused time off in hours and estimated dollars by policy and person, payout-required amount, CSV
-- US-J04 Compliance status report (I-9, W-4, training). - Missing W-4, I-9, SSN, bank, work state and pay rate; expiring I-9s; old I-9s that can be disposed of; CSV
-- US-L03 Field-level encryption for SSN and bank data; key management. - SSN/ITIN, I-9 document numbers and bank account numbers are encrypted and masked
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-A01 | Partial | Country settings, India-page gate | Country picker at signup (still free text defaulting to India); Canada |
+| US-A02 | Partial | EIN, entity type, address, work states | Industry code and fiscal year in the company profile |
+| US-A03 | Partial | Locations with state, city, county (`us-org.js`), tests, page `admin-us-org.html` | Tax-jurisdiction mapping |
+| US-A04 | Partial | India menus hidden for US | A few India cards may remain on the payroll Documents tab (not confirmed) |
+| US-A05 | Partial | `country-format.js` included in about 37 old pages | Not checked that every screen uses it |
+| US-A06 | Partial | Dated minimum-wage rules with history and a page | Overtime, meal-break and sick-leave rules are company settings, not dated state tables |
+| US-A07 | Partial | Eight roles in `permissions.js`, role routes, tests, role page in `admin-us-owner.html` | `us-hr.js` still uses the old role check |
+| US-A08 | Done | SSN/ITIN encryption, masking, reveal with reason | |
+| US-A09 | Not started | | US data region, backup, restore |
+| US-A10 | Partial | Audit list, CSV and chain check routes, viewer in `admin-us-owner.html` | The tamper-evident chain is not used by the main audit writer yet |
 
-## Partial (24)
+## B. People and organization
 
-- US-A01 Country switch per company (IN / US / CA) driving currency, date, time zone, ID fields, visible modules. - Country settings and India-page gate work; no screen yet to pick the country when a company is created
-- US-A02 US company profile: legal name, EIN, entity type, addresses by state, industry code, fiscal year. - EIN, entity type, address, work states saved; no industry code, fiscal year or sites
-- US-A03 Multi-state / multi-location work-site model (state, county, city tax jurisdictions). - Work states per company and per employee; no work-site or city/county model
-- US-A04 Hide India-only modules (PF, ESIC, PT, LWF, NPS, Gratuity) for US companies. - India menus and tabs hidden for US; a few India cards remain on the payroll Documents tab
-- US-A05 USD currency and US number/date/address formatting; US time zones and DST. - USD, US dates and time zones defined and used by the clock; most old screens still show India formats
-- US-A06 Effective-dated rules tables (min wage, overtime, sick leave), reviewed each January. - Company-level overtime, meal-break and leave settings exist; no dated state/city tables for minimum wage or overtime
-- US-A07 Role model for US: Owner, HR Admin, Payroll Admin, Manager, Employee, Accountant (read-only), Auditor. - Super admin, HR admin, manager, employee exist; no payroll admin, accountant or auditor roles
-- US-A10 Audit trail on every change to people, pay and tax data. - New modules write an audit log (SSN reveal, I-9, leave, time fixes, PINs); no screen to browse it
-- US-B01 Employee record (legal and preferred name, address, DOB, work state, emergency contacts). - Legal name, DOB, address, work state; no emergency contacts
-- US-B05 Pay setup: hourly or salary, frequency, direct deposit split, pay schedule assignment. - Hourly/salary, rate, pay frequency and direct deposit saved; no pay schedule
-- US-B10 Contractor records and 1099 data (TIN, W-9 status). - 1099 classification and taxpayer ID only; no W-9 status or contractor payments
-- US-C03 Onboarding checklist builder with due dates and reminders. - US onboarding, offboarding and rehire checklists with due dates, owners and self-completing tasks, HR to-do list; fixed default tasks (HR can add custom ones), no email reminders or template editor yet
-- US-D04 Meal and rest break rules and missed-break premiums by state. - Meal-break check flags days without a long enough break; no rest-break rules or premium pay
-- US-D09 Hours-to-payroll export per pay period (feeds Gusto). - CSV of approved hours (regular, overtime, double time) per person and week; the Gusto feed comes later
-- US-E06 US federal holiday calendar plus company holidays. - Federal holidays are skipped in requests; no editable company holiday calendar for US
-- US-E07 Balance statements and payout-at-termination rules by state. - Balances shown and a payout summary at termination; no payout calculation into pay
-- US-H02 E-signature for company and employee documents. - Typed signature on W-4 and I-9 only
-- US-H03 Compliance calendar (I-9 audits, new-hire reports, posters, filing dates). - W-4/I-9 deadlines, document and notice expiry lists; no single compliance calendar yet
-- US-H04 Labor law poster and handbook state add-ons. - Tracker for federal notices and each work state (where, when, review reminders); the notice texts and state-specific lists are not included
-- US-H07 I-9 audit report and missing-document report. - Status table exists; no printable audit report
-- US-I06 Exit interviews and offboarding checklist. - US offboarding checklist with an exit-conversation task; no exit-interview form or notes
-- US-J06 Payroll cost by department/project from Gusto data. - Estimated wages by department from approved timesheets; the actual payroll cost will come from Gusto
-- US-L01 MFA enforced for admins; SSO (SAML/OIDC) for customers. - Email one-time-code login exists; no single sign-on
-- US-L02 Fix the known issues first (login bypass done; demo passwords, dependency vulnerabilities, tenant scoping on). - Login bypass and silent-save bugs fixed; demo passwords, dependency vulnerabilities, company-data scoping and one plaintext temp password remain
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-B01 | Done | Profile, preferred name and emergency contacts; employee page `my-profile.html` (English and Spanish); HR view in `admin-us-changes.html` | |
+| US-B02 | Done | W-2 vs 1099, exempt vs non-exempt | |
+| US-B03 | Done | Departments, managers, org chart, bulk reassignment; page `admin-us-org.html` | |
+| US-B04 | Done | Job and pay history with approval, tests, page `admin-us-pay.html` | |
+| US-B05 | Done | Pay schedules (`admin-us-org.html`), direct-deposit splits (`admin-us-pay.html`), tests | Split accounts are not sent to Gusto; employees cannot set splits themselves on a page |
+| US-B06 | Partial | Custom fields, tests, page `admin-us-changes.html`; employees fill theirs in `my-profile.html` | Tags; no button yet to reveal a sensitive value |
+| US-B07 | Done | Bulk import with check-first step | |
+| US-B08 | Done | Self-service change requests with approval; employee page `my-profile.html`, HR queue `admin-us-changes.html` | Supporting-document upload is not on the page |
+| US-B09 | Done | Termination and rehire | |
+| US-B10 | Partial | W-9, 1099 payment ledger, annual summary, tests, page `admin-us-pay.html` | Filing 1099s or paying contractors through Gusto |
 
-## Existing, not adapted (8)
+## C. Hiring and onboarding
 
-- US-B03 Org chart, departments, managers, reporting lines. - Org chart, departments and managers exist from the India app; not tested for US
-- US-C01 Candidate and requisition tracking, pipeline stages. - Recruitment code exists from the India app; not adapted
-- US-C09 Handbook and policy acknowledgements. - Policy acknowledgements exist from the India app
-- US-H08 Policy library with versions. - Policy library exists from the India app
-- US-I01 Goals and reviews. - Goals and reviews exist from the India app
-- US-I03 Pulse surveys and eNPS. - Surveys exist from the India app
-- US-I05 Asset tracking. - Asset tracking exists from the India app
-- US-J05 Custom report builder and scheduled exports. - Report builder exists from the India app
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-C01 | Done | Requisitions, pipeline, scorecards, interviews, hire; HR page `admin-us-hiring.html`; public careers and apply page `careers.html` (English and Spanish); tests | Sending the offer for e-signature from the page (waits on the e-sign pages) |
+| US-C02 | Done | Offers, e-sign templates and requests; HR page `admin-us-esign.html`; public signing page `sign.html` (English and Spanish); a signed offer letter marks the offer accepted; tests | The signing link is shown to HR to pass on; the system does not email it |
+| US-C03 | Partial | Onboarding, offboarding, rehire checklists | Email reminders; template editor |
+| US-C04 | Done | Federal W-4 | State withholding forms |
+| US-C05 | Done | I-9 Sections 1 and 2 | |
+| US-C06 | Done | E-Verify case tracking, tests, page `admin-us-hiring-compliance.html` | Tracking only: cases are created on the E-Verify website by hand |
+| US-C07 | Done | New-hire reporting list, state agency table, export, tests, page `admin-us-hiring-compliance.html` | The state filing itself is manual; the file download was not run live with a real SSN on record |
+| US-C08 | Done | Direct deposit form | |
+| US-C09 | Done | Handbook acknowledgement template, sent from `admin-us-esign.html`, signed on `sign.html`, listed for the employee in `my-documents.html` | |
+| US-C10 | Partial | Background-check workflow (FCRA steps), tests, page `admin-us-hiring-compliance.html` | Only a mock provider (a real vendor needs a contract and key); permission is recorded as paper only on the page |
 
-## Not started (29)
+## D. Time, attendance, scheduling
 
-- US-A09 Data residency in a US region; backup and restore. - No US data region or backup plan yet
-- US-B04 Job, title, compensation history with effective dates. - Pay rate is stored but there is no dated job or pay history
-- US-B06 Custom fields and employee tags.
-- US-B08 Employee self-service profile edits with approval. - People can complete their own W-4/I-9 but cannot edit their profile
-- US-C02 Offer letter templates and e-signature. - Offer letters and e-signature
-- US-C06 E-Verify hand-off tracking (record of case results).
-- US-C07 State new-hire reporting by deadline per state.
-- US-C10 Background-check provider hook.
-- US-D05 Minimum-wage checks (federal, state, city) with alerts.
-- US-D06 Shift scheduling, swaps, open shifts, publish to team. - Shift scheduling for US
-- US-D07 Predictive-scheduling rule checks (notice windows) where required.
-- US-D08 Tip and tipped-minimum-wage tracking.
-- US-D11 Job/project/cost-center time allocation for ERP costing.
-- US-E03 FMLA eligibility tracking and leave case management.
-- US-E04 Other statutory leave (jury duty, military, bereavement, parental) by state.
-- US-G01 Benefit plan catalog (health, dental, vision, 401(k), HSA/FSA). - Benefits
-- US-G02 Enrollment and open-enrollment windows. - Benefits
-- US-G03 Employee and employer contributions flowing to payroll. - Benefits
-- US-G04 Life-event changes. - Benefits
-- US-G05 401(k) provider hook (Gusto partner options) and ACA tracking data. - Benefits
-- US-G06 Benefit summaries for employees. - Benefits
-- US-I02 Review cycles, 360 feedback.
-- US-I04 Recognition and announcements.
-- US-L04 State privacy features: data export and deletion requests (CCPA/CPRA).
-- US-L05 Centralized logging, monitoring, alerting, backups, disaster recovery.
-- US-L06 Security audit, penetration test, then SOC 2 Type I, then Type II (buyers and Gusto will ask). - Security audit, pen test, SOC 2
-- US-L07 Billing and subscription (per employee per month), invoices, tax on SaaS where applicable. - Billing and subscriptions
-- US-L08 Customer support tooling: impersonation with consent and audit, status page.
-- US-L09 Production deployment pipeline, environments, release process. - Production deployment pipeline
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-D01 | Done | Clock in/out, kiosk; new consent, selfie and geofence policy on the server | The clock pages do not yet handle the new consent, selfie and geofence answers; no policy page |
+| US-D02 | Done | Weekly timesheets and approval | |
+| US-D03 | Done | Overtime engine | |
+| US-D04 | Partial | Meal-break check | Rest breaks; missed-break premium pay |
+| US-D05 | Done | Minimum-wage checks with a page, linked in the menu | |
+| US-D06 | Done | Shifts, publish, open-shift claims, swaps, availability, tests; pages `admin-us-schedule.html` and `my-schedule.html` (English and Spanish) | Shift templates and one-day availability exceptions have no screen; a manager can approve their own request |
+| US-D07 | Done | Predictive-scheduling rules and premium report, on the Rules and "Planned and worked" tabs of `admin-us-schedule.html` | Premium amounts are listed only, not sent to payroll |
+| US-D08 | Done | Tips and tip pools, employee page, linked from the clock page | |
+| US-D09 | Partial | CSV hours export; hours feed into Gusto with a page | Proven on the mock Gusto only |
+| US-D10 | Done | Punch corrections | |
+| US-D11 | Partial | Jobs, time allocation, report, tests | Page |
 
-## Later (Gusto/connectors) (28)
+## E. Leave and holidays
 
-- US-E08 Two-way sync of time-off policies and requests with Gusto.
-- US-F01 Company payroll onboarding wizard (see section 3). - Company payroll onboarding with Gusto
-- US-F02 Pay schedule management. - Payroll through Gusto
-- US-F03 Employee payroll profile sync (W-4, state taxes, bank, compensation). - Payroll through Gusto
-- US-F04 Payroll preview: hours and pay into Gusto, calculated results back, blocker list. - Payroll through Gusto
-- US-F05 Regular payroll run submit and cancel. - Payroll through Gusto
-- US-F06 Off-cycle payrolls (bonus, correction, termination pay). - Payroll through Gusto
-- US-F07 Contractor payments and payment groups. - Payroll through Gusto
-- US-F08 Pay stubs and payroll register in our UI. - Payroll through Gusto
-- US-F09 Tax filing and payment status dashboard (read from Gusto). - Payroll through Gusto
-- US-F10 Year-end: W-2 and 1099 availability, corrections status. - Payroll through Gusto
-- US-F11 Garnishment and deduction tracking (non-child-support garnishments need partner handling **(confirm)**). - Payroll through Gusto
-- US-F12 Payroll journal / general ledger export (via Gusto report and our connector). - Payroll through Gusto
-- US-F13 Historical payroll import for mid-year switchers. - Payroll through Gusto
-- US-K01 Public REST API (versioned) for people, jobs, time, leave, documents, payroll results. - Connectors
-- US-K02 API keys and OAuth 2.0 apps with scopes per company. - Connectors
-- US-K03 Outbound webhooks with signing, retries, replay. - Connectors
-- US-K04 Event bus for internal and external events. - Event bus exists from the India app
-- US-K05 Connector SDK: field mapping, transforms, per-company config UI. - Connectors
-- US-K06 Sync engine with change tracking, conflict rules, dead-letter queue, reconciliation reports. - Connectors
-- US-K07 Bulk import/export: CSV, SFTP drops, scheduled files. - Connectors
-- US-K08 Prebuilt connectors, phase 1: QuickBooks Online, Xero, NetSuite. - Connectors
-- US-K09 Prebuilt connectors, phase 2: SAP, Microsoft Dynamics, Oracle, Workday Financials, Sage Intacct. - Connectors
-- US-K10 Prebuilt connectors, phase 2: Slack, Microsoft Teams, Google Workspace, Okta/Entra ID (provisioning/SCIM). - Connectors
-- US-K11 Automation platform listing (Zapier / Make) built on the public API. - Connectors
-- US-K12 Integration health dashboard, logs, alerts, per-tenant rate limits. - Connectors
-- US-K13 Developer portal: docs, sandbox company, API explorer. - Connectors
-- US-K14 Partner approval flow (customer admin authorizes an app and scopes). - Connectors
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-E01 | Done | PTO policies and accrual | |
+| US-E02 | Done | Paid sick policies | State and city rules must be entered and confirmed |
+| US-E03 | Done | Leave cases (FMLA style), HR and employee pages, linked | |
+| US-E04 | Done | Jury, military, bereavement, parental leave types | State rules are placeholders to be entered |
+| US-E05 | Done | Requests, approvals, calendar | |
+| US-E06 | Partial | Company holiday routes, tests, page (`admin-us-org.html`) | Leave and time routes do not use company holidays yet |
+| US-E07 | Partial | Balances and payout summary | Payout calculation into pay |
+| US-E08 | Partial | Approved leave pushed to Gusto | One way only; no policy sync; mock only |
+
+## F. Payroll through Gusto
+
+All of F runs against the mock Gusto server only. A real run needs Gusto demo credentials (`GUSTO_CLIENT_ID`, `GUSTO_CLIENT_SECRET`, `GUSTO_MODE=demo`); production also needs Gusto's approval and `GUSTO_ALLOW_PRODUCTION=true`. Routes: `routes/us-gusto.js` at `/api/us/gusto`, public webhook receiver at `/api/webhooks/gusto/:orgId`. Pages: `admin-us-payroll.html`, `my-pay.html`. Tests: 20 service-level tests against the mock; the routes were checked live (44 checks), not by an automated test file.
+
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-F01 | Partial | 14-step company setup with a page | Real Gusto credentials; state-tax fields are the mock's, to verify against Gusto |
+| US-F02 | Partial | Pay schedule sent to Gusto from the setup page | Local pay-schedule page |
+| US-F03 | Partial | People, address, job, pay and federal W-4 sent; compare with Gusto | State tax and bank details not sent; contractors skipped |
+| US-F04 | Partial | Hours feed, prepare, preview, blockers, deadline warning, page | Real Gusto credentials |
+| US-F05 | Partial | Submit with typed confirmation, stale-hours and double-submit guards, cancel | Real Gusto credentials |
+| US-F06 | Not started | | Off-cycle payrolls |
+| US-F07 | Not started | | Contractor payments through Gusto |
+| US-F08 | Partial | Pay stubs (admin and employee page), payroll history | Payroll register; pay results are not stored for reports or the API |
+| US-F09 | Partial | Tax payments and forms read from Gusto, shown on the page | |
+| US-F10 | Not started | | W-2 and 1099 availability |
+| US-F11 | Not started | | Garnishments |
+| US-F12 | Partial | Journal builder and accounting adapters | Nothing writes the pay results it reads, so it does not work end to end |
+| US-F13 | Not started | | Historical payroll import |
+
+Known decision to make: a person who is in Gusto but has not finished onboarding there is left off the payroll with a warning, and the payroll can still be submitted. Consider making that a blocker.
+
+## G. Benefits
+
+Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefits.html` (HR) and `my-benefits.html` (employee, English and Spanish). The ACA and COBRA routes still have no page.
+
+| Id | Status | What is missing |
+|---|---|---|
+| US-G01 | Done | |
+| US-G02 | Done | Employee self-enrollment was not run in the browser with an eligible employee (the seeded test logins are not W-2 with a start date); HR-entered enrollment was |
+| US-G03 | Partial | The deduction feed is shown and downloads as CSV, but is not sent to Gusto |
+| US-G04 | Done | |
+| US-G05 | Partial | 401(k) provider hook; the carrier adapter is a stub |
+| US-G06 | Done | |
+
+## H. Documents and compliance
+
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-H01 | Done | Document vault | Retention jobs have no page or test |
+| US-H02 | Done | E-sign service, certificate, tests; pages `admin-us-esign.html`, `sign.html`, "to sign" list in `my-documents.html` | |
+| US-H03 | Partial | Deadline and expiry lists | One compliance calendar |
+| US-H04 | Partial | Notice tracker | Notice texts; state lists |
+| US-H05 | Done | EEO-1 data | |
+| US-H06 | Done | OSHA log | |
+| US-H07 | Partial | I-9 status table | Printable audit report |
+| US-H08 | Existing, not adapted | Old policy library | US adaptation |
+
+## I. Performance and engagement
+
+| Id | Status | What is missing |
+|---|---|---|
+| US-I01 | Existing, not adapted | US adaptation of goals and reviews |
+| US-I02 | Not started | Review cycles, 360 feedback |
+| US-I03 | Existing, not adapted | US adaptation of surveys |
+| US-I04 | Not started | Recognition and announcements |
+| US-I05 | Existing, not adapted | US adaptation of asset tracking |
+| US-I06 | Partial | Exit-interview form and notes |
+
+## J. Analytics and reporting
+
+| Id | Status | What is missing |
+|---|---|---|
+| US-J01 to US-J04 | Done (4) | |
+| US-J05 | Existing, not adapted | US data in the report builder; scheduled exports |
+| US-J06 | Partial | Real payroll cost (pay results from Gusto are not stored yet) |
+
+## K. Connectors and API
+
+Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The webhook delivery worker and the connector scheduler now start with the server. Page: `admin-us-integrations.html` (keys, webhooks, OAuth apps, SCIM tokens, connectors, API activity). Checked live: 30 checks. No automated tests for the connectors, the sync engine or SCIM.
+
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-K01 | Partial | Public API v1 (people, jobs, org, time, leave, documents), OpenAPI document | Pay results are always empty; documents are metadata only |
+| US-K02 | Partial | API keys and OAuth apps with a page | `oauth-consent.html` (the page where an admin approves an app) |
+| US-K03 | Partial | Signed webhooks, retries, replay, page | |
+| US-K04 | Partial | Event outbox | Only person events are sent; leave, timesheet and document events are in the catalog but never sent |
+| US-K05 | Partial | Adapter base, field mapping, preview route | Mapping screen; tests |
+| US-K06 | Partial | Sync engine, runs, error retry, reconciliation | Tests; detail screens |
+| US-K07 | Partial | File export to a local folder | SFTP (needs a library that is not installed); tests |
+| US-K08 | Partial | QuickBooks, Xero, NetSuite adapters | Never run against the real services; journal source data is empty |
+| US-K09 | Partial | SAP, Dynamics, Oracle, Workday, Sage adapters | Same |
+| US-K10 | Partial | Slack, Teams, Google Workspace adapters; SCIM server | Real credentials; SCIM tests |
+| US-K11 | Partial | Trigger, hook and action endpoints | The Zapier/Make listing itself |
+| US-K12 | Partial | Overview and API activity on the page; rate limits | Alerts |
+| US-K13 | Partial | OpenAPI document | Docs site, sandbox company, API explorer |
+| US-K14 | Partial | Authorize and grant routes | `oauth-consent.html` |
+
+## L. Security, privacy, operations
+
+| Id | Status | What exists | What is missing |
+|---|---|---|---|
+| US-L01 | Partial | Email one-time code; SSO service, routes and settings page (now linked) | SSO depends on Firebase Identity Platform setup (not verified); no TOTP |
+| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production | Demo password still in `login.js`; `npm audit` findings; inline scripts allowed; `docs/DEPLOY.md` is referenced but missing |
+| US-L03 | Done | Field-level encryption | |
+| US-L04 | Done | Privacy export and deletion, tests; pages `admin-us-privacy.html` and `my-privacy.html` (English and Spanish) | |
+| US-L05 | Partial | Request logs, metrics, deep health check | Alerting, backups, disaster recovery |
+| US-L06 | Not started | | Security audit, pen test, SOC 2 |
+| US-L07 | Partial | Billing rules, service, Stripe adapter, tests, page in `admin-us-owner.html` (practice mode with test cards) | Real Stripe never exercised; no real card entry; tax is a placeholder |
+| US-L08 | Partial | Support access with consent and audit; status endpoint | Status page; support-staff screen |
+| US-L09 | Not started | | CI, deployment pipeline, environments |
+
+## Next, in order of value (no outside accounts needed)
+
+1. Jobs and time allocation page: D11.
+2. ACA and COBRA pages (routes exist under `/api/us/benefits/aca` and `/cobra`).
+3. Clock pages that handle consent, selfie and geofence answers, plus a clock-policy page: D01.
+4. `oauth-consent.html`: K02, K14.
+
+Needs an outside account before it can move: Gusto demo credentials (all of F), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10).

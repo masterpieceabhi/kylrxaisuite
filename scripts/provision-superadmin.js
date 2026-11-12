@@ -52,7 +52,9 @@ const admin = require('firebase-admin');
 const DEFAULT_SUPERADMIN_EMAIL = 'superadmin@kylrx.ai';
 const DEFAULT_SUPERADMIN_DISPLAY_NAME = 'Super Admin';
 const DEFAULT_ORGANIZATION = 'Kylrx Technologies Pvt. Ltd.';
-const DEFAULT_PASSWORD = process.env.SUPERADMIN_PASSWORD || 'Kylrx#SuperAdmin2026!Secured';
+// No built-in password: use SUPERADMIN_PASSWORD or --password=, otherwise a random one is generated and printed once
+const GENERATED_PASSWORD = require('crypto').randomBytes(14).toString('base64url') + '#9a';
+const DEFAULT_PASSWORD = process.env.SUPERADMIN_PASSWORD || GENERATED_PASSWORD;
 
 const SUPERADMIN_PERMISSIONS = [
   'all',

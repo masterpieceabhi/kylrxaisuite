@@ -155,6 +155,7 @@
         .profile-role { font-size: 0.7rem; color: var(--text-muted); font-weight: 600; }
     </style>
     <link rel="stylesheet" href="sidebar-lock.css">
+<script src="country-format.js"></script>
 </head>
 <body>
         <script>
@@ -380,7 +381,7 @@
         const fmtDate = (ts) => {
             if (!ts) return '—';
             const d = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
-            return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+            return d.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: 'numeric', month: 'short', year: 'numeric' });
         };
 
         const renderAssets = (assets) => {

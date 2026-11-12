@@ -10,6 +10,7 @@ const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMi
 const { getCountryConfig } = require('../country-config');
 const rules = require('../services/time-rules');
 const policy = require('../services/time-policy');
+const clockIo = require('../services/clock-compliance-io');
 
 const KIOSK_SESSION_SECONDS = 45;
 const PIN_MAX_ATTEMPTS = 5;
@@ -81,13 +82,22 @@ async function weekIsLocked(userId, localDay) {
     return exists(snap) && snap.data().status === 'approved';
 }
 
-async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, location, note, addedBy }) {
+async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, location, note, addedBy, photo, consents, ip }) {
     const info = await orgInfo(orgId);
     const nowIso = new Date().toISOString();
     if (await weekIsLocked(userId, rules.localDate(nowIso, info.tz))) {
         return { ok: false, code: 'week_locked', status: buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso) };
     }
-    return admin.firestore().runTransaction(async (tx) => {
+    // Clock compliance hook: does nothing (returns null) until the company sets a clock policy
+    let comp = null;
+    try {
+        comp = await clockIo.beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz: info.tz, loadPunches: () => punchesSince(orgId, userId, daysAgoIso(8)) });
+    } catch (e) { logger.error(`Clock compliance check failed: ${e.message}`); }
+    if (comp && comp.block) {
+        return { ok: false, code: comp.code, status: buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso), compliance: complianceView(comp) };
+    }
+    const punchRef = rawCollection('time_punches').doc();
+    const out = await admin.firestore().runTransaction(async (tx) => {
         const punches = await punchesSince(orgId, userId, daysAgoIso(8), tx);
         const last = punches.length ? punches[punches.length - 1] : null;
         if (last && last.type === type && (Date.now() - new Date(last.at).getTime()) < DUPLICATE_WINDOW_MS) {
@@ -98,18 +108,31 @@ async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, 
         const punch = {
             orgId, userId, employeeId: employeeId || null, type, at: nowIso,
             localDate: rules.localDate(nowIso, info.tz), tz: info.tz, source: source || 'web',
-            deviceId: deviceId || null, location: cleanLocation(location), note: note ? String(note).slice(0, 200) : null,
-            addedBy: addedBy || null
+            deviceId: deviceId || null, location: comp && comp.dropLocation ? null : cleanLocation(location), note: note ? String(note).slice(0, 200) : null,
+            addedBy: addedBy || null, ...(comp ? comp.punchExtras : {})
         };
-        tx.set(rawCollection('time_punches').doc(), punch);
+        tx.set(punchRef, punch);
         return { ok: true, duplicate: false, status: buildStatus([...punches, punch], info, nowIso) };
     });
+    if (comp && out.ok && !out.duplicate) {
+        try { await clockIo.afterPunch(comp, { orgId, userId, punchId: punchRef.id, type, source, tz: info.tz }); } catch (e) { logger.error(`Clock compliance follow-up failed: ${e.message}`); }
+        out.compliance = complianceView(comp);
+    }
+    return out;
+}
+
+/** What the clock pages need to know about a compliance check (never includes photo bytes) */
+function complianceView(comp) {
+    const ev = comp.evaluation;
+    return { decision: ev.decision, reasons: ev.reasons.map((r) => ({ code: r.code, severity: r.severity, en: r.en, es: r.es })), pending: comp.pending || [], photoSaved: Boolean(comp.photo) };
 }
 
 const ERROR_TEXT = {
     already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.',
     not_on_break: 'You are not on a break.', unknown_action: 'Unknown action.', not_allowed: 'That is not possible right now.',
-    week_locked: 'This week has been approved. Ask your manager if something needs to change.'
+    week_locked: 'This week has been approved. Ask your manager if something needs to change.',
+    consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is required. Please take one.', outside_geofence: 'You are outside the work site area.',
+    low_accuracy: 'Your phone location is not accurate enough.', location_required: 'Location is required to clock in here.'
 };
 
 /* ----------------------------- Shared-device kiosk (no login) ----------------------------- */
@@ -158,8 +181,10 @@ router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     const nowIso = new Date().toISOString();
     const status = buildStatus(await punchesSince(kiosk.orgId, doc.id, daysAgoIso(8)), info, nowIso);
     const session = jwt.sign({ type: 'kiosk_session', uid: doc.id, orgId: kiosk.orgId, kioskId: kiosk.id }, process.env.JWT_SECRET, { expiresIn: KIOSK_SESSION_SECONDS });
+    let compliance = null;
+    try { const c = await clockIo.pendingFor(kiosk.orgId, doc.id); if (c && c.policy) compliance = { pending: c.pending, selfie: c.selfie, required: c.required }; } catch (e) { logger.error(`Kiosk compliance lookup failed: ${e.message}`); }
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, session, name: u.name || employeeId, firstName: String(u.name || '').split(' ')[0], status });
+    res.json({ success: true, session, name: u.name || employeeId, firstName: String(u.name || '').split(' ')[0], status, compliance });
 });
 
 router.post('/kiosk/punch', kioskLimiter, async (req, res) => {
@@ -178,10 +203,10 @@ router.post('/kiosk/punch', kioskLimiter, async (req, res) => {
     const u = exists(userSnap) ? userSnap.data() : {};
     const result = await recordPunch({
         orgId: kiosk.orgId, userId: claims.uid, employeeId: u.employeeId, type: String(req.body.action || ''),
-        source: 'kiosk', deviceId: kiosk.id
+        source: 'kiosk', deviceId: kiosk.id, photo: req.body.photo, consents: req.body.consents, ip: req.ip
     });
-    if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status });
-    res.json({ success: true, duplicate: result.duplicate, name: u.name || null, status: result.status });
+    if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status, compliance: result.compliance });
+    res.json({ success: true, duplicate: result.duplicate, name: u.name || null, status: result.status, compliance: result.compliance });
 });
 
 /* ----------------------------- Signed-in users (any role) ----------------------------- */
@@ -214,10 +239,10 @@ router.post('/punch', requireOrg, async (req, res) => {
     const result = await recordPunch({
         orgId: req.orgId, userId: req.user.id, employeeId: req.user.employeeId, type: String((req.body && req.body.action) || ''),
         source: 'web', deviceId: req.body && req.body.deviceId ? String(req.body.deviceId).slice(0, 60) : null,
-        location: req.body && req.body.location, note: req.body && req.body.note
+        location: req.body && req.body.location, note: req.body && req.body.note, photo: req.body && req.body.photo, ip: req.ip
     });
-    if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status });
-    res.json({ success: true, duplicate: result.duplicate, status: result.status });
+    if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status, compliance: result.compliance });
+    res.json({ success: true, duplicate: result.duplicate, status: result.status, compliance: result.compliance });
 });
 
 router.get('/timesheet', requireOrg, async (req, res) => {

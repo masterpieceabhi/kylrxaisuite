@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company structure | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:110px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+ul.tree{list-style:none;margin:0;padding-left:0}ul.tree ul{list-style:none;margin:0;padding-left:22px;border-left:2px solid var(--line)}
+ul.tree li{padding:5px 0 0 8px}.node{display:inline-block;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}.node small{color:var(--muted)}
+</style>
+</head>
+<body>
+<header><h1>Company structure</h1><div><a href="admin-us-payroll.html">Payroll</a> &nbsp;|&nbsp; <a href="admin-us-time.html">Time</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="locations" class="on">Locations</button>
+    <button data-tab="departments">Departments</button>
+    <button data-tab="people">People and reporting</button>
+    <button data-tab="schedules">Pay schedules</button>
+    <button data-tab="holidays">Holidays</button>
+  </div>
+
+  <div id="tab-locations" class="pane on">
+    <section class="card">
+      <h2>Work locations</h2>
+      <table><thead><tr><th>Name</th><th>Address</th><th>Time zone</th><th>Clock-in area</th><th>Status</th><th></th></tr></thead><tbody id="locRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="locTitle">Add a location</h2>
+      <form id="locForm"><div class="grid">
+        <label>Name<input name="name" required maxlength="120" placeholder="Main Street store"></label>
+        <label>Street address<input name="line1" required></label>
+        <label>Suite or unit<input name="line2"></label>
+        <label>City<input name="city" required></label>
+        <label>State (2 letters)<input name="state" required maxlength="2" placeholder="TX"></label>
+        <label>ZIP<input name="zip" required placeholder="75001"></label>
+        <label>County (optional)<input name="county"></label>
+        <label>Time zone<select name="timeZone" id="tzPick"></select></label>
+        <label>Latitude (optional)<input name="lat" type="number" step="any" placeholder="32.7767"></label>
+        <label>Longitude (optional)<input name="lng" type="number" step="any" placeholder="-96.7970"></label>
+        <label>Clock-in distance (meters)<input name="radiusMeters" type="number" min="10" max="5000" value="150"></label>
+        <label class="chk"><input type="checkbox" name="isHeadquarters"> This is the headquarters</label>
+      </div>
+      <p class="hint">Latitude and longitude are only needed if people must be at this place to clock in. Enter both or neither.</p>
+      <div class="row"><button type="submit">Save location</button><button type="button" class="ghost" id="locCancel" hidden>Cancel edit</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-departments" class="pane">
+    <section class="card">
+      <h2>Departments</h2>
+      <table><thead><tr><th>Name</th><th>Code</th><th>Inside</th><th>Head</th><th>Cost center</th><th>People</th><th></th></tr></thead><tbody id="depRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="depTitle">Add a department</h2>
+      <form id="depForm"><div class="grid">
+        <label>Name<input name="name" required maxlength="120"></label>
+        <label>Short code (optional)<input name="code" maxlength="12" placeholder="OPS"></label>
+        <label>Inside department<select name="parentId" id="depParent"></select></label>
+        <label>Department head<select name="headId" id="depHead"></select></label>
+        <label>Cost center (optional)<input name="costCenter" maxlength="40"></label>
+      </div>
+      <div class="row"><button type="submit">Save department</button><button type="button" class="ghost" id="depCancel" hidden>Cancel edit</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-people" class="pane">
+    <section class="card">
+      <h2>Who reports to whom</h2>
+      <div id="chart"></div>
+    </section>
+    <section class="card">
+      <h2>Set manager, location and department</h2>
+      <table><thead><tr><th>Person</th><th>Manager</th><th>Location</th><th>Department</th><th></th></tr></thead><tbody id="assignRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Change many people at once</h2>
+      <p class="hint">Paste rows with a header line. Columns: <b>employee_id</b> (or email), <b>manager</b> (employee ID or email), <b>location</b>, <b>department</b>. Leave a column out to keep it as is. Write "none" to clear a value. Up to 500 rows.</p>
+      <textarea id="bulkCsv" placeholder="employee_id,manager,location,department&#10;EMP0002,EMP0001,Main Street store,OPS"></textarea>
+      <div class="row"><button class="ghost" id="bulkCheck">Check only</button><button id="bulkApply">Apply changes</button></div>
+      <table style="margin-top:12px"><tbody id="bulkOut"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-schedules" class="pane">
+    <section class="card">
+      <h2>Pay schedules</h2>
+      <div class="warn">States set how often and how soon people must be paid. Confirm your schedule with a US payroll advisor. If you run payroll through Gusto, the schedule there is the one that pays people.</div>
+      <table><thead><tr><th>Name</th><th>How often</th><th>Pay day</th><th>If pay day is a holiday or weekend</th><th>People</th><th></th></tr></thead><tbody id="schRows"></tbody></table>
+      <p class="hint" id="schUnassigned"></p>
+      <table style="margin-top:8px"><tbody id="schPreview"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="schTitle">Add a pay schedule</h2>
+      <form id="schForm"><div class="grid">
+        <label>Name<input name="name" required placeholder="Every two weeks"></label>
+        <label>How often<select name="frequency" id="schFreq"><option value="weekly">Every week</option><option value="biweekly" selected>Every two weeks</option><option value="semimonthly">Twice a month</option><option value="monthly">Once a month</option></select></label>
+        <label id="schAnchorL">A pay date to count from<input name="anchorPayDate" type="date"></label>
+        <label id="schDay1L" hidden>First pay day of the month<input name="day1" placeholder="15"></label>
+        <label id="schDay2L" hidden>Second pay day<input name="day2" placeholder="last"></label>
+        <label>Days from period end to pay day<input name="payDayLag" type="number" min="0" max="31" value="5"></label>
+        <label>If pay day is a holiday or weekend<select name="holidayAdjustment"><option value="previous_business_day">Pay the business day before</option><option value="next_business_day">Pay the next business day</option><option value="none">Do not move it</option></select></label>
+      </div>
+      <p class="hint">For a day of the month, type a number from 1 to 31 or the word "last".</p>
+      <div class="row"><button type="submit">Save schedule</button><button type="button" class="ghost" id="schCancel" hidden>Cancel edit</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Who is on which schedule</h2>
+      <div class="row" style="margin-top:0"><label>Move the ticked people to<select id="schMoveTo"></select></label><label class="chk"><input type="checkbox" id="schSync"> Also change their pay frequency to match</label><button id="schMove">Move</button><button class="ghost" id="schCsv">Download CSV</button></div>
+      <table style="margin-top:12px"><thead><tr><th></th><th>Person</th><th>Pay frequency</th><th>Schedule</th></tr></thead><tbody id="schMembers"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-holidays" class="pane">
+    <section class="card">
+      <h2>Company holidays</h2>
+      <div class="row" style="margin-top:0"><label>Year<input id="holYear" type="number" min="2000" max="2100" style="width:110px"></label><button class="ghost" id="holGo">Show</button></div>
+      <p class="hint">Federal holidays are listed for you. Private employers are generally not required to give them off or pay for them, so turn off the ones your company does not observe and confirm your policy with an advisor.</p>
+      <table style="margin-top:8px"><thead><tr><th>Date</th><th>Holiday</th><th>Type</th><th>Paid</th><th>Observed</th><th>Locations</th><th></th></tr></thead><tbody id="holRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Add a company holiday</h2>
+      <form id="holForm"><div class="grid">
+        <label>Name<input name="name" required maxlength="100" placeholder="Day after Thanksgiving"></label>
+        <label>Date<input name="date" type="date" required></label>
+        <label class="chk"><input type="checkbox" name="paid" checked> Paid day off</label>
+        <label>Only for these locations (none ticked = all)<span id="holLocs"></span></label>
+      </div>
+      <div class="row"><button type="submit">Add holiday</button></div></form>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const TIME_ZONES = [['America/New_York', 'Eastern'], ['America/Chicago', 'Central'], ['America/Denver', 'Mountain'], ['America/Phoenix', 'Arizona (no daylight time)'], ['America/Los_Angeles', 'Pacific'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii'], ['America/Puerto_Rico', 'Puerto Rico']];
+const FREQ = { weekly: 'Every week', biweekly: 'Every two weeks', semimonthly: 'Twice a month', monthly: 'Once a month' };
+const ADJ = { previous_business_day: 'Business day before', next_business_day: 'Next business day', none: 'Not moved' };
+let locations = []; let departments = []; let people = []; let schedules = []; let members = []; let holidayRows = [];
+let locEdit = null; let depEdit = null; let schEdit = null;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res.blob(); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const opts = (rows, label, selected, blank) => (blank === undefined ? '' : `<option value="">${esc(blank)}</option>`) + rows.map((r) => `<option value="${esc(r.id)}"${r.id === selected ? ' selected' : ''}>${esc(label(r))}</option>`).join('');
+const dayText = (d) => (d === 31 ? 'last day' : `day ${d}`);
+const dateText = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : '');
+
+// ---------------------------------------------------------------- locations
+async function loadLocations() {
+  locations = (await req('GET', '/locations?all=true')).data;
+  $('locRows').innerHTML = locations.map((l) => {
+    const a = l.address || {};
+    return `<tr><td><b>${esc(l.name)}</b>${l.isHeadquarters ? ' <span class="tag good">headquarters</span>' : ''}</td><td>${esc([a.line1, a.line2].filter(Boolean).join(', '))}<br>${esc(a.city || '')}, ${esc(a.state || '')} ${esc(a.zip || '')}</td><td>${esc(l.timeZone || '')}</td><td>${l.lat === null || l.lat === undefined ? '<span class="hint">not set</span>' : `within ${esc(l.radiusMeters)} m`}</td><td>${l.active === false ? '<span class="tag grey">closed</span>' : '<span class="tag good">open</span>'}</td><td><button class="ghost" data-locedit="${esc(l.id)}">Edit</button> ${l.active === false ? `<button class="ghost" data-locopen="${esc(l.id)}">Reopen</button>` : `<button class="no" data-locx="${esc(l.id)}">Close</button>`}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="hint">No locations yet. Add the first one below; it becomes the headquarters.</td></tr>';
+  const open = locations.filter((l) => l.active !== false);
+  $('holLocs').innerHTML = open.map((l) => `<label class="chk"><input type="checkbox" data-holloc="${esc(l.id)}"> ${esc(l.name)}</label>`).join('') || '<span class="hint">No locations yet</span>';
+}
+function resetLocForm() { locEdit = null; $('locForm').reset(); $('tzPick').value = 'America/Chicago'; $('locTitle').textContent = 'Add a location'; $('locCancel').hidden = true; }
+$('locForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const body = { name: f.get('name'), address: { line1: f.get('line1'), line2: f.get('line2'), city: f.get('city'), state: f.get('state'), zip: f.get('zip') }, county: f.get('county'), timeZone: f.get('timeZone'), lat: f.get('lat'), lng: f.get('lng'), radiusMeters: f.get('radiusMeters'), isHeadquarters: f.get('isHeadquarters') === 'on' };
+  try {
+    if (locEdit) await req('PUT', `/locations/${locEdit}`, body); else await req('POST', '/locations', body);
+    say(locEdit ? 'Location updated.' : 'Location added.'); resetLocForm(); await loadLocations(); await loadPeople();
+  } catch (err) { say(err.message, false); }
+});
+$('locCancel').addEventListener('click', resetLocForm);
+
+// -------------------------------------------------------------- departments
+async function loadDepartments() {
+  departments = (await req('GET', '/departments')).data;
+  const name = Object.fromEntries(departments.map((d) => [d.id, d.name])); const pName = Object.fromEntries(people.map((p) => [p.id, p.name]));
+  $('depRows').innerHTML = departments.map((d) => `<tr><td><b>${esc(d.name)}</b></td><td>${esc(d.code || '')}</td><td>${esc(name[d.parentId] || '')}</td><td>${esc(pName[d.headId] || '')}</td><td>${esc(d.costCenter || '')}</td><td>${esc(d.headCount)}</td><td><button class="ghost" data-depedit="${esc(d.id)}">Edit</button> <button class="no" data-depx="${esc(d.id)}">Delete</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No departments yet.</td></tr>';
+  fillDepSelects();
+}
+function fillDepSelects(cur) {
+  $('depParent').innerHTML = opts(departments.filter((d) => !cur || d.id !== cur.id), (d) => d.name, cur && cur.parentId, 'None (top level)');
+  $('depHead').innerHTML = opts(people, (p) => p.name, cur && cur.headId, 'Nobody yet');
+}
+function resetDepForm() { depEdit = null; $('depForm').reset(); fillDepSelects(); $('depTitle').textContent = 'Add a department'; $('depCancel').hidden = true; }
+$('depForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const body = { name: f.get('name'), code: f.get('code'), parentId: f.get('parentId') || null, headId: f.get('headId') || null, costCenter: f.get('costCenter') };
+  try {
+    if (depEdit) await req('PUT', `/departments/${depEdit}`, body); else await req('POST', '/departments', body);
+    say(depEdit ? 'Department updated.' : 'Department added.'); resetDepForm(); await loadDepartments(); await loadPeople();
+  } catch (err) { say(err.message, false); }
+});
+$('depCancel').addEventListener('click', resetDepForm);
+
+// ------------------------------------------------------ people and reporting
+function flatten(nodes, out = []) { nodes.forEach((n) => { out.push(n); flatten(n.children || [], out); }); return out; }
+const treeHtml = (nodes, top) => `<ul${top ? ' class="tree"' : ''}>${nodes.map((n) => `<li><span class="node"><b>${esc(n.name)}</b> <small>${esc([n.jobTitle, n.department, n.location].filter(Boolean).join(' · '))}${n.directReports ? ` · ${esc(n.directReports)} direct` : ''}</small></span>${n.children && n.children.length ? treeHtml(n.children, false) : ''}</li>`).join('')}</ul>`;
+async function loadPeople() {
+  const r = await req('GET', '/org/chart');
+  people = flatten(r.tree).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  $('chart').innerHTML = r.tree.length ? treeHtml(r.tree, true) : '<p class="hint">No people yet.</p>';
+  const openLocs = locations.filter((l) => l.active !== false);
+  const locId = (n) => (openLocs.find((l) => l.name === n) || {}).id; const depId = (n) => (departments.find((d) => d.name === n) || {}).id;
+  $('assignRows').innerHTML = people.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="hint">${esc(p.employeeId || '')} ${esc(p.jobTitle || '')}</span></td><td><select data-mgr="${esc(p.id)}">${opts(people.filter((x) => x.id !== p.id), (x) => x.name, p.managerId, 'No manager')}</select></td><td><select data-loc="${esc(p.id)}">${opts(openLocs, (l) => l.name, locId(p.location), 'Not set')}</select></td><td><select data-dep="${esc(p.id)}">${opts(departments, (d) => d.name, depId(p.department), 'Not set')}</select></td><td><button class="ghost" data-assign="${esc(p.id)}">Save</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No people yet.</td></tr>';
+}
+async function saveAssignment(id) {
+  const p = people.find((x) => x.id === id); const pick = (k) => document.querySelector(`[data-${k}="${CSS.escape(id)}"]`).value || null;
+  const mgr = pick('mgr');
+  if (mgr !== (p.managerId || null)) await req('PUT', `/people/${id}/manager`, { managerId: mgr });
+  await req('PUT', `/people/${id}/assignment`, { workLocationId: pick('loc'), departmentId: pick('dep') });
+  say(`Saved for ${p.name}.`); await loadPeople(); await loadDepartments();
+}
+async function bulk(dryRun) {
+  try {
+    const r = await req('POST', `/org/assignments/bulk${dryRun ? '?dryRun=true' : ''}`, { csv: $('bulkCsv').value });
+    $('bulkOut').innerHTML = r.results.map((x) => `<tr><td>Line ${esc(x.line)}</td><td>${esc(x.person || '')}</td><td>${x.ok ? `<span class="tag good">${dryRun ? 'will change' : 'changed'}</span>` : `<span class="tag badTag">problem</span> ${esc((x.errors || []).join('; '))}`}</td></tr>`).join('');
+    say(dryRun ? `Checked ${r.total} rows: ${r.applied} are fine, ${r.failed} have problems. Nothing was changed.` : `${r.applied} of ${r.total} rows applied.`, r.failed === 0);
+    if (!dryRun) { await loadPeople(); await loadDepartments(); }
+  } catch (err) { say(err.message, false); }
+}
+$('bulkCheck').addEventListener('click', () => bulk(true));
+$('bulkApply').addEventListener('click', () => { if (window.confirm('Apply these changes now?')) bulk(false); });
+
+// ------------------------------------------------------------- pay schedules
+async function loadSchedules() {
+  const [s, m] = await Promise.all([req('GET', '/pay-schedules'), req('GET', '/pay-schedules/members')]);
+  schedules = s.data.sort((a, b) => String(a.name).localeCompare(String(b.name))); members = m.data;
+  $('schRows').innerHTML = schedules.map((x) => {
+    const when = x.frequency === 'semimonthly' || x.frequency === 'monthly' ? (x.paydays || []).map(dayText).join(' and ') : `${x.payDayLag} days after the period ends`;
+    return `<tr><td><b>${esc(x.name)}</b></td><td>${esc(FREQ[x.frequency] || x.frequency)}</td><td>${esc(when)}</td><td>${esc(ADJ[x.holidayAdjustment] || '')}</td><td>${esc(x.members)}</td><td><button class="ghost" data-schprev="${esc(x.id)}">Next pay dates</button> <button class="ghost" data-schedit="${esc(x.id)}">Edit</button> <button class="no" data-schx="${esc(x.id)}">Delete</button></td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="hint">No pay schedules yet.</td></tr>';
+  $('schUnassigned').textContent = s.unassigned ? `${s.unassigned} ${s.unassigned === 1 ? 'person is' : 'people are'} not on any schedule yet.` : '';
+  $('schMoveTo').innerHTML = opts(schedules, (x) => x.name, null, 'No schedule');
+  $('schMembers').innerHTML = members.map((p) => `<tr><td><input type="checkbox" data-member="${esc(p.id)}" aria-label="Select ${esc(p.name)}"></td><td>${esc(p.name)} <span class="hint">${esc(p.employeeId || '')}</span></td><td>${esc(FREQ[p.payFrequency] || p.payFrequency || '')}</td><td>${p.scheduleName ? esc(p.scheduleName) : '<span class="tag warnTag">none</span>'}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No people yet.</td></tr>';
+}
+function showFreqFields() {
+  const f = $('schFreq').value; const weekly = f === 'weekly' || f === 'biweekly';
+  $('schAnchorL').hidden = !weekly; $('schDay1L').hidden = weekly; $('schDay2L').hidden = f !== 'semimonthly';
+  $('schDay1L').firstChild.textContent = f === 'monthly' ? 'Pay day of the month' : 'First pay day of the month';
+}
+$('schFreq').addEventListener('change', showFreqFields);
+function resetSchForm() { schEdit = null; $('schForm').reset(); showFreqFields(); $('schTitle').textContent = 'Add a pay schedule'; $('schCancel').hidden = true; }
+$('schForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target); const freq = f.get('frequency');
+  const body = { name: f.get('name'), frequency: freq, payDayLag: f.get('payDayLag'), holidayAdjustment: f.get('holidayAdjustment') };
+  if (freq === 'weekly' || freq === 'biweekly') body.anchorPayDate = f.get('anchorPayDate');
+  if (freq === 'semimonthly') body.paydays = [f.get('day1') || 15, f.get('day2') || 'last'];
+  if (freq === 'monthly') body.paydays = [f.get('day1') || 'last'];
+  try {
+    if (schEdit) await req('PUT', `/pay-schedules/${schEdit}`, body); else await req('POST', '/pay-schedules', body);
+    say(schEdit ? 'Pay schedule updated.' : 'Pay schedule added.'); resetSchForm(); await loadSchedules();
+  } catch (err) { say(err.message, false); }
+});
+$('schCancel').addEventListener('click', resetSchForm);
+$('schMove').addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('[data-member]:checked')].map((c) => c.dataset.member);
+  if (!ids.length) { say('Tick at least one person first.', false); return; }
+  try {
+    const to = $('schMoveTo').value;
+    if (!to) { const r = await req('POST', '/pay-schedules/unassign', { userIds: ids }); say(`${r.unassigned} taken off their schedule.`); } else {
+      const r = await req('POST', `/pay-schedules/${to}/assign`, { userIds: ids, syncFrequency: $('schSync').checked });
+      const bad = r.results.filter((x) => !x.ok);
+      say(bad.length ? `${r.assigned} moved. ${bad.length} not moved: ${bad[0].error}. Tick "Also change their pay frequency" to move them anyway.` : `${r.assigned} moved.`, bad.length === 0);
+    }
+    await loadSchedules();
+  } catch (err) { say(err.message, false); }
+});
+$('schCsv').addEventListener('click', async () => {
+  try { const blob = await req('GET', '/pay-schedules/export', null, true); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pay-schedules.csv'; document.body.appendChild(a); a.click(); a.remove(); } catch (err) { say(err.message, false); }
+});
+
+// ----------------------------------------------------------------- holidays
+async function loadHolidays() {
+  const r = await req('GET', `/holidays?year=${encodeURIComponent($('holYear').value)}`);
+  holidayRows = r.data; const lName = Object.fromEntries(locations.map((l) => [l.id, l.name]));
+  $('holRows').innerHTML = holidayRows.map((h, i) => {
+    const moved = h.nominalDate && h.nominalDate !== h.date ? `<br><span class="hint">falls on ${esc(dateText(h.nominalDate))}</span>` : '';
+    const acts = h.kind === 'federal'
+      ? `<button class="ghost" data-holtoggle="${i}">${h.active ? 'Not observed' : 'Observe'}</button> <button class="ghost" data-holpaid="${i}">${h.paid ? 'Make unpaid' : 'Make paid'}</button>${h.id ? ` <button class="ghost" data-holx="${i}">Reset</button>` : ''}`
+      : `<button class="ghost" data-holpaid="${i}">${h.paid ? 'Make unpaid' : 'Make paid'}</button> <button class="no" data-holx="${i}">Remove</button>`;
+    return `<tr><td>${esc(dateText(h.date))}${moved}</td><td><b>${esc(h.name)}</b></td><td>${h.kind === 'federal' ? 'Federal' : 'Company'}</td><td>${h.paid ? '<span class="tag good">paid</span>' : '<span class="tag grey">unpaid</span>'}</td><td>${h.active ? '<span class="tag good">yes</span>' : '<span class="tag grey">no</span>'}</td><td>${(h.locationIds || []).length ? esc(h.locationIds.map((id) => lName[id] || 'removed location').join(', ')) : 'All'}</td><td>${acts}</td></tr>`;
+  }).join('');
+}
+async function changeHoliday(h, patch) {
+  if (h.id) await req('PUT', `/holidays/${h.id}`, patch);
+  else await req('POST', '/holidays', { kind: 'federal', federalKey: h.federalKey, year: Number($('holYear').value), paid: h.paid, active: h.active, ...patch });
+  await loadHolidays();
+}
+$('holGo').addEventListener('click', () => loadHolidays().catch((err) => say(err.message, false)));
+$('holForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const locationIds = [...document.querySelectorAll('[data-holloc]:checked')].map((c) => c.dataset.holloc);
+  try {
+    await req('POST', '/holidays', { kind: 'custom', name: f.get('name'), date: f.get('date'), paid: f.get('paid') === 'on', locationIds });
+    $('holYear').value = String(f.get('date')).slice(0, 4); say('Holiday added.'); e.target.reset(); await loadHolidays();
+  } catch (err) { say(err.message, false); }
+});
+
+// ------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const hit = (name) => { const el = e.target.closest(`[data-${name}]`); return el ? el.dataset[name] : null; };
+  let v;
+  try {
+    if ((v = hit('locedit'))) {
+      const l = locations.find((x) => x.id === v); const a = l.address || {}; const f = $('locForm').elements; locEdit = l.id;
+      f.name.value = l.name; f.line1.value = a.line1 || ''; f.line2.value = a.line2 || ''; f.city.value = a.city || ''; f.state.value = a.state || ''; f.zip.value = a.zip || ''; f.county.value = l.county || '';
+      if (![...f.timeZone.options].some((o) => o.value === l.timeZone)) f.timeZone.add(new Option(l.timeZone, l.timeZone));
+      f.timeZone.value = l.timeZone; f.lat.value = l.lat ?? ''; f.lng.value = l.lng ?? ''; f.radiusMeters.value = l.radiusMeters ?? 150; f.isHeadquarters.checked = Boolean(l.isHeadquarters);
+      $('locTitle').textContent = `Edit ${l.name}`; $('locCancel').hidden = false; $('locForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((v = hit('locx'))) {
+      if (window.confirm('Close this location? People must be moved to another location first.')) { await req('DELETE', `/locations/${v}`); say('Location closed.'); await loadLocations(); await loadPeople(); }
+    } else if ((v = hit('locopen'))) { await req('PUT', `/locations/${v}`, { active: true }); say('Location reopened.'); await loadLocations(); await loadPeople(); } else if ((v = hit('depedit'))) {
+      const d = departments.find((x) => x.id === v); const f = $('depForm').elements; depEdit = d.id; fillDepSelects(d);
+      f.name.value = d.name; f.code.value = d.code || ''; f.costCenter.value = d.costCenter || '';
+      $('depTitle').textContent = `Edit ${d.name}`; $('depCancel').hidden = false; $('depForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((v = hit('depx'))) {
+      if (window.confirm('Delete this department?')) { await req('DELETE', `/departments/${v}`); say('Department deleted.'); await loadDepartments(); }
+    } else if ((v = hit('assign'))) await saveAssignment(v);
+    else if ((v = hit('schprev'))) {
+      const r = await req('GET', `/pay-schedules/${v}/preview?n=6`);
+      $('schPreview').innerHTML = `<tr><th colspan="2">Next pay dates for ${esc(r.schedule.name)}</th></tr>` + r.next.map((p) => `<tr><td>Work from ${esc(dateText(p.periodStart || p.start))} to ${esc(dateText(p.periodEnd || p.end))}</td><td>Paid ${esc(dateText(p.payDate))}${p.adjusted ? ' <span class="tag warnTag">moved for a holiday or weekend</span>' : ''}</td></tr>`).join('');
+    } else if ((v = hit('schedit'))) {
+      const s = schedules.find((x) => x.id === v); const f = $('schForm').elements; schEdit = s.id;
+      f.name.value = s.name; f.frequency.value = s.frequency; showFreqFields(); f.anchorPayDate.value = s.anchorPayDate || ''; f.payDayLag.value = s.payDayLag ?? 5; f.holidayAdjustment.value = s.holidayAdjustment;
+      const d = (s.paydays || []).map((x) => (x === 31 ? 'last' : x)); f.day1.value = d[0] ?? ''; f.day2.value = d[1] ?? '';
+      $('schTitle').textContent = `Edit ${s.name}`; $('schCancel').hidden = false; $('schForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((v = hit('schx'))) {
+      if (window.confirm('Delete this pay schedule?')) { await req('DELETE', `/pay-schedules/${v}`); say('Pay schedule deleted.'); $('schPreview').innerHTML = ''; await loadSchedules(); }
+    } else if ((v = hit('holtoggle'))) { const h = holidayRows[v]; await changeHoliday(h, { active: !h.active }); } else if ((v = hit('holpaid'))) { const h = holidayRows[v]; await changeHoliday(h, { paid: !h.paid }); } else if ((v = hit('holx'))) {
+      const h = holidayRows[v];
+      if (h.kind === 'federal' || window.confirm(`Remove ${h.name}?`)) { await req('DELETE', `/holidays/${h.id}`); await loadHolidays(); }
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  $('tzPick').innerHTML = TIME_ZONES.map(([v, l]) => `<option value="${v}"${v === 'America/Chicago' ? ' selected' : ''}>${l} (${v})</option>`).join('');
+  $('holYear').value = new Date().getFullYear(); showFreqFields();
+  // Each part loads on its own so one missing permission does not blank the page
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(loadLocations); await step(async () => { departments = (await req('GET', '/departments')).data; });
+  await step(loadPeople); await step(loadDepartments); await step(loadSchedules); await step(loadHolidays);
+});
+</script>
+</body>
+</html>

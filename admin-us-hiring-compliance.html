@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hiring checks and reporting | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}button:disabled{opacity:.45;cursor:not-allowed}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:flex-start;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+ol.steps{margin:0;padding:0;list-style:none;display:grid;gap:10px}ol.steps li{border:1px solid var(--line);border-radius:10px;padding:12px}ol.steps li.done{background:#f0fdf4;border-color:#bbf7d0}ol.steps li.off{opacity:.55}
+ol.steps b{display:block;margin-bottom:4px}
+a.link{color:var(--blue);font-weight:600;text-decoration:none}
+</style>
+</head>
+<body>
+<header><h1>Hiring checks and reporting</h1><div><a href="admin-us-hiring.html">Hiring</a> &nbsp;|&nbsp; <a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="bg" class="on">Background checks</button>
+    <button data-tab="ev">E-Verify</button>
+    <button data-tab="nh">New-hire reporting</button>
+  </div>
+
+  <div id="tab-bg" class="pane on">
+    <section class="card">
+      <h2>Background checks</h2>
+      <div class="warn" id="bgNote"></div>
+      <div class="warn">Only a practice provider is connected. No real report is ordered until a background-check vendor is set up. To try the "consider" path, use a candidate whose last name contains the word consider.</div>
+      <table><thead><tr><th>Candidate</th><th>Where it stands</th><th>Result</th><th>Report reference</th><th></th></tr></thead><tbody id="bgRows"></tbody></table>
+      <div class="row"><label>Start or open a check for<select id="bgPick"></select></label><button class="ghost" id="bgOpen">Open</button></div>
+    </section>
+    <section class="card" id="bgCard" hidden>
+      <h2 id="bgTitle"></h2>
+      <p id="bgStatus"></p>
+      <ol class="steps" id="bgSteps"></ol>
+      <h3>History</h3>
+      <table><tbody id="bgHistory"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Waiting time before a final notice</h2>
+      <div class="row" style="margin-top:0"><label>Business days to wait after the first notice<input id="bgDays" type="number" min="1" max="30" style="width:120px"></label><button class="ghost" id="bgDaysSave">Save</button></div>
+      <p class="hint">The usual practice is 5 business days. Some states and cities require more. Confirm with an advisor.</p>
+    </section>
+  </div>
+
+  <div id="tab-ev" class="pane">
+    <section class="card">
+      <h2>E-Verify</h2>
+      <div class="warn" id="evNote"></div>
+      <p class="hint">This page only tracks cases you create on the E-Verify website. It does not send anything to E-Verify.</p>
+      <div class="grid">
+        <label class="chk"><input type="checkbox" id="evUsed"> Our company uses E-Verify</label>
+        <label>Business days to create a case<input id="evCreate" type="number" min="1" max="30"></label>
+        <label>Business days for the employee to decide on a mismatch<input id="evDecision" type="number" min="1" max="30"></label>
+        <label>Business days to resolve after referral<input id="evReferral" type="number" min="1" max="30"></label>
+      </div>
+      <div class="row"><button class="ghost" id="evSave">Save settings</button></div>
+    </section>
+    <section class="card" id="evMissingCard">
+      <h2>New hires with no case yet</h2>
+      <table><thead><tr><th>Person</th><th>Start date</th><th>Create the case by</th><th></th></tr></thead><tbody id="evMissing"></tbody></table>
+      <form id="evForm" hidden style="margin-top:12px"><h3 id="evFormTitle"></h3><div class="grid">
+        <label>Case number from E-Verify<input name="caseNumber" required minlength="6" maxlength="30"></label>
+        <label>Date you created it<input name="createdDate" type="date"></label>
+        <label>Notes<input name="notes" maxlength="300"></label>
+        <label class="chk"><input type="checkbox" name="photoMatchRequired"> E-Verify asked for photo matching</label>
+      </div><div class="row"><button type="submit">Save case</button><button type="button" class="ghost" id="evFormCancel">Cancel</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Cases</h2>
+      <table><thead><tr><th>Person</th><th>Case number</th><th>Status</th><th>Dates</th><th>Needs attention</th><th>Move to</th></tr></thead><tbody id="evCases"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-nh" class="pane">
+    <section class="card">
+      <h2>New hires to report to the state</h2>
+      <div class="warn">You file the report yourself on the state agency's website. This page lists who is due, builds the file, and records your confirmation number.</div>
+      <div class="row" style="margin-top:0"><label>Hired in the last<select id="nhDays"><option value="30">30 days</option><option value="60" selected>60 days</option><option value="120">120 days</option><option value="365">12 months</option></select></label><button class="ghost" id="nhGo">Show</button></div>
+      <table style="margin-top:12px"><thead><tr><th></th><th>Person</th><th>State</th><th>Start date</th><th>Report by</th><th>SSN on file</th><th>Agency</th></tr></thead><tbody id="nhRows"></tbody></table>
+      <p class="hint" id="nhNote"></p>
+      <h3>For the ticked people (one state at a time)</h3>
+      <div class="row"><button class="ghost" id="nhCsv">Download the file for the state</button><span class="hint">The file contains full Social Security numbers. The download is recorded in the audit log. Delete the file after you upload it.</span></div>
+      <form id="nhForm"><div class="grid" style="margin-top:12px">
+        <label>Confirmation number from the state<input name="confirmationNumber" required minlength="3" maxlength="60"></label>
+        <label>Date you filed<input name="submittedOn" type="date"></label>
+      </div><div class="row"><button type="submit">Mark as reported</button></div></form>
+    </section>
+    <section class="card">
+      <h2>State agencies</h2>
+      <p class="hint" id="agNote"></p>
+      <table><thead><tr><th>State</th><th>Agency</th><th>Days to report</th><th>How</th><th>Website</th><th>Checked</th><th></th></tr></thead><tbody id="agRows"></tbody></table>
+      <div class="row"><button class="ghost" id="agSeed">Add starter rows for our work states</button></div>
+      <form id="agForm" style="margin-top:12px"><h3 id="agTitle">Add or change a state</h3><div class="grid">
+        <label>State (2 letters)<input name="state" required maxlength="2"></label>
+        <label>Agency name<input name="agencyName" required maxlength="120"></label>
+        <label>Days to report (1 to 20)<input name="dueDays" type="number" min="1" max="20" required></label>
+        <label>How you file<select name="method"><option value="online_portal">Website</option><option value="file_upload">File upload</option><option value="fax">Fax</option><option value="mail">Mail</option><option value="other">Other</option></select></label>
+        <label>Website (https://)<input name="portalUrl" type="url"></label>
+        <label>Note<input name="portalNote" maxlength="400"></label>
+        <label class="chk"><input type="checkbox" name="verified"> I checked these details with the state agency</label>
+      </div><div class="row"><button type="submit">Save state</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Already reported</h2>
+      <table><thead><tr><th>Person</th><th>State</th><th>Filed on</th><th>Confirmation number</th></tr></thead><tbody id="nhDone"></tbody></table>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const BG_STATUS = { needs_authorization: ['Needs notice and permission', 'warnTag'], ready_to_order: ['Ready to order', 'blueTag'], ordered: ['Ordered', 'blueTag'], in_progress: ['Report in progress', 'blueTag'], clear: ['Clear', 'good'], consider_review: ['Needs your review', 'badTag'], waiting_period: ['Waiting period', 'warnTag'], adverse_action_final: ['Final notice sent', 'grey'], disputed: ['Candidate disputes the report', 'badTag'] };
+const EV_STATUS = { initial: 'Case opened', employment_authorized: 'Employment authorized', tentative_nonconfirmation: 'Mismatch (tentative nonconfirmation)', referred: 'Referred', final_nonconfirmation: 'Final nonconfirmation', closed: 'Closed' };
+const EV_NEXT = { initial: ['employment_authorized', 'tentative_nonconfirmation', 'closed'], tentative_nonconfirmation: ['referred', 'final_nonconfirmation', 'employment_authorized', 'closed'], referred: ['employment_authorized', 'final_nonconfirmation', 'closed'], employment_authorized: ['closed'], final_nonconfirmation: ['closed'], closed: [] };
+const EV_FLAG = { case_created_late: 'Case was created late', tnc_decision_overdue: 'Employee decision is overdue', referral_resolution_overdue: 'Referral is overdue', action_needed_final_nonconfirmation: 'Final nonconfirmation: act now and get advice', photo_matching_required: 'Photo matching needed' };
+let candidates = []; let bgCandidate = null; let evUser = null; let pendingRows = [];
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Request failed (${res.status})`); } return res.blob(); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const candName = (id) => (candidates.find((c) => c.id === id) || {}).name || 'Candidate';
+
+// --------------------------------------------------------- background checks
+async function loadBackground() {
+  const [list, cs] = await Promise.all([req('GET', '/hiring/background'), req('GET', '/hiring/candidates')]);
+  candidates = cs.data; $('bgNote').textContent = list.note; $('bgDays').value = list.settings.waitingBusinessDays;
+  $('bgRows').innerHTML = list.data.map((r) => { const [t, c] = BG_STATUS[r.status] || [r.status, 'grey']; return `<tr><td><b>${esc(candName(r.candidateId))}</b></td><td><span class="tag ${c}">${esc(t)}</span>${r.waitingUntil && r.status === 'waiting_period' ? `<br><span class="hint">until ${esc(day(r.waitingUntil))}</span>` : ''}</td><td>${esc(words(r.result || ''))}</td><td>${esc(r.reportReference || '')}</td><td><button class="ghost" data-bg="${esc(r.candidateId)}">Open</button></td></tr>`; }).join('') || '<tr><td colspan="5" class="hint">No background checks yet.</td></tr>';
+  $('bgPick').innerHTML = candidates.filter((c) => !['hired', 'rejected', 'withdrawn'].includes(c.stage)).map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(c.requisitionTitle)})</option>`).join('') || '<option value="">No open candidates</option>';
+}
+function paintCheck(k) {
+  $('bgCard').hidden = false; $('bgTitle').textContent = `Background check: ${candName(bgCandidate)}`;
+  const st = k ? k.status : 'needs_authorization'; const [t, c] = BG_STATUS[st];
+  $('bgStatus').innerHTML = `<span class="tag ${c}">${esc(t)}</span>`;
+  const done = (v) => (v ? `<span class="tag good">done ${esc(when(v))}</span>` : '');
+  const hasDisc = Boolean(k && k.disclosureAt); const hasAuth = Boolean(k && k.authorizationAt); const ordered = Boolean(k && k.provider);
+  const consider = Boolean(k && k.result === 'consider'); const disputeOpen = Boolean(k && k.dispute && !k.dispute.resolvedAt);
+  const li = (isDone, off, html) => `<li class="${isDone ? 'done' : off ? 'off' : ''}">${html}</li>`;
+  let h = '';
+  h += li(hasDisc, false, `<b>1. Give the candidate the notice ${done(k && k.disclosureAt)}</b>${hasDisc ? '' : `<label class="chk"><input type="checkbox" id="s1ok"> I gave the candidate the background-check notice as its own document, with nothing else on the page</label><div class="row"><button data-step="disclosure">Record</button></div>`}`);
+  h += li(hasAuth, !hasDisc, `<b>2. Get written permission ${done(k && k.authorizationAt)}</b>${hasAuth || !hasDisc ? '' : `<label class="chk"><input type="checkbox" id="s2ok"> The candidate signed the permission form on paper and I have it on file</label><div class="row"><button data-step="authorization">Record</button></div>`}`);
+  h += li(ordered, !hasAuth, `<b>3. Order the report ${ordered ? `<span class="tag good">ordered, reference ${esc(k.reportReference)}</span>` : ''}</b>${ordered || !hasAuth ? '' : '<div class="row"><button data-step="order">Order (practice provider)</button></div>'}`);
+  h += li(Boolean(k && k.result), !ordered, `<b>4. Get the result ${k && k.result ? `<span class="tag ${k.result === 'clear' ? 'good' : 'badTag'}">${esc(words(k.result))}</span>` : ''}</b>${k && k.result ? (k.result === 'clear' ? '<span class="hint">Nothing more to do. You can go on with the hire.</span>' : '<span class="hint">"Consider" means the report has something to review. You may not turn the candidate down because of it until you finish steps 5 and 6.</span>') : ordered ? '<div class="row"><button data-step="refresh">Check for the result</button></div>' : ''}`);
+  if (consider) {
+    h += li(Boolean(k.preAdverseSentAt), false, `<b>5. Send the first notice (before a decision) ${done(k.preAdverseSentAt)}</b>${k.preAdverseSentAt ? `<span class="hint">Wait until ${esc(day(k.waitingUntil))} before a final decision.</span>` : `<label class="chk"><input type="checkbox" id="s5a"> I sent the candidate a copy of the report</label><label class="chk"><input type="checkbox" id="s5b"> I sent the candidate the summary of their rights</label><div class="row"><button data-step="pre-adverse">Record that the notice was sent</button></div>`}`);
+    h += li(Boolean(k.adverseSentAt), !k.preAdverseSentAt, `<b>6. Send the final notice ${done(k.adverseSentAt)}</b>${k.adverseSentAt || !k.preAdverseSentAt ? '' : `<div class="row"><button class="no" data-step="adverse"${k.canSendAdverse ? '' : ' disabled'}>Record that the final notice was sent</button>${k.canSendAdverse ? '' : `<span class="hint">${disputeOpen ? 'Resolve the dispute first.' : `Available after ${esc(day(k.waitingUntil))}.`}</span>`}</div>`}`);
+    h += li(false, false, `<b>If the candidate says the report is wrong</b>${disputeOpen ? `<span class="hint">Dispute opened ${esc(when(k.dispute.openedAt))}: ${esc(k.dispute.note)}</span><div class="row"><button class="ghost" data-step="dispute/resolve" data-res="corrected_clear">The report was corrected and is now clear</button><button class="ghost" data-step="dispute/resolve" data-res="upheld">The report was confirmed as correct</button></div>` : k.adverseSentAt ? '' : `<div class="row"><input id="dNote" maxlength="500" placeholder="What does the candidate dispute?" style="flex:1;min-width:220px"><button class="ghost" data-step="dispute">Record a dispute</button></div>`}${k.dispute && k.dispute.resolvedAt ? `<span class="hint">Last dispute: ${esc(words(k.dispute.resolution))} on ${esc(when(k.dispute.resolvedAt))}</span>` : ''}`);
+  }
+  $('bgSteps').innerHTML = h;
+  $('bgHistory').innerHTML = ((k && k.history) || []).map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(words(x.event))}</td><td>${esc(x.waitingUntil ? `wait until ${day(x.waitingUntil)}` : x.method || x.provider || '')}</td></tr>`).join('');
+}
+async function openCheck(id) {
+  bgCandidate = id;
+  try { paintCheck((await req('GET', `/hiring/candidates/${id}/background`)).check); } catch (err) { if (/No background check/.test(err.message)) paintCheck(null); else throw err; }
+  $('bgCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function bgStep(step, el) {
+  const on = (id) => Boolean($(id) && $(id).checked); let body = {};
+  if (step === 'disclosure') body = { standalone: on('s1ok') };
+  if (step === 'authorization') body = { authorized: on('s2ok'), method: 'paper' };
+  if (step === 'pre-adverse') body = { reportCopyProvided: on('s5a'), summaryOfRightsProvided: on('s5b') };
+  if (step === 'adverse' && !window.confirm(`Record that the final notice was sent to ${candName(bgCandidate)}? This closes the check.`)) return;
+  if (step === 'dispute') body = { note: $('dNote').value };
+  if (step === 'dispute/resolve') body = { resolution: el.dataset.res };
+  const r = await req('POST', `/hiring/candidates/${bgCandidate}/background/${step}`, body);
+  paintCheck(r.check); say('Recorded.'); await loadBackground();
+}
+$('bgOpen').addEventListener('click', () => { if ($('bgPick').value) openCheck($('bgPick').value).catch((err) => say(err.message, false)); });
+$('bgDaysSave').addEventListener('click', async () => { try { await req('PUT', '/hiring/settings', { background: { waitingBusinessDays: Number($('bgDays').value) } }); say('Saved.'); } catch (err) { say(err.message, false); } });
+
+// ------------------------------------------------------------------ E-Verify
+async function loadEverify() {
+  const r = await req('GET', '/hiring/everify/cases'); $('evNote').textContent = r.note;
+  $('evUsed').checked = r.used; $('evCreate').value = r.settings.createCaseBusinessDays; $('evDecision').value = r.settings.tncDecisionBusinessDays; $('evReferral').value = r.settings.tncReferralBusinessDays;
+  $('evMissingCard').hidden = !r.used;
+  $('evMissing').innerHTML = r.missing.map((m) => `<tr><td><b>${esc(m.name)}</b></td><td>${esc(day(m.hireDate))}</td><td>${esc(day(m.dueDate))} ${m.overdue ? '<span class="tag badTag">overdue</span>' : ''}</td><td><button class="ghost" data-evnew="${esc(m.userId)}" data-name="${esc(m.name)}">Record the case</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">Everyone hired in the last 90 days has a case.</td></tr>';
+  $('evCases').innerHTML = r.cases.map((c) => {
+    const dates = [`hired ${day(c.hireDate)}`, `case ${day(c.createdDate)}`, c.tnc && c.tnc.decisionDue ? `employee decides by ${day(c.tnc.decisionDue)}` : '', c.tnc && c.tnc.referralDue ? `referral due ${day(c.tnc.referralDue)}` : '', c.closedOn ? `closed ${day(c.closedOn)}` : ''].filter(Boolean);
+    return `<tr><td><b>${esc(c.name)}</b><br><span class="hint">${esc(c.employeeId || '')}</span></td><td>${esc(c.caseNumber)}</td><td>${esc(EV_STATUS[c.status] || c.status)}</td><td>${dates.map(esc).join('<br>')}</td><td>${c.flags.map((f) => `<span class="tag ${f.startsWith('photo') ? 'warnTag' : 'badTag'}">${esc(EV_FLAG[f] || f)}</span>`).join('<br>')}</td><td>${EV_NEXT[c.status].length ? `<select data-evto="${esc(c.id)}">${EV_NEXT[c.status].map((s) => `<option value="${s}">${esc(EV_STATUS[s])}</option>`).join('')}</select> <button class="ghost" data-evmove="${esc(c.id)}">Move</button>` : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="hint">No cases yet.</td></tr>';
+}
+$('evSave').addEventListener('click', async () => {
+  try { await req('PUT', '/hiring/settings', { everify: { used: $('evUsed').checked, createCaseBusinessDays: Number($('evCreate').value), tncDecisionBusinessDays: Number($('evDecision').value), tncReferralBusinessDays: Number($('evReferral').value) } }); say('Saved.'); await loadEverify(); } catch (err) { say(err.message, false); }
+});
+$('evFormCancel').addEventListener('click', () => { $('evForm').hidden = true; });
+$('evForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try { await req('POST', '/hiring/everify/cases', { userId: evUser, caseNumber: el.caseNumber.value, createdDate: el.createdDate.value || undefined, notes: el.notes.value, photoMatchRequired: el.photoMatchRequired.checked }); e.target.reset(); e.target.hidden = true; say('Case recorded.'); await loadEverify(); } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------- new-hire reporting
+async function loadPending() {
+  const r = await req('GET', `/hiring/newhire/pending?sinceDays=${$('nhDays').value}`); pendingRows = r.data;
+  $('nhNote').textContent = `${r.note} ${r.overdue ? `${r.overdue} overdue.` : ''}`;
+  $('nhRows').innerHTML = pendingRows.map((p) => `<tr><td><input type="checkbox" data-nh="${esc(p.userId)}" aria-label="Select ${esc(p.name)}"></td><td><b>${esc(p.name)}</b><br><span class="hint">${esc(p.employeeId || '')}</span></td><td>${p.state ? esc(p.state) : '<span class="tag badTag">no work state</span>'}</td><td>${esc(day(p.startDate))}</td><td>${esc(day(p.dueDate))} ${p.overdue ? '<span class="tag badTag">overdue</span>' : `<span class="hint">${esc(p.daysLeft)} days left</span>`}</td><td>${p.hasSsn ? `ends ${esc(p.ssnLast4 || '')}` : '<span class="tag warnTag">missing</span>'}</td><td>${p.agencyConfigured ? esc(p.agencyName) : '<span class="tag warnTag">not set up; using 20 days</span>'}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Nobody is waiting to be reported.</td></tr>';
+}
+async function loadAgencies() {
+  const r = await req('GET', '/hiring/newhire/agencies'); $('agNote').textContent = r.note;
+  $('agRows').innerHTML = r.data.map((a) => `<tr><td><b>${esc(a.state)}</b></td><td>${esc(a.agencyName)}${a.portalNote ? `<br><span class="hint">${esc(a.portalNote)}</span>` : ''}</td><td>${esc(a.dueDays)}</td><td>${esc(words(a.method))}</td><td>${a.portalUrl && /^https:\/\//i.test(a.portalUrl) ? `<a class="link" href="${esc(a.portalUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}</td><td>${a.verified ? '<span class="tag good">checked</span>' : '<span class="tag warnTag">not checked</span>'}</td><td><button class="ghost" data-agedit='${esc(JSON.stringify(a))}'>Edit</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No states set up yet.</td></tr>';
+}
+async function loadSubmitted() {
+  const r = await req('GET', '/hiring/newhire/submissions');
+  $('nhDone').innerHTML = r.data.map((s) => `<tr><td><b>${esc(s.name)}</b> <span class="hint">${esc(s.employeeId || '')}</span></td><td>${esc(s.state)}</td><td>${esc(day(s.submittedOn))}</td><td>${esc(s.confirmationNumber)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nothing reported yet.</td></tr>';
+}
+/** The ticked people, as long as they are all in one state */
+function chosen() {
+  const ids = [...document.querySelectorAll('[data-nh]:checked')].map((c) => c.dataset.nh);
+  if (!ids.length) throw new Error('Tick at least one person first.');
+  const states = [...new Set(pendingRows.filter((p) => ids.includes(p.userId)).map((p) => p.state))];
+  if (states.length !== 1 || !states[0]) throw new Error('Tick people from one state at a time. Each state gets its own report.');
+  return { ids, state: states[0] };
+}
+$('nhGo').addEventListener('click', () => loadPending().catch((err) => say(err.message, false)));
+$('nhCsv').addEventListener('click', async () => {
+  try {
+    const { ids, state } = chosen();
+    if (!window.confirm(`Download a file with the full Social Security numbers of ${ids.length} ${ids.length === 1 ? 'person' : 'people'}?`)) return;
+    const blob = await req('GET', `/hiring/newhire/export.csv?state=${state}&userIds=${ids.map(encodeURIComponent).join(',')}`, null, true);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `new-hires-${state}.csv`; document.body.appendChild(a); a.click(); a.remove();
+  } catch (err) { say(err.message, false); }
+});
+$('nhForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try {
+    const { ids, state } = chosen();
+    const r = await req('POST', '/hiring/newhire/submit', { userIds: ids, state, confirmationNumber: el.confirmationNumber.value, submittedOn: el.submittedOn.value || undefined });
+    e.target.reset(); say(`${r.submitted} marked as reported to ${state}.${r.skipped.length ? ` ${r.skipped.length} skipped.` : ''}`); await loadPending(); await loadSubmitted();
+  } catch (err) { say(err.message, false); }
+});
+$('agSeed').addEventListener('click', async () => { try { const r = await req('POST', '/hiring/newhire/agencies/seed', {}); say(`${r.created} added. ${r.note}`); await loadAgencies(); await loadPending(); } catch (err) { say(err.message, false); } });
+$('agForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try { await req('PUT', `/hiring/newhire/agencies/${encodeURIComponent(el.state.value.toUpperCase())}`, { agencyName: el.agencyName.value, dueDays: Number(el.dueDays.value), method: el.method.value, portalUrl: el.portalUrl.value, portalNote: el.portalNote.value, verified: el.verified.checked }); e.target.reset(); $('agTitle').textContent = 'Add or change a state'; say('State saved.'); await loadAgencies(); await loadPending(); } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('bg'))) await openCheck(t.dataset.bg);
+    else if ((t = el('step'))) await bgStep(t.dataset.step, t);
+    else if ((t = el('evnew'))) { evUser = t.dataset.evnew; $('evFormTitle').textContent = `E-Verify case for ${t.dataset.name}`; $('evForm').hidden = false; $('evForm').elements.caseNumber.focus(); } else if ((t = el('evmove'))) {
+      const to = document.querySelector(`[data-evto="${CSS.escape(t.dataset.evmove)}"]`).value; const body = { status: to };
+      if (to === 'referred') { if (!window.confirm('Did the employee choose to contest the mismatch? Only then can the case be referred.')) return; body.employeeDecision = 'contest'; }
+      await req('POST', `/hiring/everify/cases/${t.dataset.evmove}/status`, body); say('Case updated.'); await loadEverify();
+    } else if ((t = el('agedit'))) {
+      const a = JSON.parse(t.dataset.agedit); const f = $('agForm').elements;
+      f.state.value = a.state; f.agencyName.value = a.agencyName; f.dueDays.value = a.dueDays; f.method.value = a.method; f.portalUrl.value = a.portalUrl || ''; f.portalNote.value = a.seeded ? '' : a.portalNote || ''; f.verified.checked = Boolean(a.verified);
+      $('agTitle').textContent = `Change ${a.state}`; $('agForm').scrollIntoView({ behavior: 'smooth' });
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(loadBackground); await step(loadEverify); await step(loadPending); await step(loadAgencies); await step(loadSubmitted);
+});
+</script>
+</body>
+</html>
