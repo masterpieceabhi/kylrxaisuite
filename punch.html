@@ -30,9 +30,11 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
 #toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(30px);opacity:0;transition:.25s;padding:16px 24px;border-radius:16px;color:#fff;font-weight:700;font-size:20px;background:var(--ink);max-width:92vw;text-align:center;pointer-events:none}
 #toast.show{opacity:1;transform:translateX(-50%)}#toast.ok{background:var(--green)}#toast.bad{background:var(--red)}
 footer{padding:14px;text-align:center}footer a{color:var(--muted);font-size:15px}
+#sheet{display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);align-items:center;justify-content:center;padding:14px;z-index:20}#sheet .box{background:#fff;border-radius:18px;padding:18px;width:min(94vw,460px);max-height:92vh;overflow:auto}#sheet h2{margin:0 0 8px;font-size:22px}#sheet .step{margin:0 0 8px;color:var(--muted);font-size:15px}#sheet .notice{white-space:pre-wrap;font-size:16px;line-height:1.45;max-height:46vh;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px}#sheet video{width:100%;border-radius:12px;background:#000;transform:scaleX(-1)}#sheet .acts{display:grid;gap:10px;margin-top:14px}#sheet button{padding:16px;border:0;border-radius:14px;font:inherit;font-size:19px;font-weight:800;cursor:pointer}#sheet .yes{background:var(--green);color:#fff}#sheet .no{background:#fee2e2;color:#b91c1c}#sheet .plain{background:#e2e8f0;color:var(--ink)}#sheet button:disabled{opacity:.5}
 </style>
 </head>
 <body>
+<div id="sheet" role="dialog" aria-modal="true"></div>
 <header><b id="title">Clock in / out</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
 <main>
   <div id="hello"></div>
@@ -120,18 +122,90 @@ function here() {
   });
 }
 
-async function punch(action) {
+/* ---------- company clock rules (US): notices to accept, a photo, the work site area ---------- */
+const X = {
+  en: { consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed. Please take one.', outside_geofence: 'You are outside the work site area.', low_accuracy: 'Your phone location is not exact enough. Move near a window or outside and try again.', location_required: 'Turn on location for this page to clock in here.', week_locked: 'This week has been approved. Ask your manager if something needs to change.',
+        agree: 'I agree', disagree: 'I do not agree', declined: 'You did not accept the notice, so you cannot clock in this way. Talk to your manager.', noticeOf: 'Notice {a} of {b}', photoTitle: 'Take a photo', photoHint: 'Your employer asks for a photo when you clock in or out. It is used only to confirm it is you.', snap: 'Take photo and continue', skip: 'Continue without a photo', cancel: 'Cancel', noCam: 'The camera could not be opened. Allow the camera for this page, or ask your manager.', flagged: 'Clocked. Your manager will review this punch.' },
+  es: { consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto. Tome una.', outside_geofence: 'Usted está fuera del área del lugar de trabajo.', low_accuracy: 'La ubicación de su teléfono no es exacta. Acérquese a una ventana o salga e intente de nuevo.', location_required: 'Active la ubicación para esta página para registrar aquí.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor si algo debe cambiar.',
+        agree: 'Acepto', disagree: 'No acepto', declined: 'Usted no aceptó el aviso, así que no puede registrar de esta forma. Hable con su supervisor.', noticeOf: 'Aviso {a} de {b}', photoTitle: 'Tome una foto', photoHint: 'Su empleador pide una foto cuando registra entrada o salida. Se usa solo para confirmar que es usted.', snap: 'Tomar foto y continuar', skip: 'Continuar sin foto', cancel: 'Cancelar', noCam: 'No se pudo abrir la cámara. Permita la cámara para esta página o avise a su supervisor.', flagged: 'Registrado. Su supervisor revisará este registro.' }
+};
+const xt = (k, v = {}) => ((X[lang] || X.en)[k] || X.en[k] || k).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
+let isUs = false; let rules = null; let stream = null;
+const sheet = () => $('sheet'); const closeSheet = () => { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } sheet().style.display = 'none'; sheet().innerHTML = ''; };
+const escText = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function us(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/clock${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  return { ok: res.ok, json: await res.json().catch(() => ({})) };
+}
+async function loadRules() { if (!isUs) return; try { const r = await us('GET', '/my-requirements'); rules = r.ok && r.json.policy ? r.json : null; } catch (_) { rules = null; } }
+
+/** Shows each notice that still needs an answer. Resolves true when all are accepted. */
+function askNotices(list) {
+  return new Promise((resolve) => {
+    let i = 0;
+    const show = () => {
+      const n = list[i]; const title = (lang === 'es' && n.title_es) || n.title_en; const body = (lang === 'es' && n.body_es) || n.body_en;
+      sheet().innerHTML = `<div class="box"><p class="step">${escText(xt('noticeOf', { a: i + 1, b: list.length }))}</p><h2>${escText(title)}</h2><div class="notice">${escText(body)}</div><div class="acts"><button type="button" class="yes" id="nYes">${escText(xt('agree'))}</button><button type="button" class="no" id="nNo">${escText(xt('disagree'))}</button></div></div>`;
+      sheet().style.display = 'flex';
+      const answer = async (decision) => {
+        $('nYes').disabled = true; $('nNo').disabled = true;
+        const r = await us('POST', '/consents', { type: n.type, decision }).catch(() => ({ ok: false }));
+        if (!r.ok) { closeSheet(); toast(tr('fail'), 'bad'); return resolve(false); }
+        if (decision === 'declined') { closeSheet(); toast(xt('declined'), 'bad'); return resolve(false); }
+        i += 1; if (i < list.length) show(); else { closeSheet(); resolve(true); }
+      };
+      $('nYes').onclick = () => answer('accepted'); $('nNo').onclick = () => answer('declined');
+    };
+    show();
+  });
+}
+/** Opens the front camera. Resolves a JPEG data URL, '' to go on without a photo, or null to cancel. */
+function takePhoto(required) {
+  return new Promise((resolve) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(xt('photoTitle'))}</h2><p class="step">${escText(xt('photoHint'))}</p><video id="cam" autoplay playsinline muted></video><div class="acts"><button type="button" class="yes" id="pSnap" disabled>${escText(xt('snap'))}</button>${required ? '' : `<button type="button" class="plain" id="pSkip">${escText(xt('skip'))}</button>`}<button type="button" class="plain" id="pCancel">${escText(xt('cancel'))}</button></div></div>`;
+    sheet().style.display = 'flex';
+    const done = (v) => { closeSheet(); resolve(v); };
+    $('pCancel').onclick = () => done(null); if (!required) $('pSkip').onclick = () => done('');
+    const fail = () => { if (required) { closeSheet(); toast(xt('noCam'), 'bad'); resolve(null); } else done(''); };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fail();
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }).then((s) => {
+      stream = s; const v = $('cam'); if (!v) { s.getTracks().forEach((t) => t.stop()); return; }
+      v.srcObject = s; v.onloadedmetadata = () => { $('pSnap').disabled = false; };
+      $('pSnap').onclick = () => {
+        const w = Math.min(480, v.videoWidth || 480); const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
+        const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(v, 0, 0, w, h);
+        let q = 0.7; let url = c.toDataURL('image/jpeg', q);
+        while (url.length > 380000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); } // the server takes up to 300 KB
+        done(url);
+      };
+    }).catch(fail);
+  });
+}
+
+async function punch(action, retried) {
   if (busy) return; busy = true; render();
-  const location = await here();
   try {
-    const r = await api('POST', '/punch', { action, location });
+    let photo;
+    if (isUs && !rules) await loadRules();
+    if (rules) {
+      if (rules.pending && rules.pending.length) { const ok = await askNotices(rules.pending); await loadRules(); if (!ok) { busy = false; render(); return; } }
+      const wantsPhoto = rules && rules.selfie !== 'off' && ['in', 'out'].includes(action);
+      if (wantsPhoto) { const p = await takePhoto(rules.selfie === 'required'); if (p === null) { busy = false; render(); return; } photo = p || undefined; }
+    }
+    const location = await here();
+    const r = await api('POST', '/punch', { action, location, photo });
     if (r.ok) {
       status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now();
-      toast(tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[action], { t: fmtTime(status.lastPunchAt) }), 'ok');
+      const flagged = r.json.compliance && r.json.compliance.decision === 'flag';
+      toast(flagged ? xt('flagged') : tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[action], { t: fmtTime(status.lastPunchAt) }), 'ok');
       if (navigator.vibrate) navigator.vibrate(60);
     } else {
       if (r.json.status) status = r.json.status;
-      toast(T[lang][r.json.code] || r.json.error || tr('fail'), 'bad');
+      const code = r.json.code;
+      // the rules changed since this page loaded: fetch them again and go through the steps once more
+      if (isUs && !retried && (code === 'consent_required' || code === 'selfie_required')) { await loadRules(); busy = false; return punch(action, true); }
+      toast(T[lang][code] || (X[lang] || X.en)[code] || r.json.error || tr('fail'), 'bad');
     }
   } catch (_) { toast(tr('fail'), 'bad'); }
   busy = false; render();
@@ -151,6 +225,7 @@ onAuthStateChanged(auth, async (user) => {
     name = r.json.name || user.displayName || ''; status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now();
     render();
     if (r.json.country === 'US') {
+      isUs = true; loadRules();
       try {
         const token = await user.getIdToken();
         const f = await fetch(`/api/us/employees/${encodeURIComponent(user.uid)}/forms`, { headers: { Authorization: `Bearer ${token}` } });

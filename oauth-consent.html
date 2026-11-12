@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Connect an app | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg);min-height:100vh;display:grid;place-items:center;padding:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px;width:min(100%,520px)}
+h1{margin:0 0 6px;font-size:22px}p{margin:8px 0}.hint{color:var(--muted);font-size:14px}
+ul{margin:10px 0;padding:0;list-style:none;border:1px solid var(--line);border-radius:12px}li{padding:10px 12px;border-top:1px solid var(--line)}li:first-child{border-top:0}li b{display:block}li span{color:var(--muted);font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+button{padding:12px 18px;border:0;border-radius:10px;font:inherit;font-weight:700;cursor:pointer}button.go{background:var(--blue);color:#fff}button.no{background:#e2e8f0;color:var(--ink)}button:disabled{opacity:.5}
+.err{background:#fee2e2;color:var(--bad);border-radius:10px;padding:12px}.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:10px;padding:10px 12px;font-size:14px}
+a{color:var(--blue);font-weight:600}.mono{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
+</style>
+</head>
+<body>
+<main class="card">
+  <div id="wait"><h1>Checking the request...</h1></div>
+  <div id="bad" hidden><h1>This connection request cannot be used</h1><p class="err" id="badText"></p><p class="hint">Nothing was shared. Close this page and start again from the app, or ask the app's maker to check its setup.</p></div>
+  <div id="ask" hidden>
+    <h1><span id="appName"></span> wants to connect to your company</h1>
+    <p class="hint" id="appBy"></p>
+    <p>If you allow it, the app can:</p>
+    <ul id="scopes"></ul>
+    <div class="warn">Only allow apps you trust. The app keeps this access until you remove it under Integrations, Connected apps. You will be sent to: <span class="mono" id="dest"></span></div>
+    <div class="row"><button class="go" id="allow">Allow</button><button class="no" id="deny">Do not allow</button></div>
+    <p class="err" id="askErr" hidden style="margin-top:12px"></p>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const q = new URLSearchParams(window.location.search);
+const KEYS = ['client_id', 'redirect_uri', 'response_type', 'scope', 'state', 'code_challenge', 'code_challenge_method'];
+const params = Object.fromEntries(KEYS.filter((k) => q.get(k) !== null).map((k) => [k, q.get(k)]));
+const show = (id) => ['wait', 'bad', 'ask'].forEach((x) => { $(x).hidden = x !== id; });
+const bad = (text) => { $('badText').textContent = text; show('bad'); };
+const words = (s) => String(s || '').replace(/[_.:]/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const TEXT = { invalid_client: 'The app is not known, or it has been turned off.', invalid_redirect_uri: 'The address the app wants to return to is not one it registered.', unsupported_response_type: 'The app asked for a kind of sign-in that is not supported.', invalid_scope: 'The app asked for access that it is not set up for.', invalid_request: 'The request from the app is incomplete.' };
+
+async function call(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/integrations${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  return { status: res.status, json: await res.json().catch(() => ({})) };
+}
+async function decide(decision) {
+  $('allow').disabled = true; $('deny').disabled = true; $('askErr').hidden = true;
+  try {
+    const r = await call('POST', '/oauth/authorize', { ...params, decision });
+    if (r.status === 200 && r.json.redirect_url) { window.location.replace(r.json.redirect_url); return; } // the server builds this from the app's registered return address
+    $('askErr').textContent = TEXT[r.json.error] || r.json.error || 'Something went wrong. Nothing was shared.'; $('askErr').hidden = false;
+  } catch (_) { $('askErr').textContent = 'Could not reach the server. Nothing was shared.'; $('askErr').hidden = false; }
+  $('allow').disabled = false; $('deny').disabled = false;
+}
+$('allow').addEventListener('click', () => decide('approve'));
+$('deny').addEventListener('click', () => decide('deny'));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { try { sessionStorage.setItem('kylrx_after_login', window.location.pathname + window.location.search); } catch (_) {} window.location.replace('login.html'); return; }
+  if (!params.client_id || !params.redirect_uri) return bad(TEXT.invalid_request);
+  try {
+    const r = await call('GET', `/oauth/authorize-info?${new URLSearchParams(params)}`);
+    if (r.status === 403) return bad('Only the owner of the company account can connect apps. Ask your owner to open this link.');
+    if (r.status !== 200) return bad(TEXT[r.json.error] || r.json.error_description || r.json.error || 'The request could not be checked.');
+    const d = r.json; const desc = d.scope_descriptions || {};
+    $('appName').textContent = d.app.name; document.title = `Connect ${d.app.name} | Kylrx AI`;
+    $('appBy').textContent = [d.app.description, d.app.website].filter(Boolean).join(' · ');
+    $('scopes').replaceChildren(...d.scopes.map((s) => { const li = document.createElement('li'); const b = document.createElement('b'); b.textContent = (Array.isArray(desc) ? (desc.find((x) => x.scope === s) || {}).description : desc[s]) || words(s); const sp = document.createElement('span'); sp.textContent = s; li.append(b, sp); return li; }));
+    try { $('dest').textContent = new URL(params.redirect_uri).origin; } catch (_) { $('dest').textContent = params.redirect_uri; }
+    show('ask');
+  } catch (_) { bad('Could not reach the server.'); }
+});
+</script>
+</body>
+</html>

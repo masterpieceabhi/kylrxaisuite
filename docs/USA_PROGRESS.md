@@ -10,8 +10,8 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 44 | 22 |
-| Partial | 52 | 24 |
+| Done | 47 | 22 |
+| Partial | 49 | 24 |
 | Existing, not adapted | 5 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
@@ -26,21 +26,21 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | A Platform and country | 1 | 8 | 0 | 1 |
 | B People and organization | 8 | 2 | 0 | 0 |
 | C Hiring and onboarding | 8 | 2 | 0 | 0 |
-| D Time, attendance, scheduling | 8 | 3 | 0 | 0 |
+| D Time, attendance, scheduling | 9 | 2 | 0 | 0 |
 | E Leave and holidays | 5 | 3 | 0 | 0 |
 | F Payroll (Gusto) | 0 | 8 | 0 | 5 |
 | G Benefits | 4 | 2 | 0 | 0 |
 | H Documents and compliance | 4 | 3 | 1 | 0 |
 | I Performance and engagement | 0 | 1 | 3 | 2 |
 | J Analytics and reporting | 4 | 1 | 1 | 0 |
-| K Connectors | 0 | 14 | 0 | 0 |
+| K Connectors | 2 | 12 | 0 | 0 |
 | L Security, privacy, operations | 2 | 5 | 0 | 2 |
 
 ## A. Platform and country
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-A01 | Partial | Country settings, India-page gate | Country picker at signup (still free text defaulting to India); Canada |
+| US-A01 | Partial | Country settings, India-page gate; signup has a country choice and a US company can sign up (no India tax numbers asked, lands on the dashboard with the US menu) | Canada; EIN is entered after signup, not during |
 | US-A02 | Partial | EIN, entity type, address, work states | Industry code and fiscal year in the company profile |
 | US-A03 | Partial | Locations with state, city, county (`us-org.js`), tests, page `admin-us-org.html` | Tax-jurisdiction mapping |
 | US-A04 | Partial | India menus hidden for US | A few India cards may remain on the payroll Documents tab (not confirmed) |
@@ -85,7 +85,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-D01 | Done | Clock in/out, kiosk; new consent, selfie and geofence policy on the server | The clock pages do not yet handle the new consent, selfie and geofence answers; no policy page |
+| US-D01 | Done | Clock in/out, kiosk; new consent, selfie and geofence policy on the server; rules page `admin-us-clock.html`; `punch.html` shows notices, takes the photo and explains work-site blocks | The shared kiosk page does not handle notices or photos yet; taking a photo could not be tested (the test browser blocks the camera) |
 | US-D02 | Done | Weekly timesheets and approval | |
 | US-D03 | Done | Overtime engine | |
 | US-D04 | Partial | Meal-break check | Rest breaks; missed-break premium pay |
@@ -95,7 +95,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-D08 | Done | Tips and tip pools, employee page, linked from the clock page | |
 | US-D09 | Partial | CSV hours export; hours feed into Gusto with a page | Proven on the mock Gusto only |
 | US-D10 | Done | Punch corrections | |
-| US-D11 | Partial | Jobs, time allocation, report, tests | Page |
+| US-D11 | Done | Jobs, time allocation, report, tests; Jobs tab in `admin-us-schedule.html`, "Which job I worked on" in `my-schedule.html` | Charging one clock period to a job from the clock page |
 
 ## E. Leave and holidays
 
@@ -134,7 +134,7 @@ Known decision to make: a person who is in Gusto but has not finished onboarding
 
 ## G. Benefits
 
-Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefits.html` (HR) and `my-benefits.html` (employee, English and Spanish). The ACA and COBRA routes still have no page.
+Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefits.html` (HR) and `my-benefits.html` (employee, English and Spanish). ACA hours and offers, and COBRA tracking, are tabs on the HR page.
 
 | Id | Status | What is missing |
 |---|---|---|
@@ -184,7 +184,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
 | US-K01 | Partial | Public API v1 (people, jobs, org, time, leave, documents), OpenAPI document | Pay results are always empty; documents are metadata only |
-| US-K02 | Partial | API keys and OAuth apps with a page | `oauth-consent.html` (the page where an admin approves an app) |
+| US-K02 | Done | API keys and OAuth apps with a page; `oauth-consent.html` where the owner approves an app | After signing in, the owner must reopen the app's link (login has no return address) |
 | US-K03 | Partial | Signed webhooks, retries, replay, page | |
 | US-K04 | Partial | Event outbox | Only person events are sent; leave, timesheet and document events are in the catalog but never sent |
 | US-K05 | Partial | Adapter base, field mapping, preview route | Mapping screen; tests |
@@ -196,7 +196,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 | US-K11 | Partial | Trigger, hook and action endpoints | The Zapier/Make listing itself |
 | US-K12 | Partial | Overview and API activity on the page; rate limits | Alerts |
 | US-K13 | Partial | OpenAPI document | Docs site, sandbox company, API explorer |
-| US-K14 | Partial | Authorize and grant routes | `oauth-consent.html` |
+| US-K14 | Done | Authorize and grant routes, `oauth-consent.html` | |
 
 ## L. Security, privacy, operations
 
@@ -214,9 +214,13 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 
 ## Next, in order of value (no outside accounts needed)
 
-1. Jobs and time allocation page: D11.
-2. ACA and COBRA pages (routes exist under `/api/us/benefits/aca` and `/cobra`).
-3. Clock pages that handle consent, selfie and geofence answers, plus a clock-policy page: D01.
-4. `oauth-consent.html`: K02, K14.
+1. Shared kiosk page: notices and photo, to match the clock page (D01).
+2. Store pay results from Gusto so the payroll register, payroll cost report, accounting journal and API pay data have something to read (F08, F12, J06, K01).
+3. Send leave, timesheet and document events to webhooks (K04).
+4. Make leave and time use company holidays (E06).
+5. Return to the page you came from after signing in (needed by the OAuth consent link).
+6. Smaller screens: checklist template editor (C03), printable I-9 audit report (H07), one compliance calendar (H03), reveal button for sensitive custom fields (B06).
+7. US versions of the old India modules: goals and reviews, surveys, assets, policy library, report builder (I01, I03, I05, H08, J05).
+8. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
 
 Needs an outside account before it can move: Gusto demo credentials (all of F), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10).

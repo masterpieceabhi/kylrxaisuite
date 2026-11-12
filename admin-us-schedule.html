@@ -41,6 +41,7 @@ table.week td.today,table.week th.today{background:#f0f9ff}
     <button data-tab="week" class="on">Week</button>
     <button data-tab="asks">Requests <span id="askCount"></span></button>
     <button data-tab="actual">Planned and worked</button>
+    <button data-tab="jobs">Jobs</button>
     <button data-tab="rules">Rules</button>
   </div>
 
@@ -93,6 +94,26 @@ table.week td.today,table.week th.today{background:#f0f9ff}
       <h2>Extra pay that may be owed for late schedule changes</h2>
       <p class="hint">Listed only when you have set up a notice rule on the Rules tab. These amounts are not sent to payroll for you.</p>
       <table><thead><tr><th>Person</th><th>Shift</th><th>What changed</th><th>Rule</th><th>Extra hours</th></tr></thead><tbody id="pRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-jobs" class="pane">
+    <section class="card">
+      <h2>Jobs, projects or customers that time is charged to</h2>
+      <p class="hint">Staff say which job their worked time went to on their "My schedule" page. Use this to see labor hours by job.</p>
+      <table><thead><tr><th>Code</th><th>Name</th><th>Billable</th><th>Cost center</th><th>Status</th><th></th></tr></thead><tbody id="jobRows"></tbody></table>
+      <form id="jobForm" style="margin-top:12px"><div class="grid">
+        <label>Code<input name="code" required maxlength="20" placeholder="KITCHEN-REMODEL"></label>
+        <label>Name<input name="name" required maxlength="100"></label>
+        <label>Cost center (optional)<input name="costCenter" maxlength="40"></label>
+        <label class="chk"><input type="checkbox" name="billable"> Billable to a customer</label>
+      </div><div class="row"><button type="submit" class="ghost">Add job</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Hours by job</h2>
+      <div class="row" style="margin-top:0"><label>From<input id="jFrom" type="date"></label><label>To<input id="jTo" type="date"></label><button class="ghost" id="jGo">Show</button></div>
+      <p id="jSum" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Job</th><th>Hours</th><th>People</th><th>Billable</th><th>Cost center</th></tr></thead><tbody id="jRows"></tbody></table>
     </section>
   </div>
 
@@ -232,6 +253,27 @@ async function loadActual() {
 }
 $('aGo').addEventListener('click', () => loadActual().catch((err) => say(err.message, false)));
 
+// ----------------------------------------------------------------------- jobs
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function loadJobs() {
+  const jobs = (await api('GET', '/jobs?all=1')).data;
+  $('jobRows').innerHTML = jobs.map((j) => `<tr><td><b>${esc(j.code)}</b></td><td>${esc(j.name)}</td><td>${j.billable ? 'Yes' : 'No'}</td><td>${esc(j.costCenter || '')}</td><td>${j.active === false ? '<span class="tag grey">closed</span>' : '<span class="tag good">open</span>'}</td><td><button class="ghost" data-jobtoggle="${esc(j.id)}" data-on="${j.active === false ? '1' : ''}">${j.active === false ? 'Reopen' : 'Close'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No jobs yet.</td></tr>';
+  const r = await api('GET', `/jobs/report?from=${$('jFrom').value}&to=${$('jTo').value}`);
+  $('jSum').textContent = r.data.length ? `${r.totalHours} hours charged to jobs in these dates.` : '';
+  $('jRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.code)}</b> ${esc(x.name)}</td><td>${esc(x.hours)}</td><td>${esc(x.workers)}</td><td>${x.billable ? 'Yes' : 'No'}</td><td>${esc(x.costCenter || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No time charged to jobs in these dates.</td></tr>';
+}
+$('jobForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await api('POST', '/jobs', { code: f.code.value, name: f.name.value, costCenter: f.costCenter.value, billable: f.billable.checked }); e.target.reset(); say('Job added.'); await loadJobs(); } catch (err) { say(err.message, false); }
+});
+$('jGo').addEventListener('click', () => loadJobs().catch((err) => say(err.message, false)));
+
 // ---------------------------------------------------------------------- rules
 async function loadRules() {
   const s = (await req('GET', '/settings')).settings; const f = $('setForm').elements;
@@ -262,7 +304,7 @@ document.addEventListener('click', async (e) => {
   try {
     if ((t = el('shift'))) openShiftForm(week.shifts.find((s) => s.id === t.dataset.shift));
     else if ((t = el('add'))) openShiftForm(null, t.dataset.add, t.dataset.date);
-    else if ((t = el('claim'))) { await req('POST', `/shifts/${t.dataset.claim}/claim/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The shift is theirs.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('swap'))) { await req('POST', `/swaps/${t.dataset.swap}/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The schedule is updated.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('prtoggle'))) { await req('PUT', `/predictive-rules/${t.dataset.prtoggle}`, { enabled: Boolean(t.dataset.on) }); await loadRules(); } else if ((t = el('prdel'))) { if (window.confirm('Delete this rule?')) { await req('DELETE', `/predictive-rules/${t.dataset.prdel}`); await loadRules(); } }
+    else if ((t = el('claim'))) { await req('POST', `/shifts/${t.dataset.claim}/claim/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The shift is theirs.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('swap'))) { await req('POST', `/swaps/${t.dataset.swap}/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The schedule is updated.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('jobtoggle'))) { await api('PUT', `/jobs/${t.dataset.jobtoggle}`, { active: Boolean(t.dataset.on) }); await loadJobs(); } else if ((t = el('prtoggle'))) { await req('PUT', `/predictive-rules/${t.dataset.prtoggle}`, { enabled: Boolean(t.dataset.on) }); await loadRules(); } else if ((t = el('prdel'))) { if (window.confirm('Delete this rule?')) { await req('DELETE', `/predictive-rules/${t.dataset.prdel}`); await loadRules(); } }
   } catch (err) { say(err.message, false); }
 });
 
@@ -270,7 +312,8 @@ onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   const today = iso(new Date()); $('aTo').value = today; $('aFrom').value = addDays(today, -6);
   const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
-  await step(loadWeek); await step(loadAsks); await step(loadActual); await step(loadRules);
+  $('jTo').value = today; $('jFrom').value = addDays(today, -29);
+  await step(loadWeek); await step(loadAsks); await step(loadActual); await step(loadRules); await step(loadJobs);
 });
 </script>
 </body>

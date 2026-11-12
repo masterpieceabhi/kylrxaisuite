@@ -329,6 +329,11 @@ function validateStep3() {
         return false;
     }
 
+    if (isUsSignup()) {
+        if (!/^[A-Za-z]{2}$/.test(state)) { showError('Enter the 2-letter state code, for example TX.'); stateInput.focus(); return false; }
+        if (!/^\d{5}(-\d{4})?$/.test(pin)) { showError('Enter a 5-digit ZIP code.'); pinCodeInput.focus(); return false; }
+    }
+
     if (!regAddr) {
         showError("Please enter the Registered Address.");
         registeredAddressInput.focus();
@@ -345,7 +350,23 @@ function validateStep3() {
     return true;
 }
 
+const isUsSignup = () => /^(united states|usa|us)$/i.test(countryInput.value.trim());
+
+/** Switches the address labels, regional defaults and the tax-number step between India and the United States */
+function applyCountry() {
+    const us = isUsSignup();
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('stateLabel', us ? '9. State (2 letters) *' : '9. State *'); set('pinLabel', us ? '11. ZIP Code *' : '11. PIN Code *');
+    stateInput.placeholder = us ? 'e.g. TX' : 'e.g. Karnataka'; stateInput.maxLength = us ? 2 : 60; cityInput.placeholder = us ? 'e.g. Dallas' : 'e.g. Bengaluru'; pinCodeInput.placeholder = us ? 'e.g. 75201' : 'e.g. 560103';
+    timeZoneSelect.value = us ? 'America/Chicago' : 'Asia/Kolkata'; currencySelect.value = us ? 'USD' : 'INR'; fyStartSelect.value = us ? '01-01' : '04-01';
+    [panInput, tanInput, cinInput, gstinInput].forEach((el) => { const g = el.closest('.form-group'); if (g) g.style.display = us ? 'none' : ''; if (el !== cinInput) el.required = !us; if (us) el.value = ''; });
+    const note = document.getElementById('usStatNote'); if (note) note.style.display = us ? 'block' : 'none';
+    const desc = document.getElementById('statDescIn'); if (desc) desc.style.display = us ? 'none' : '';
+}
+countryInput.addEventListener('change', applyCountry);
+
 function validateStep4() {
+    if (isUsSignup()) { hideError(); return true; }
     const pan = panInput.value.trim().toUpperCase();
     const tan = tanInput.value.trim().toUpperCase();
     const gstin = gstinInput.value.trim().toUpperCase();
@@ -654,7 +675,7 @@ async function executeRegistrationAndOrganizationSetup() {
     const logoUrl = logoUrlInput.value.trim() || 'https://kylrx.ai/logo.jpg';
 
     const country = countryInput.value.trim() || 'India';
-    const state = stateInput.value.trim();
+    const state = isUsSignup() ? stateInput.value.trim().toUpperCase() : stateInput.value.trim();
     const city = cityInput.value.trim();
     const pinCode = pinCodeInput.value.trim();
     const regAddress = registeredAddressInput.value.trim();
@@ -726,7 +747,7 @@ async function executeRegistrationAndOrganizationSetup() {
         // Step 6: Confirmation dialog & redirect directly to the main Super Admin Central Dashboard
         // replace() so the Back button can't return to the filled-in signup form
         window.customAlertCallback = () => {
-            window.location.replace('admin-central-dashboard.html');
+            window.location.replace(isUsSignup() ? 'admin-dashboard.html' : 'admin-central-dashboard.html'); // the United States menu lives on admin-dashboard.html
         };
 
         if (window.showAlert) {
@@ -738,7 +759,7 @@ async function executeRegistrationAndOrganizationSetup() {
         }
 
         setTimeout(() => {
-            window.location.replace('admin-central-dashboard.html');
+            window.location.replace(isUsSignup() ? 'admin-dashboard.html' : 'admin-central-dashboard.html'); // the United States menu lives on admin-dashboard.html
         }, 2200);
 
     } catch (err) {

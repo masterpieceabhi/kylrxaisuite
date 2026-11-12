@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time clock rules | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:150px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.photo{border:1px solid var(--line);border-radius:12px;padding:10px}.photo img{width:100%;border-radius:8px;background:#e2e8f0;min-height:120px;display:block}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Time clock rules</h1><div><a href="admin-us-time.html">Time</a> &nbsp;|&nbsp; <a href="admin-us-org.html">Company structure</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="rules" class="on">Rules</button>
+    <button data-tab="flags">Punches to look at <span id="flagCount"></span></button>
+    <button data-tab="photos">Photos <span id="photoCount"></span></button>
+    <button data-tab="people">Who has accepted</button>
+    <button data-tab="notices">Notice wording</button>
+    <button data-tab="laws">State rules table</button>
+  </div>
+
+  <div id="tab-rules" class="pane on">
+    <section class="card">
+      <h2>Rules in use</h2>
+      <p class="hint">With no rule, people clock in and out with nothing extra. The most specific rule wins: a location rule over a state rule over the company rule.</p>
+      <table><thead><tr><th>Applies to</th><th>Photo</th><th>Work site area</th><th>Photos kept</th><th>Checks</th><th></th></tr></thead><tbody id="polRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="polTitle">Add or change a rule</h2>
+      <div class="warn">Photos and phone location are personal data. Several states need a written notice or consent first. The notices are shown to staff on the clock page, but confirm what your states need with counsel.</div>
+      <form id="polForm"><div class="grid">
+        <label>Applies to<select name="scope" id="pScope"><option value="org">The whole company</option><option value="state">One state</option><option value="location">One location</option></select></label>
+        <label id="pStateL" hidden>State (2 letters)<input name="state" maxlength="2"></label>
+        <label id="pLocL" hidden>Location<select name="locationId" id="pLoc"></select></label>
+        <label>Photo when clocking<select name="selfie"><option value="off">Not used</option><option value="optional">Asked for, can be skipped</option><option value="required">Required</option></select></label>
+        <label>Days a photo is kept<input name="photoRetentionDays" type="number" min="1" max="365" value="30"></label>
+        <label>Work site area (phone location)<select name="geoMode"><option value="off">Not used</option><option value="record">Record where the punch was made</option><option value="flag">Flag punches outside the area</option><option value="block">Block punches outside the area</option></select></label>
+        <label>Location must be exact to within (meters)<input name="accuracyMeters" type="number" min="10" max="5000" value="100"></label>
+        <label class="chk"><input type="checkbox" name="requireNotice"> Show the photo and location notices even where no state rule needs them</label>
+      </div>
+      <h3>Which punches the photo and area apply to</h3>
+      <div class="row" style="margin-top:0"><label class="chk"><input type="checkbox" data-pt="in" checked> Clock in</label><label class="chk"><input type="checkbox" data-pt="out" checked> Clock out</label><label class="chk"><input type="checkbox" data-pt="break_start"> Start break</label><label class="chk"><input type="checkbox" data-pt="break_end"> End break</label></div>
+      <h3>Flag a punch for review when</h3>
+      <div class="row" style="margin-top:0"><label class="chk"><input type="checkbox" data-an="sharedDevice"> One phone is used by several people</label><label class="chk"><input type="checkbox" data-an="impossibleTravel"> The place is too far from the last punch</label><label class="chk"><input type="checkbox" data-an="outsideSchedule"> It is outside the planned shift</label><label class="chk"><input type="checkbox" data-an="repeatedTimestamps"> The same time is punched again and again</label><label class="chk"><input type="checkbox" data-an="newDevice"> A new phone is used</label></div>
+      <p class="hint">The work site area uses each location's map point and distance, set on the Company structure page. Fingerprint and face scanning are not available.</p>
+      <div class="row"><button type="submit">Save rule</button></div></form>
+    </section>
+    <section class="card">
+      <h2>What a worker in a state would be asked</h2>
+      <div class="row" style="margin-top:0"><label>State<input id="rqState" maxlength="2" style="width:80px"></label><label>City (optional)<input id="rqCity"></label><button class="ghost" id="rqGo">Check</button></div>
+      <p id="rqOut" style="margin:12px 0 0"></p>
+    </section>
+  </div>
+
+  <div id="tab-flags" class="pane">
+    <section class="card">
+      <h2>Punches flagged for review</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="exStatus"><option value="open">Not looked at yet</option><option value="resolved">Looked at</option><option value="all">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>When</th><th>Why it was flagged</th><th>Result</th><th></th></tr></thead><tbody id="exRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-photos" class="pane">
+    <section class="card">
+      <h2>Clock photos to check</h2>
+      <p class="hint">Opening a photo is recorded. You cannot review your own. Photos are deleted by themselves after the days set in the rule.</p>
+      <div class="row" style="margin-top:0"><label>Show<select id="phStatus"><option value="pending">Not checked yet</option><option value="flagged">Marked as a problem</option><option value="approved">Checked</option><option value="all">All</option></select></label><button class="ghost" id="phPurge">Delete photos past their keep-time now</button></div>
+      <div class="photos" id="phList" style="margin-top:12px"></div>
+    </section>
+  </div>
+
+  <div id="tab-people" class="pane">
+    <section class="card">
+      <h2>Notices each person has to accept</h2>
+      <table><thead><tr><th>Person</th><th>State</th><th>Rule</th><th>Notices</th><th></th></tr></thead><tbody id="csRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-notices" class="pane">
+    <section class="card">
+      <h2>Notice wording</h2>
+      <p class="hint">These are starter drafts. Have counsel review them. Saving a change makes a new version, and everyone is asked to accept it again.</p>
+      <div class="row" style="margin-top:0"><label>Notice<select id="ntPick"></select></label><span id="ntVer" class="hint"></span></div>
+      <form id="ntForm" style="margin-top:12px"><div class="grid">
+        <label>Title (English)<input name="title_en" maxlength="200"></label>
+        <label>Title (Spanish)<input name="title_es" maxlength="200"></label>
+      </div>
+      <label style="margin-top:12px">Text (English)<textarea name="body_en"></textarea></label>
+      <label style="margin-top:12px">Text (Spanish)<textarea name="body_es"></textarea></label>
+      <div class="row"><button type="submit">Save as a new version</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-laws" class="pane">
+    <section class="card">
+      <h2>State and city rules the system knows about</h2>
+      <div class="warn" id="lawNote"></div>
+      <table><thead><tr><th>Rule</th><th>Where</th><th>Applies when you use</th><th>What staff are shown</th><th>Status</th><th></th></tr></thead><tbody id="lawRows"></tbody></table>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const when = (i) => (i ? new Date(i).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const SELFIE = { off: 'Not used', optional: 'Asked for', required: 'Required' }; const GEO = { off: 'Not used', record: 'Recorded', flag: 'Flags outside', block: 'Blocks outside' };
+const METHOD = { web: 'the web clock', kiosk_pin: 'the shared kiosk', selfie_photo: 'photos', geofence: 'phone location', biometric: 'fingerprint or face' };
+const AN = { sharedDevice: 'shared phone', impossibleTravel: 'too far', outsideSchedule: 'outside shift', repeatedTimestamps: 'repeated time', newDevice: 'new phone' };
+let policies = []; let locs = []; let notices = []; let laws = []; let canEditLaws = false;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const noticeTitle = (type) => (notices.find((n) => n.type === type) || {}).title_en || words(type);
+const scopeText = (p) => (p.scope === 'org' ? 'The whole company' : p.scope === 'state' ? `State: ${p.state}` : `Location: ${(locs.find((l) => l.id === p.locationId) || {}).name || 'removed location'}`);
+
+// ---------------------------------------------------------------------- rules
+async function loadPolicies() {
+  policies = (await req('GET', '/clock/policies')).data;
+  $('polRows').innerHTML = policies.map((p) => `<tr><td><b>${esc(scopeText(p))}</b></td><td>${esc(SELFIE[p.selfie])}</td><td>${esc(GEO[p.geofence.mode])}${p.geofence.mode !== 'off' ? `<br><span class="hint">within ${esc(p.geofence.accuracyMeters)} m accuracy</span>` : ''}</td><td>${p.selfie === 'off' ? '' : `${esc(p.photoRetentionDays)} days`}</td><td class="hint">${esc(Object.entries(p.anomaly || {}).filter(([, v]) => v).map(([k]) => AN[k]).join(', '))}</td><td><button class="ghost" data-poledit="${esc(p.id)}">Edit</button> <button class="no" data-poldel="${esc(p.id)}">Remove</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No rules. People clock in and out with nothing extra.</td></tr>';
+}
+function paintScope() { const s = $('pScope').value; $('pStateL').hidden = s !== 'state'; $('pLocL').hidden = s !== 'location'; }
+$('pScope').addEventListener('change', paintScope);
+function fillPolicy(p) {
+  const f = $('polForm').elements; f.scope.value = p.scope; f.state.value = p.state || ''; f.locationId.value = p.locationId || ''; f.selfie.value = p.selfie; f.photoRetentionDays.value = p.photoRetentionDays; f.geoMode.value = p.geofence.mode; f.accuracyMeters.value = p.geofence.accuracyMeters; f.requireNotice.checked = Boolean(p.requireNotice);
+  document.querySelectorAll('[data-pt]').forEach((c) => { c.checked = (p.punchTypes || []).includes(c.dataset.pt); }); document.querySelectorAll('[data-an]').forEach((c) => { c.checked = Boolean((p.anomaly || {})[c.dataset.an]); }); paintScope();
+}
+const DEFAULT_POLICY = { scope: 'org', selfie: 'off', photoRetentionDays: 30, geofence: { mode: 'off', accuracyMeters: 100 }, punchTypes: ['in', 'out'], anomaly: { sharedDevice: true, impossibleTravel: true, outsideSchedule: true, repeatedTimestamps: true, newDevice: false } };
+$('polForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  const body = { scope: f.scope.value, state: f.state.value, locationId: f.locationId.value, selfie: f.selfie.value, photoRetentionDays: Number(f.photoRetentionDays.value), geofence: { mode: f.geoMode.value, accuracyMeters: Number(f.accuracyMeters.value) }, requireNotice: f.requireNotice.checked,
+    punchTypes: [...document.querySelectorAll('[data-pt]:checked')].map((c) => c.dataset.pt), anomaly: Object.fromEntries([...document.querySelectorAll('[data-an]')].map((c) => [c.dataset.an, c.checked])) };
+  if (body.geofence.mode !== 'off' && !locs.some((l) => l.lat !== null && l.lat !== undefined)) { say('No location has a map point yet. Add the latitude and longitude of a location on the Company structure page first.', false); return; }
+  try { await req('PUT', '/clock/policies', body); say('Rule saved. Staff are asked to accept any needed notice the next time they clock.'); fillPolicy(DEFAULT_POLICY); $('polTitle').textContent = 'Add or change a rule'; await loadPolicies(); await loadPeople(); } catch (err) { say(err.message, false); }
+});
+$('rqGo').addEventListener('click', async () => {
+  try {
+    const r = await req('GET', `/clock/requirements?state=${encodeURIComponent($('rqState').value)}&city=${encodeURIComponent($('rqCity').value)}`);
+    const q = r.requirements;
+    $('rqOut').textContent = !q ? 'No rule applies there, so nothing extra is asked.' : q.types.length ? `They must accept: ${q.types.map(noticeTitle).join('; ')}.` : 'A rule applies, but no notice is needed for what it uses.';
+  } catch (err) { say(err.message, false); }
+});
+
+// ---------------------------------------------------------------- flags, photos
+async function loadFlags() {
+  const r = await req('GET', `/clock/exceptions?status=${$('exStatus').value}`);
+  if ($('exStatus').value === 'open') $('flagCount').textContent = r.count ? `(${r.count})` : '';
+  $('exRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.name || '')}</b></td><td>${esc(when(x.createdAt))}<br><span class="hint">${esc(words(x.punchType || x.type || ''))} ${esc(x.source || '')}</span></td><td>${(x.reasons || []).map((y) => esc(y.en || words(y.code))).join('<br>') || esc((x.codes || []).map(words).join(', '))}</td><td>${x.blocked || x.decision === 'block' ? '<span class="tag badTag">punch was blocked</span>' : '<span class="tag warnTag">punch was recorded</span>'}${x.status === 'resolved' ? `<br><span class="hint">${esc(x.resolution || 'looked at')}</span>` : ''}</td><td>${x.status === 'open' ? `<button class="ghost" data-exdone="${esc(x.id)}">Mark as looked at</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing here.</td></tr>';
+}
+$('exStatus').addEventListener('change', () => loadFlags().catch((err) => say(err.message, false)));
+async function loadPhotos() {
+  const r = await req('GET', `/clock/photos/queue?status=${$('phStatus').value}`);
+  if ($('phStatus').value === 'pending') $('photoCount').textContent = r.data.length ? `(${r.data.length})` : '';
+  $('phList').innerHTML = r.data.map((p) => `<div class="photo"><img alt="Clock photo of ${esc(p.name || 'worker')}" data-img="${esc(p.id)}"><b>${esc(p.name || '')}</b><br><span class="hint">${esc(when(p.takenAt))}. Deleted ${esc(when(p.expiresAt))}</span>${p.note ? `<br><span class="hint">${esc(p.note)}</span>` : ''}<div class="row">${p.status === 'pending' ? `<button class="ghost" data-phok="${esc(p.id)}">Looks right</button><button class="no" data-phflag="${esc(p.id)}">Not this person</button>` : `<span class="tag ${p.status === 'approved' ? 'good' : 'badTag'}">${esc(p.status === 'approved' ? 'checked' : 'problem')}</span>`}</div></div>`).join('') || '<p class="hint">No photos here.</p>';
+  // images need the sign-in token, so they are fetched and shown from memory
+  for (const img of document.querySelectorAll('[data-img]')) { try { const res = await req('GET', `/clock/photos/${img.dataset.img}/image`, null, true); img.src = URL.createObjectURL(await res.blob()); } catch (_) { img.alt = 'Photo not available'; } }
+}
+$('phStatus').addEventListener('change', () => loadPhotos().catch((err) => say(err.message, false)));
+$('phPurge').addEventListener('click', async () => { try { const r = await req('POST', '/clock/photos/purge', {}); say(`${r.deleted ?? r.purged ?? 0} photos deleted.`); await loadPhotos(); } catch (err) { say(err.message, false); } });
+
+// --------------------------------------------------------------------- people
+async function loadPeople() {
+  const r = await req('GET', '/clock/consents/status'); const ST = { accepted: ['accepted', 'good'], declined: ['said no', 'badTag'], stale: ['must accept the new version', 'warnTag'], none: ['not answered yet', 'warnTag'], revoked: ['took back consent', 'badTag'] };
+  $('csRows').innerHTML = r.data.map((p) => `<tr><td><b>${esc(p.name || '')}</b></td><td>${esc(p.workState || '')}</td><td>${p.policy ? esc(words(p.policy === 'org' ? 'company' : p.policy)) : '<span class="hint">no rule</span>'}</td><td>${p.types.map((t) => `${esc(noticeTitle(t.type))}: <span class="tag ${(ST[t.status] || [0, 'grey'])[1]}">${esc((ST[t.status] || [t.status])[0])}</span>`).join('<br>') || '<span class="hint">nothing to accept</span>'}</td><td>${p.selfie && p.selfie !== 'off' ? `<button class="no" data-phdel="${esc(p.userId)}" data-name="${esc(p.name || '')}">Delete their photos</button>` : ''}</td></tr>`).join('');
+}
+
+// -------------------------------------------------------------------- notices
+function paintNotice() { const n = notices.find((x) => x.type === $('ntPick').value); if (!n) return; const f = $('ntForm').elements; ['title_en', 'title_es', 'body_en', 'body_es'].forEach((k) => { f[k].value = n[k] || ''; }); $('ntVer').textContent = `Version ${n.version}`; }
+async function loadNotices() { notices = (await req('GET', '/clock/notices')).data; const keep = $('ntPick').value; $('ntPick').innerHTML = notices.map((n) => `<option value="${esc(n.type)}">${esc(n.title_en)}</option>`).join(''); if (keep) $('ntPick').value = keep; paintNotice(); }
+$('ntPick').addEventListener('change', paintNotice);
+$('ntForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const n = notices.find((x) => x.type === $('ntPick').value); const body = {};
+  ['title_en', 'title_es', 'body_en', 'body_es'].forEach((k) => { if (f[k].value !== (n[k] || '')) body[k] = f[k].value; });
+  if (!Object.keys(body).length) { say('Nothing was changed.', false); return; }
+  if (!window.confirm('Save a new version? Everyone this notice applies to is asked to accept it again.')) return;
+  try { const r = await req('PUT', `/clock/notices/${n.type}`, body); say(`Saved as version ${r.notice.version}.`); await loadNotices(); await loadPeople(); } catch (err) { say(err.message, false); }
+});
+
+// ----------------------------------------------------------------------- laws
+async function loadLaws() {
+  const r = await req('GET', '/clock/jurisdictions'); laws = r.data; canEditLaws = r.canEdit; $('lawNote').textContent = r.note;
+  $('lawRows').innerHTML = laws.map((x) => `<tr><td><b>${esc(x.name)}</b><br><span class="hint">${esc(x.summary || '')}</span></td><td>${esc(x.states.join(', '))}${(x.cities || []).length ? `<br><span class="hint">${esc(x.cities.join(', '))}</span>` : ''}</td><td>${esc(x.methods.map((m) => METHOD[m] || m).join(', '))}</td><td>${x.requires.map((q) => `${esc(noticeTitle(q.type))} <span class="hint">(${esc(words(q.level))})</span>`).join('<br>')}</td><td>${x.enabled ? '<span class="tag good">applied</span>' : '<span class="tag grey">turned off</span>'}</td><td>${canEditLaws ? `<button class="ghost" data-lawtoggle="${esc(x.key)}">${x.enabled ? 'Turn off' : 'Turn on'}</button>` : ''}</td></tr>`).join('');
+}
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('poledit'))) { const p = policies.find((x) => x.id === t.dataset.poledit); fillPolicy(p); $('polTitle').textContent = `Change the rule for: ${scopeText(p)}`; $('polForm').scrollIntoView({ behavior: 'smooth' }); } else if ((t = el('poldel'))) { if (window.confirm('Remove this rule? Photos and location checks under it stop.')) { await req('DELETE', `/clock/policies/${t.dataset.poldel}`); say('Rule removed.'); await loadPolicies(); await loadPeople(); } } else if ((t = el('exdone'))) { const note = window.prompt('What did you find? (optional)'); if (note === null) return; await req('PUT', `/clock/exceptions/${t.dataset.exdone}/resolve`, { note }); await loadFlags(); } else if ((t = el('phok'))) { await req('PUT', `/clock/photos/${t.dataset.phok}/review`, { decision: 'approve' }); await loadPhotos(); } else if ((t = el('phflag'))) { const note = window.prompt('What is wrong with this photo?'); if (!note) return; await req('PUT', `/clock/photos/${t.dataset.phflag}/review`, { decision: 'flag', note }); await loadPhotos(); } else if ((t = el('phdel'))) { if (window.confirm(`Delete every clock photo of ${t.dataset.name}? This cannot be undone.`)) { const r = await req('DELETE', `/clock/photos/person/${t.dataset.phdel}`); say(`${r.destroyed} photos deleted.`); await loadPhotos(); } } else if ((t = el('lawtoggle'))) {
+      const x = laws.find((y) => y.key === t.dataset.lawtoggle);
+      if (x.enabled && !window.confirm(`Turn off "${x.name}"? Staff in ${x.states.join(', ')} will no longer be shown its notice. Do this only on advice of counsel.`)) return;
+      await req('PUT', `/clock/jurisdictions/${x.key}`, { name: x.name, states: x.states, cities: x.cities, methods: x.methods, requires: x.requires, summary: x.summary, retention: x.retention, enabled: !x.enabled }); await loadLaws(); await loadPeople();
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(async () => { locs = (await req('GET', '/locations')).data; $('pLoc').innerHTML = locs.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''); });
+  fillPolicy(DEFAULT_POLICY);
+  await step(loadNotices); await step(loadPolicies); await step(loadFlags); await step(loadPhotos); await step(loadPeople); await step(loadLaws);
+});
+</script>
+</body>
+</html>
