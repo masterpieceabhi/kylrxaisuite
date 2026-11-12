@@ -134,6 +134,7 @@ async function deleteEndpoint(orgId, id) {
     const ep = await loadEndpoint(orgId, id);
     if (!ep) return false;
     await ep.ref.delete();
+    await require('./integration-alerts').resolveForSource(orgId, 'webhook_endpoint', id);
     return true;
 }
 
@@ -209,7 +210,10 @@ async function attempt(deliveryId) {
     patch.claimedUntil = null;
     await ref.update(patch);
     if (ep) {
-        await ep.ref.update(ok ? { lastSuccessAt: log.at, failureCount: 0 } : { lastFailureAt: log.at, failureCount: (ep.data.failureCount || 0) + 1 }).catch(() => {});
+        const failures = ok ? 0 : (ep.data.failureCount || 0) + 1;
+        await ep.ref.update(ok ? { lastSuccessAt: log.at, failureCount: 0 } : { lastFailureAt: log.at, failureCount: failures }).catch(() => {});
+        // a switched-off endpoint is not a fault; everything else feeds the "keeps failing" alert on the Integrations page
+        if (ep.data.active !== false) await require('./integration-alerts').recordWebhookResult(d.orgId, { id: ep.id, url: ep.data.url }, failures, error);
     }
     return { ...d, ...patch };
 }

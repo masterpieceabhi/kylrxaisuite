@@ -12,6 +12,9 @@ const forms = require('../services/us-forms');
 const store = require('../services/us-checklist-service');
 const checklistRules = require('../services/checklist-rules');
 const svc = require('../services/us-offboarding-service');
+const exitRules = require('../services/exit-interview-rules');
+const exitInterviews = require('../services/exit-interviews');
+const reports = require('../services/us-reports');
 
 const OFFBOARD_ROLES = ['Super Admin', 'super_admin', 'hr_admin', 'Admin'];
 
@@ -148,6 +151,90 @@ router.post('/offboarding/:id/rehire', authorize(OFFBOARD_ROLES), requireUsOrg, 
     audit(req.orgId, req, 'us_rehired', emp.id, { startDate: start, i9: i9.action });
     res.set('Cache-Control', 'no-store');
     res.status(201).json({ success: true, startDate: start, i9, temporaryPassword: access.password });
+});
+
+/* ---------------------------------- exit interview ---------------------------------- */
+// The person leaving fills it in themselves until their last day. Only HR sees answers: never the manager.
+
+const hrOnly = (req, res, next) => (exitRules.canViewAnswers(req.user) ? next() : res.status(403).json({ success: false, error: 'Only HR can see exit interviews' }));
+const todayOf = async (orgId) => todayIn((await orgInfo(orgId)).tz);
+
+/** The signed-in person's own exit interview (questions in English and Spanish, and their own answers) */
+router.get('/exit-interview/me', requireUsOrg, async (req, res) => {
+    const emp = await findEmployee(req.orgId, req.user.id);
+    if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, ...(await exitInterviews.selfView(req.orgId, emp.id, emp.data, await todayOf(req.orgId))), note: 'Only HR reads your answers. Your manager does not see them.' });
+});
+
+router.put('/exit-interview/me', requireUsOrg, async (req, res) => {
+    const emp = await findEmployee(req.orgId, req.user.id);
+    if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    const r = await exitInterviews.saveSelf(req.orgId, emp.id, emp.data, req.body && req.body.answers, await todayOf(req.orgId));
+    if (r.conflict) return res.status(409).json({ success: false, error: r.conflict });
+    if (r.errors) return res.status(400).json({ success: false, errors: r.errors });
+    audit(req.orgId, req, 'exit_interview_submitted', emp.id, { lastDay: r.view.lastDay }); // that it was sent, never what it says
+    res.json({ success: true, ...r.view });
+});
+
+router.get('/exit-interviews/questions', hrOnly, requireUsOrg, async (req, res) => {
+    res.json({ success: true, ...(await exitInterviews.getQuestions(req.orgId)), types: exitRules.TYPES, limits: { questions: exitRules.MAX_QUESTIONS } });
+});
+
+router.put('/exit-interviews/questions', hrOnly, requireUsOrg, async (req, res) => {
+    const r = await exitInterviews.saveQuestions(req.orgId, req.body && req.body.questions, req.user.id);
+    if (r.errors) return res.status(400).json({ success: false, errors: r.errors });
+    audit(req.orgId, req, 'exit_interview_questions_updated', req.orgId, { count: r.questions.length });
+    res.json({ success: true, questions: r.questions, customised: true });
+});
+
+router.post('/exit-interviews/questions/reset', hrOnly, requireUsOrg, async (req, res) => {
+    const r = await exitInterviews.resetQuestions(req.orgId);
+    audit(req.orgId, req, 'exit_interview_questions_reset', req.orgId, {});
+    res.json({ success: true, questions: r.questions, customised: false });
+});
+
+/** Reasons for leaving across a date range (by last day). ?format=csv downloads it. */
+router.get('/exit-interviews/summary', hrOnly, requireUsOrg, async (req, res) => {
+    const range = exitRules.validateRange(req.query, await todayOf(req.orgId));
+    if (range.errors.length) return res.status(400).json({ success: false, errors: range.errors });
+    const s = await exitInterviews.summary(req.orgId, range.from, range.to);
+    audit(req.orgId, req, 'exit_interview_summary_viewed', req.orgId, { from: range.from, to: range.to, format: req.query.format === 'csv' ? 'csv' : 'json' });
+    if (req.query.format === 'csv') {
+        res.set('Content-Type', 'text/csv; charset=utf-8');
+        res.set('Content-Disposition', `attachment; filename="reasons-for-leaving-${range.from}-to-${range.to}.csv"`);
+        return res.send(reports.toCsv(exitRules.SUMMARY_COLUMNS, exitRules.summaryCsvRows(s)));
+    }
+    res.json({ success: true, ...s });
+});
+
+/** Everyone whose last day is in the range, and whether they answered */
+router.get('/exit-interviews', hrOnly, requireUsOrg, async (req, res) => {
+    const range = exitRules.validateRange(req.query, await todayOf(req.orgId));
+    if (range.errors.length) return res.status(400).json({ success: false, errors: range.errors });
+    const data = await exitInterviews.list(req.orgId, range.from, range.to);
+    res.json({ success: true, from: range.from, to: range.to, count: data.length, data });
+});
+
+router.get('/exit-interviews/:id', hrOnly, requireUsOrg, async (req, res) => {
+    const emp = await findEmployee(req.orgId, req.params.id);
+    if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    const d = await exitInterviews.detail(req.orgId, emp.id, emp.data);
+    if (!d) return res.status(409).json({ success: false, error: 'No termination is recorded for this person, so there is no exit interview.' });
+    audit(req.orgId, req, 'exit_interview_viewed', emp.id, { lastDay: d.lastDay });
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, interview: d });
+});
+
+/** HR records answers and notes from an exit conversation */
+router.put('/exit-interviews/:id', hrOnly, requireUsOrg, async (req, res) => {
+    const emp = await findEmployee(req.orgId, req.params.id);
+    if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    const r = await exitInterviews.saveByHr(req.orgId, emp.id, emp.data, req.body, req.user.id);
+    if (r.conflict) return res.status(409).json({ success: false, error: r.conflict });
+    if (r.errors) return res.status(400).json({ success: false, errors: r.errors });
+    audit(req.orgId, req, 'exit_interview_recorded_by_hr', emp.id, { lastDay: r.record.lastDay, answers: req.body.answers !== undefined, notes: req.body.hrNotes !== undefined });
+    res.json({ success: true, interview: await exitInterviews.detail(req.orgId, emp.id, emp.data) });
 });
 
 router.helpers = { applyDueTerminations };

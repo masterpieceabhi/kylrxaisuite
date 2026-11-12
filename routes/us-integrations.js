@@ -15,6 +15,9 @@ const events = require('../services/events');
 const registry = require('../services/connectors/registry');
 const runtime = require('../services/connectors/runtime');
 const scim = require('./scim');
+const alerts = require('../services/integration-alerts');
+const alertRules = require('../services/integration-alert-rules');
+const mappingRules = require('../services/connectors/mapping');
 
 router.use(verifyToken);
 
@@ -307,6 +310,7 @@ router.get('/connectors/connections/:id/errors', ...view, async (req, res) => {
 router.post('/connectors/connections/:id/errors/:dl/retry', ...manage, async (req, res) => {
     const r = await runtime.retryDeadLetter(req.orgId, req.params.id, req.params.dl);
     if (r.notFound) return nf(res, 'Error record not found');
+    audit(req.orgId, req, 'connector_error_retried', req.params.id, { record: req.params.dl, ok: Boolean(r.ok) });
     res.json({ success: true, ok: r.ok, error: r.error || null });
 });
 
@@ -327,8 +331,79 @@ router.post('/connectors/connections/:id/mapping/preview', ...view, async (req, 
     if (!raw) return nf(res, 'Connection not found');
     const b = req.body || {};
     const sample = b.record || (await runtime.sourcesFor(req.orgId).people({}, {})).slice(0, 1)[0] || {};
-    const r = runtime.previewMapping(raw.data.connectorKey, b.entity, sample, b.rules !== undefined ? b.rules : (raw.data.mapping || {})[b.entity]);
+    let rules = b.rules !== undefined ? b.rules : (raw.data.mapping || {})[b.entity];
+    if (b.edited !== undefined) { // the editor's full list: work out the company's changes first, exactly as a save would
+        const adapter = registry.get(raw.data.connectorKey);
+        const o = mappingRules.overridesFromEdited((adapter.defaultMappings || {})[b.entity] || [], b.edited);
+        if (o.errors.length) return bad(res, o.errors);
+        rules = o.overrides;
+    }
+    const problems = rules === undefined ? [] : mappingRules.validateMapping(rules);
+    if (problems.length) return bad(res, problems);
+    const r = runtime.previewMapping(raw.data.connectorKey, b.entity, sample, rules);
     res.json({ success: true, sample_record_id: sample.id || null, ...r });
+});
+
+/** The field mapping of a connection, per entity: connector defaults merged with this company's changes */
+router.get('/connectors/connections/:id/mapping', ...view, async (req, res) => {
+    const raw = await runtime.loadRaw(req.orgId, req.params.id);
+    if (!raw) return nf(res, 'Connection not found');
+    const adapter = registry.get(raw.data.connectorKey);
+    const entities = adapter.entities.filter((e) => (adapter.defaultMappings || {})[e.key]).map((e) => ({
+        key: e.key, label: e.label || e.key, direction: e.direction, source: e.source || null,
+        rules: mappingRules.describeMapping(adapter.defaultMappings[e.key], (raw.data.mapping || {})[e.key]),
+        changed: ((raw.data.mapping || {})[e.key] || []).length > 0
+    }));
+    res.json({ success: true, connection: { id: raw.id, name: raw.data.name, connector: adapter.key, connector_name: adapter.name }, entities, transforms: Object.keys(mappingRules.TRANSFORMS).sort(),
+        note: 'Check the field names the other system expects with that vendor. Use the preview before saving.' });
+});
+
+/** Saves the edited mapping for one entity. Body: { entity, rules: [full edited list] } or { entity, reset: true } */
+router.put('/connectors/connections/:id/mapping', ...manage, async (req, res) => {
+    const raw = await runtime.loadRaw(req.orgId, req.params.id);
+    if (!raw) return nf(res, 'Connection not found');
+    const b = req.body || {}; const adapter = registry.get(raw.data.connectorKey);
+    const entity = String(b.entity || '');
+    if (!Object.prototype.hasOwnProperty.call(adapter.defaultMappings || {}, entity) || !adapter.entities.some((e) => e.key === entity)) return bad(res, 'entity is not one this connector maps');
+    let overrides = [];
+    if (b.reset !== true) {
+        const o = mappingRules.overridesFromEdited(adapter.defaultMappings[entity], b.rules);
+        if (o.errors.length) return bad(res, o.errors);
+        overrides = o.overrides;
+    }
+    const mapping = { ...(raw.data.mapping || {}), [entity]: overrides };
+    const r = await runtime.updateConnection(req.orgId, req.params.id, { mapping });
+    if (r.errors) return bad(res, r.errors);
+    audit(req.orgId, req, 'connector_mapping_updated', req.params.id, { entity, changes: overrides.length, reset: b.reset === true });
+    res.json({ success: true, entity, changes: overrides.length, rules: mappingRules.describeMapping(adapter.defaultMappings[entity], overrides) });
+});
+
+/* ----------------------------------- alerts ----------------------------------- */
+
+/** Alerts raised when a connector sync or a webhook endpoint keeps failing. ?status=active (default), open, acknowledged, resolved or all */
+router.get('/alerts', ...view, async (req, res) => {
+    const status = String(req.query.status || 'active');
+    if (!['active', 'all', ...alertRules.STATES].includes(status)) return bad(res, `status must be one of: active, all, ${alertRules.STATES.join(', ')}`);
+    const [data, active, settings] = await Promise.all([alerts.list(req.orgId, { status }), alerts.list(req.orgId, { status: 'open' }), alerts.getSettings(req.orgId)]);
+    res.json({ success: true, open_count: active.length, settings, data, note: 'Alerts are shown here only. Nothing is sent by e-mail.' });
+});
+
+router.get('/alerts/settings', ...view, async (req, res) => res.json({ success: true, settings: await alerts.getSettings(req.orgId), limits: { min: alertRules.MIN_THRESHOLD, max: alertRules.MAX_THRESHOLD }, defaults: alertRules.DEFAULT_SETTINGS }));
+
+router.put('/alerts/settings', ...manage, async (req, res) => {
+    const r = await alerts.saveSettings(req.orgId, req.body || {}, req.user.id);
+    if (r.errors) return bad(res, r.errors);
+    audit(req.orgId, req, 'integration_alert_settings_updated', req.orgId, r.settings);
+    res.json({ success: true, settings: r.settings });
+});
+
+router.post('/alerts/:id/acknowledge', ...manage, async (req, res) => {
+    const r = await alerts.acknowledge(req.orgId, req.params.id, req.user.id, req.body || {});
+    if (r.errors) return bad(res, r.errors);
+    if (r.notFound) return nf(res, 'Alert not found');
+    if (r.conflict) return res.status(409).json({ success: false, error: r.conflict });
+    audit(req.orgId, req, 'integration_alert_acknowledged', req.params.id, { kind: r.alert.kind, source: r.alert.source_id });
+    res.json({ success: true, alert: r.alert });
 });
 
 // Background workers: webhook delivery and scheduled connector syncs

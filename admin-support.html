@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Support access | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.active{background:#dcfce7;color:var(--ok)}.expired{background:#f1f5f9;color:var(--muted)}.revoked{background:#fee2e2;color:var(--bad)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}.tile{border:1px solid var(--line);border-radius:10px;padding:10px}.tile b{display:block;font-size:22px}.tile span{color:var(--muted);font-size:12px}
+.note{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:flex-end;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+pre{margin:12px 0 0;padding:10px;background:#f8fafc;border:1px solid var(--line);border-radius:8px;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Support access</h1><div><a href="status.html">Status page</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card" id="closed" hidden><h2>This screen is for support staff</h2>
+    <p>It lists the companies that have given support staff permission to look at their data, and for how long. It opens only for a person whose sign-in address is on the platform's support list (the <code>PLATFORM_SUPPORT_EMAILS</code> setting), or for a super admin of the platform's own company when <code>PLATFORM_ORG_ID</code> is set.</p>
+    <p class="hint">Are you a customer who wants to let support in or end their access? That is done by your company's owner under Security.</p></section>
+
+  <section class="card" id="sessionCard" hidden style="border-color:#fde68a"><h2>Read-only session</h2>
+    <p id="sessionInfo"></p>
+    <p class="hint">Everything you open is written to that company's audit log. You can look, never change. The session is kept only in this tab and ends when you close it, when the time runs out, or when the company ends the access.</p>
+    <div class="row"><label style="flex:1;min-width:240px">Address to read (starts with /api/)<input id="path" value="/api/us/employees" spellcheck="false"></label><button type="button" id="read">Read</button><button type="button" class="no" id="endSession">End session</button></div>
+    <pre id="out" hidden></pre></section>
+
+  <section class="card" id="listCard" hidden><h2>Access given by companies</h2>
+    <div class="tiles" id="tiles"></div>
+    <div class="row" style="margin-bottom:12px"><label>Show<select id="state"><option value="active">Active now</option><option value="all">All</option><option value="expired">Ended (time ran out)</option><option value="revoked">Ended by the company</option></select></label><button type="button" class="ghost" id="reload">Refresh</button></div>
+    <table><thead><tr><th>Company</th><th>Why</th><th>Given by</th><th>Given</th><th>Ends</th><th>State</th><th></th></tr></thead><tbody id="grants"></tbody></table>
+    <p class="hint" id="noSession" hidden>You can see the list, but only an address on the support list can start a session.</p></section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const LABEL = { active: 'Active', expired: 'Time ran out', revoked: 'Ended by the company' };
+const left = (m) => (m >= 120 ? `${Math.floor(m / 60)} hours left` : m >= 60 ? `1 hour ${m - 60} min left` : `${m} min left`);
+let session = null; let canStart = false; let timer = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/support${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(json.error || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+
+async function load() {
+  let r;
+  try { r = await req('GET', `/platform/grants?state=${encodeURIComponent($('state').value)}`); }
+  catch (e) { if (e.status === 403) { $('closed').hidden = false; $('listCard').hidden = true; return; } throw e; }
+  canStart = r.canStartSession === true;
+  $('closed').hidden = true; $('listCard').hidden = false; $('noSession').hidden = canStart;
+  $('tiles').innerHTML = [['Active now', r.counts.active], ['Time ran out', r.counts.expired], ['Ended by the company', r.counts.revoked]].map(([k, v]) => `<div class="tile"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join('');
+  $('grants').innerHTML = r.data.map((g) => `<tr><td><b>${esc(g.company_name || g.company_id)}</b><div class="hint">${esc(g.company_id)}</div></td><td>${esc(g.reason)}</td><td>${esc(g.granted_by || '')}</td><td>${esc(when(g.created_at))}</td><td>${esc(when(g.revoked_at || g.expires_at))}${g.state === 'active' ? `<div class="hint">${esc(left(g.minutes_left))}</div>` : ''}</td><td><span class="tag ${esc(g.state)}">${esc(LABEL[g.state] || g.state)}</span></td><td>${g.state === 'active' && canStart ? `<button type="button" data-start="${esc(g.id)}" data-name="${esc(g.company_name || g.company_id)}">Start read-only session</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Nothing to show.</td></tr>';
+}
+
+function showSession() {
+  $('sessionCard').hidden = !session; if (!session) { $('out').hidden = true; return; }
+  const mins = Math.max(0, Math.round((session.endsAt - Date.now()) / 60000));
+  $('sessionInfo').textContent = `Looking at ${session.name} (read-only). ${mins} min left in this session.`;
+  if (mins <= 0) endSession('The session has ended.');
+}
+function endSession(text) { session = null; if (timer) clearInterval(timer); timer = null; showSession(); if (text) say(text); }
+
+$('grants').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('button[data-start]'); if (!b) return;
+  try {
+    const r = await req('POST', '/session', { grantId: b.dataset.start });
+    session = { token: r.token, name: b.dataset.name, orgId: r.orgId, endsAt: Date.now() + (r.expiresInSeconds || 0) * 1000 };
+    if (timer) clearInterval(timer); timer = setInterval(showSession, 30000);
+    showSession(); say('Session started. It is written to the company\'s audit log.'); $('sessionCard').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { say(e.message, false); await load().catch(() => {}); }
+});
+$('read').addEventListener('click', async () => {
+  if (!session) return;
+  const path = $('path').value.trim();
+  if (!/^\/api\/[A-Za-z0-9/_\-.?=&%:,]*$/.test(path) || path.includes('..')) { say('The address must start with /api/ and be a plain path.', false); return; }
+  const out = $('out'); out.hidden = false; out.textContent = 'Reading...';
+  try {
+    const res = await fetch(path, { method: 'GET', headers: { Authorization: `Bearer ${session.token}`, Accept: 'application/json' }, cache: 'no-store' });
+    const text = await res.text(); let shown = text;
+    try { shown = JSON.stringify(JSON.parse(text), null, 2); } catch (_) { /* not JSON */ }
+    out.textContent = `${res.status} ${res.statusText}\n\n${shown.slice(0, 200000)}`;
+    if (res.status === 403 && /ended/i.test(text)) endSession('The company has ended this access, or its time ran out.');
+  } catch (e) { out.textContent = `Could not read: ${e.message}`; }
+});
+$('endSession').addEventListener('click', () => endSession('Session ended.'));
+$('state').addEventListener('change', () => load().catch((e) => say(e.message, false)));
+$('reload').addEventListener('click', () => load().catch((e) => say(e.message, false)));
+onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } load().catch((e) => say(e.message, false)); });
+</script>
+</body>
+</html>

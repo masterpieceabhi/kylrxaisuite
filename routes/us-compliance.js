@@ -9,6 +9,9 @@ const posters = require('../services/postings-rules');
 const eeo = require('../services/eeo-rules');
 const osha = require('../services/osha-rules');
 const reports = require('../services/us-reports');
+const noticeRules = require('../services/notice-template-rules');
+const notices = require('../services/notice-templates');
+const { findEmployee } = require('./us-hr').helpers;
 
 const SENSITIVE_ROLES = ['Super Admin', 'super_admin', 'hr_admin'];
 
@@ -46,6 +49,100 @@ router.put('/postings/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req
     await rawCollection('posting_records').doc(`${req.orgId}_${key}`).set({ orgId: req.orgId, key, entry: { ...value, recordedBy: req.user.id, recordedAt: new Date().toISOString() } });
     audit(req.orgId, req, 'posting_recorded', key, { postedOn: value.postedOn });
     res.json({ success: true });
+});
+
+/* ---------------------------------- notice texts ---------------------------------- */
+// A small library of notice templates the company edits. Federal starting drafts only; HR roles only.
+
+const companyNameOf = (org) => (org.usProfile && org.usProfile.legalName) || org.legalName || org.name || org.companyName || '';
+const failList = (res, errors) => res.status(400).json({ success: false, errors });
+
+router.get('/notice-templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const lib = await notices.list(req.orgId);
+    res.json({ success: true, note: noticeRules.REVIEW_NOTE, mark: noticeRules.DRAFT_BANNER, fields: noticeRules.MERGE_FIELDS, ...lib });
+});
+
+router.put('/notice-defaults', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const r = await notices.saveDefaults(req.orgId, req.body, req.user.id);
+    if (r.errors) return failList(res, r.errors);
+    audit(req.orgId, req, 'notice_defaults_updated', req.orgId, { fields: Object.keys(req.body || {}).filter((k) => noticeRules.DEFAULT_KEYS.includes(k)) });
+    res.json({ success: true, defaults: r.defaults });
+});
+
+router.post('/notice-templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const r = await notices.create(req.orgId, req.body, req.user.id);
+    if (r.errors) return failList(res, r.errors);
+    audit(req.orgId, req, 'notice_template_created', r.key, { title: r.template.title });
+    res.status(201).json({ success: true, template: r.template });
+});
+
+router.get('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const t = await notices.get(req.orgId, String(req.params.key));
+    if (!t) return res.status(404).json({ success: false, error: 'Notice text not found' });
+    res.json({ success: true, note: noticeRules.REVIEW_NOTE, template: t });
+});
+
+router.put('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const key = String(req.params.key);
+    const r = await notices.save(req.orgId, key, req.body, req.user.id);
+    if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
+    if (r.errors) return failList(res, r.errors);
+    if (r.changed) audit(req.orgId, req, 'notice_template_saved', key, { version: r.template.version });
+    res.json({ success: true, changed: r.changed, template: r.template });
+});
+
+router.post('/notice-templates/:key/reviewed', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const key = String(req.params.key);
+    const r = await notices.markReviewed(req.orgId, key, req.body, req.user.id, await todayFor(req.orgId));
+    if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
+    if (r.conflict) return res.status(409).json({ success: false, error: r.conflict });
+    if (r.errors) return failList(res, r.errors);
+    audit(req.orgId, req, 'notice_template_reviewed', key, { version: r.template.version, reviewedOn: r.template.reviewed.reviewedOn });
+    res.json({ success: true, template: r.template });
+});
+
+router.post('/notice-templates/:key/restore', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const key = String(req.params.key);
+    const r = await notices.restoreVersion(req.orgId, key, req.body && req.body.version, req.user.id);
+    if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
+    if (r.errors) return failList(res, r.errors);
+    audit(req.orgId, req, 'notice_template_version_restored', key, { from: Number(req.body.version), version: r.template.version });
+    res.json({ success: true, template: r.template });
+});
+
+router.delete('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const key = String(req.params.key);
+    const r = await notices.remove(req.orgId, key);
+    if (r.notFound) return res.status(404).json({ success: false, error: 'There is no saved copy of this notice text to remove' });
+    if (r.conflict) return res.status(409).json({ success: false, error: r.conflict });
+    audit(req.orgId, req, 'notice_template_removed', key, { revertedToStarter: r.revertedToStarter });
+    res.json({ success: true, revertedToStarter: r.revertedToStarter });
+});
+
+/** The notice with the fill-ins filled for one person (or nobody), ready to read, copy or print */
+router.post('/notice-templates/:key/render', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const key = String(req.params.key); const b = req.body || {};
+    let person = null;
+    if (b.userId) {
+        const emp = await findEmployee(req.orgId, String(b.userId));
+        if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+        person = { id: emp.id, name: emp.data.name || '' };
+    }
+    const r = await notices.renderFor(req.orgId, key, { companyName: companyNameOf(req.org), person, today: await todayFor(req.orgId), extra: b.values && typeof b.values === 'object' ? b.values : {} });
+    if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
+    audit(req.orgId, req, 'notice_prepared', key, { version: r.version, forUser: person ? person.id : null, draft: r.draft });
+    res.json({ success: true, ...r, mark: r.draft ? noticeRules.DRAFT_BANNER : null });
+});
+
+/** Attach a notice text to a tracked workplace notice (templateKey: null detaches) */
+router.put('/postings/:key/template', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const postingKey = String(req.params.key); const templateKey = req.body ? req.body.templateKey : undefined;
+    if (templateKey !== null && typeof templateKey !== 'string') return failList(res, ['templateKey is required (or null to detach)']);
+    const r = await notices.attach(req.orgId, postingKey, templateKey, req.user.id);
+    if (r.notFound === 'posting') return res.status(404).json({ success: false, error: 'Unknown notice' });
+    if (r.notFound === 'template') return res.status(404).json({ success: false, error: 'Notice text not found' });
+    audit(req.orgId, req, r.attached ? 'notice_template_attached' : 'notice_template_detached', postingKey, { templateKey: r.attached });
+    res.json({ success: true, attached: r.attached });
 });
 
 /* ---------------------------------- EEO self-identification ---------------------------------- */

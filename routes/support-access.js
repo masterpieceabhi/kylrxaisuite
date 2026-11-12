@@ -4,6 +4,7 @@ const router = express.Router();
 const { rawCollection } = require('../config/firebase');
 const { verifyToken } = require('../middleware/authMiddleware');
 const { requirePermission } = require('../services/permissions');
+const supportRules = require('../services/support-rules');
 
 /**
  * Vendor support access, with the customer's consent.
@@ -47,6 +48,23 @@ router.delete('/grants/:id', requirePermission('support.impersonate'), async (re
     await ref.update({ revokedAt: new Date().toISOString(), revokedBy: req.user.id });
     rawCollection('organizations').doc(orgIdOf(req)).collection('audit_logs').add({ action: 'support_access_revoked', targetId: req.params.id, actorId: req.user.id, at: new Date().toISOString() }).catch(() => {});
     res.json({ success: true });
+});
+
+/**
+ * Support staff only (the support screen): grants from every company with their state.
+ * Open to an address in PLATFORM_SUPPORT_EMAILS, or a super admin of PLATFORM_ORG_ID when that is set. Never to customers.
+ */
+router.get('/platform/grants', async (req, res) => {
+    if (!supportRules.canListAllGrants(req.user, process.env)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    const state = String(req.query.state || 'all');
+    if (!['all', ...supportRules.STATES].includes(state)) return res.status(400).json({ success: false, error: `state must be one of: all, ${supportRules.STATES.join(', ')}` });
+    const snap = await rawCollection('support_grants').orderBy('createdAt', 'desc').limit(500).get();
+    const now = new Date().toISOString();
+    const orgIds = [...new Set(snap.docs.map((d) => d.data().orgId).filter(Boolean))];
+    const names = new Map(await Promise.all(orgIds.map(async (id) => { try { const o = await rawCollection('organizations').doc(id).get(); return [id, exists(o) ? (o.data().name || o.data().companyName || null) : null]; } catch (_) { return [id, null]; } })));
+    const all = supportRules.sortGrants(snap.docs.map((d) => supportRules.publicGrant(d.id, d.data(), now, names.get(d.data().orgId))));
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, counts: supportRules.countByState(all), canStartSession: supportRules.canStartSession(req.user, process.env), data: state === 'all' ? all : all.filter((g) => g.state === state) });
 });
 
 /** Support staff only: exchange an active grant for a read-only token */

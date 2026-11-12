@@ -14,6 +14,8 @@ const engine = require('./sync-engine');
 const { syncStore, log, listLogs } = require('./store');
 const { mergeMappings, validateMapping, setPath, applyMapping } = require('./mapping');
 const { aggregatePayResults } = require('./journal');
+const alertRules = require('../integration-alert-rules');
+const alerts = require('../integration-alerts');
 
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
 const nowIso = () => new Date().toISOString();
@@ -21,7 +23,7 @@ const nowIso = () => new Date().toISOString();
 /** Expands flat dotted keys ("accounts.wages_expense") into nested config */
 function expandConfig(flat) {
     const out = {};
-    for (const [k, v] of Object.entries(flat || {})) { if (k === '__proto__' || k.includes('__proto__') || k.includes('constructor')) continue; setPath(out, k, v); }
+    for (const [k, v] of Object.entries(flat || {})) { if (k.includes('__proto__') || k.includes('constructor') || k.includes('prototype')) continue; setPath(out, k, v); }
     return out;
 }
 const deepMerge = (a, b) => {
@@ -39,7 +41,7 @@ function publicConnection(id, d, adapter) {
     return {
         id, connector: d.connectorKey, connector_name: a ? a.name : d.connectorKey, category: a ? a.category : null, name: d.name, status: d.status,
         config: d.config || {}, mapping: d.mapping || {}, conflict_policy: d.conflictPolicy || { default: 'ours', fields: {} }, entities: d.entities || {},
-        schedule: d.schedule || { enabled: false, intervalMinutes: 60 }, next_run_at: d.nextRunAt || null, last_run_at: d.lastRunAt || null, last_status: d.lastStatus || null,
+        schedule: d.schedule || { enabled: false, intervalMinutes: 60 }, next_run_at: d.nextRunAt || null, last_run_at: d.lastRunAt || null, last_status: d.lastStatus || null, failed_runs_in_a_row: d.failureStreak || 0,
         health: d.health || null, created_at: d.createdAt,
         credentials: Object.fromEntries((a ? a.credentialFields : []).map((f) => [f.key, creds[f.key] ? `••••${String(creds[f.key]).slice(-4)}` : null]))
     };
@@ -124,6 +126,7 @@ async function deleteConnection(orgId, id) {
     const raw = await loadRaw(orgId, id);
     if (!raw) return false;
     await raw.ref.delete();
+    await alerts.resolveForSource(orgId, 'connector_sync', id);
     for (const col of ['connector_sync_state', 'connector_dead_letters']) {
         const q = await rawCollection(col).where('connectionId', '==', id).get();
         await Promise.all(q.docs.filter((d) => d.data().orgId === orgId).map((d) => d.ref.delete()));
@@ -182,10 +185,14 @@ async function runConnection(orgId, id, { trigger = 'manual', http, opts = {}, s
         const summary = await engine.runSync({ adapter, conn: ctx.conn, ctx, store: syncStore(orgId), sources: sources || sourcesFor(orgId), inbound: undefined, opts });
         const runRef = await rawCollection('connector_runs').add({ orgId, connectionId: id, trigger, ...summary });
         const interval = (raw.data.schedule || {}).intervalMinutes || 60;
-        await raw.ref.update({ cursors: summary.cursors, lastRunAt: summary.finishedAt, lastStatus: summary.status, nextRunAt: (raw.data.schedule || {}).enabled ? new Date(Date.now() + interval * 60000).toISOString() : null, ...(summary.status === 'failed' ? { status: raw.data.status === 'paused' ? 'paused' : 'error' } : (raw.data.status === 'error' ? { status: 'active' } : {})) });
+        // retrying one failed record says nothing about the connection as a whole, so it does not count either way
+        const failureStreak = trigger === 'retry' ? (raw.data.failureStreak || 0) : alertRules.nextSyncStreak(raw.data.failureStreak, summary.status);
+        await raw.ref.update({ cursors: summary.cursors, lastRunAt: summary.finishedAt, lastStatus: summary.status, failureStreak, nextRunAt: (raw.data.schedule || {}).enabled ? new Date(Date.now() + interval * 60000).toISOString() : null, ...(summary.status === 'failed' ? { status: raw.data.status === 'paused' ? 'paused' : 'error' } : (raw.data.status === 'error' ? { status: 'active' } : {})) });
         await log(orgId, id, summary.status === 'success' ? 'info' : 'error', `Sync ${summary.status}: ${Object.entries(summary.stats).map(([e, s]) => `${e} +${s.created} ~${s.updated} =${s.skipped} !${s.failed}`).join('; ') || 'nothing to do'}`);
         if (summary.status !== 'success') events.emit(orgId, 'connector.sync.failed', { connection_id: id, connector: adapter.key, errors: summary.errors.slice(0, 5).map((e) => ({ entity: e.entity, message: e.message })) });
-        return { run: { id: runRef.id, ...summary } };
+        const alert = trigger === 'retry' ? { action: 'none', id: null } : await alerts.recordSyncResult(orgId, { id, name: raw.data.name }, failureStreak, (summary.errors[0] || {}).message);
+        if (alert.action === 'raise') await log(orgId, id, 'error', `Alert raised: ${failureStreak} sync runs in a row have failed`);
+        return { run: { id: runRef.id, ...summary }, failureStreak, alert };
     } finally { running.delete(id); }
 }
 
@@ -219,11 +226,14 @@ async function retryDeadLetter(orgId, id, dlId, { http, opts, sources } = {}) {
     if (!exists(snap) || snap.data().orgId !== orgId || snap.data().connectionId !== id) return { notFound: true };
     const d = snap.data();
     if (d.kind === 'event') {
-        const raw = await loadRaw(orgId, id); const adapter = registry.get(raw.data.connectorKey);
+        const raw = await loadRaw(orgId, id);
+        if (!raw) return { notFound: true };
+        const adapter = registry.get(raw.data.connectorKey);
         try { await adapter.handleEvent(d.payload, buildCtx(orgId, raw, http)); await snap.ref.update({ status: 'resolved', resolvedAt: nowIso() }); return { ok: true }; } catch (e) { await snap.ref.update({ error: engine.redact(e.message), attempts: (d.attempts || 0) + 1 }); return { ok: false, error: engine.redact(e.message) }; }
     }
     await snap.ref.update({ status: 'retried', retriedAt: nowIso() });
     const r = await runConnection(orgId, id, { trigger: 'retry', http, opts: { ...(opts || {}), onlyRecordIds: [d.recordId] }, sources });
+    if (!r.run) await snap.ref.update({ status: 'open', retriedAt: null }); // the run did not start (for example another sync is running): keep the error in the open list
     return { ok: Boolean(r.run && r.run.status === 'success'), run: r.run || null, error: r.error };
 }
 
@@ -270,9 +280,21 @@ async function tick() {
     try {
         const snap = await rawCollection('connector_connections').where('scheduleEnabled', '==', true).limit(100).get();
         const now = Date.now();
-        const due = snap.docs.filter((d) => d.data().status === 'active' && d.data().nextRunAt && new Date(d.data().nextRunAt).getTime() <= now).slice(0, 5);
-        for (const d of due) { try { await runConnection(d.data().orgId, d.id, { trigger: 'schedule' }); } catch (e) { await log(d.data().orgId, d.id, 'error', `Scheduled run crashed: ${engine.redact(e.message)}`); } }
+        // a connection whose last run failed (status "error") stays on its schedule, so it recovers by itself and the failed-runs alert can count; only "paused" stops it
+        const due = snap.docs.filter((d) => d.data().status !== 'paused' && d.data().nextRunAt && new Date(d.data().nextRunAt).getTime() <= now).slice(0, 5);
+        for (const d of due) { try { await runConnection(d.data().orgId, d.id, { trigger: 'schedule' }); } catch (e) { await noteCrash(d, e); } }
     } catch (_) { /* next tick */ } finally { ticking = false; }
+}
+/** A scheduled run that threw before it could record a result still counts as a failed run, and is moved to its next slot */
+async function noteCrash(d, e) {
+    const data = d.data(); const message = engine.redact(e.message);
+    await log(data.orgId, d.id, 'error', `Scheduled run crashed: ${message}`);
+    try {
+        const failureStreak = alertRules.nextSyncStreak(data.failureStreak, 'failed');
+        const interval = (data.schedule || {}).intervalMinutes || 60;
+        await d.ref.update({ failureStreak, lastStatus: 'failed', lastRunAt: nowIso(), status: 'error', nextRunAt: new Date(Date.now() + interval * 60000).toISOString() });
+        await alerts.recordSyncResult(data.orgId, { id: d.id, name: data.name }, failureStreak, message);
+    } catch (_) { /* next tick */ }
 }
 function startScheduler({ intervalMs = 60000 } = {}) { if (timer) return; timer = setInterval(tick, intervalMs); if (timer.unref) timer.unref(); }
 function stopScheduler() { if (timer) clearInterval(timer); timer = null; }

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exit interview | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 6px;font-size:19px}
+.lang{white-space:nowrap}.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.hint{color:var(--muted);font-size:15px}.private{background:#eff6ff;border-radius:10px;padding:12px;font-size:16px}
+fieldset{border:0;margin:0;padding:0;min-width:0}legend{padding:0;font-weight:700;margin-bottom:10px}
+.opts{display:grid;gap:8px}.opts label{display:flex;gap:10px;align-items:center;padding:12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}.opts input{width:22px;height:22px;flex:none}
+.rate{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.rate label{display:block;text-align:center;border:1px solid var(--line);border-radius:10px;cursor:pointer;font-weight:700;overflow:hidden}.rate input{position:absolute;opacity:0}.rate span{display:block;padding:14px 0}.rate input:checked+span{background:var(--blue);color:#fff}.rate input:focus-visible+span{outline:3px solid #93c5fd;outline-offset:-3px}
+.yn{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+textarea{width:100%;min-height:110px;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+button.go{width:100%;padding:16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer}button.go[disabled]{opacity:.6}
+.req{color:var(--bad)}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding:14px;text-decoration:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button type="button" data-l="en">English</button> <button type="button" data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <section class="card" id="info" hidden></section>
+  <form id="form" hidden novalidate></form>
+  <a class="back" href="us-home.html" data-t="back"></a>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: { title: 'Exit interview', back: 'Back to home', loading: 'Loading...', intro: 'You are leaving on {d}. Before you go, please tell us how it was to work here. It takes about 5 minutes.', private: 'Only HR reads your answers. Your manager does not see them.', until: 'You can answer or change your answers until the end of {d}.',
+    notLeaving: 'There is no exit interview for you. This page is for people who are leaving the company.', closed: 'The exit interview closed on your last day ({d}). If you still want to tell HR something, please contact them.', send: 'Send my answers', update: 'Save my changes', sent: 'Thank you. Your answers were sent to HR.', sentOn: 'You sent your answers on {d}. You can still change them.',
+    yes: 'Yes', no: 'No', required: 'needed', optional: 'optional', choose: 'Please answer the questions marked as needed.', failed: 'Could not save. Please try again.', onlyUs: 'This page is for US companies.' },
+  es: { title: 'Entrevista de salida', back: 'Volver al inicio', loading: 'Cargando...', intro: 'Su último día es el {d}. Antes de irse, cuéntenos cómo fue trabajar aquí. Toma unos 5 minutos.', private: 'Solo Recursos Humanos lee sus respuestas. Su gerente no las ve.', until: 'Puede responder o cambiar sus respuestas hasta el final del {d}.',
+    notLeaving: 'No hay una entrevista de salida para usted. Esta página es para las personas que dejan la empresa.', closed: 'La entrevista de salida se cerró en su último día ({d}). Si todavía quiere decirle algo a Recursos Humanos, comuníquese con ellos.', send: 'Enviar mis respuestas', update: 'Guardar mis cambios', sent: 'Gracias. Sus respuestas se enviaron a Recursos Humanos.', sentOn: 'Envió sus respuestas el {d}. Todavía puede cambiarlas.',
+    yes: 'Sí', no: 'No', required: 'necesaria', optional: 'opcional', choose: 'Por favor responda las preguntas marcadas como necesarias.', failed: 'No se pudo guardar. Inténtelo de nuevo.', onlyUs: 'Esta página es para empresas de EE. UU.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k, v = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
+const txt = (t) => (t && (t[lang] || t.en)) || '';
+let data = null; let draft = {};
+
+async function req(method, body) {
+  const res = await fetch('/api/us/exit-interview/me', { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || tr('failed')); e.status = res.status; throw e; }
+  return json;
+}
+
+function questionHtml(q) {
+  const cur = draft[q.id];
+  const head = `<legend>${esc(txt(q.text))} <span class="hint${q.required ? ' req' : ''}">(${esc(tr(q.required ? 'required' : 'optional'))})</span></legend>`;
+  let body = '';
+  if (q.type === 'rating') body = `<div class="rate">${[1, 2, 3, 4, 5].map((n) => `<label><input type="radio" name="${esc(q.id)}" value="${n}"${cur === n ? ' checked' : ''}><span>${n}</span></label>`).join('')}</div>`;
+  else if (q.type === 'yesno') body = `<div class="opts yn">${[[true, 'yes'], [false, 'no']].map(([v, k]) => `<label><input type="radio" name="${esc(q.id)}" value="${v}"${cur === v ? ' checked' : ''}> ${esc(tr(k))}</label>`).join('')}</div>`;
+  else if (q.type === 'text') body = `<textarea name="${esc(q.id)}" maxlength="2000">${esc(cur || '')}</textarea>`;
+  else body = `<div class="opts">${(q.options || []).map((o) => `<label><input type="radio" name="${esc(q.id)}" value="${esc(o.value)}"${cur === o.value ? ' checked' : ''}> ${esc(txt(o.label))}</label>`).join('')}</div>`;
+  return `<section class="card"><fieldset data-q="${esc(q.id)}" data-type="${esc(q.type)}">${head}${body}</fieldset></section>`;
+}
+
+/** Reads the form into { questionId: answer } */
+function collect() {
+  const out = {};
+  for (const q of data.questions) {
+    if (q.type === 'text') { const v = $('form').elements[q.id].value.trim(); if (v) out[q.id] = v; continue; }
+    const picked = $('form').querySelector(`input[name="${CSS.escape(q.id)}"]:checked`);
+    if (!picked) continue;
+    out[q.id] = q.type === 'rating' ? Number(picked.value) : q.type === 'yesno' ? picked.value === 'true' : picked.value;
+  }
+  return out;
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((n) => { n.textContent = tr(n.dataset.t); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  document.title = `${tr('title')} | Kylrx AI`;
+  const info = $('info'); const form = $('form');
+  if (!data) { info.hidden = false; info.innerHTML = `<p class="hint">${esc(tr('loading'))}</p>`; form.hidden = true; return; }
+  if (data.status !== 'open') { info.hidden = false; form.hidden = true; info.innerHTML = `<p>${esc(tr(data.status === 'closed' ? 'closed' : 'notLeaving', { d: day(data.lastDay) }))}</p>`; return; }
+  info.hidden = false;
+  info.innerHTML = `<p>${esc(tr('intro', { d: day(data.lastDay) }))}</p><p class="private">${esc(tr('private'))}</p><p class="hint">${esc(data.submittedAt ? tr('sentOn', { d: day(data.submittedAt) }) : tr('until', { d: day(data.lastDay) }))}</p>`;
+  form.hidden = false;
+  form.innerHTML = `${data.questions.map(questionHtml).join('')}<button class="go" type="submit" id="send">${esc(tr(data.submittedAt ? 'update' : 'send'))}</button>`;
+}
+
+document.querySelector('.lang').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-l]'); if (!b) return;
+  if (data && data.status === 'open' && !$('form').hidden) draft = collect(); // keep what was typed when the language changes
+  lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {}
+  render();
+});
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  draft = collect();
+  if (data.questions.some((q) => q.required && draft[q.id] === undefined)) { say(tr('choose'), false); return; }
+  const btn = $('send'); btn.disabled = true;
+  try { data = await req('PUT', { answers: draft }); draft = { ...data.answers }; render(); say(tr('sent')); }
+  catch (err) { btn.disabled = false; say(err.status === 400 || err.status === 409 ? err.message : tr('failed'), false); }
+});
+
+render();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { data = await req('GET'); draft = { ...data.answers }; render(); }
+  catch (e) { $('info').hidden = true; say(e.status === 409 ? tr('onlyUs') : e.message, false); }
+});
+</script>
+</body>
+</html>

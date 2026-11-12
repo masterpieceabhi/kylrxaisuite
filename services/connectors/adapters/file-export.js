@@ -17,7 +17,8 @@ module.exports = defineAdapter({
         { key: 'time_csv', direction: 'push', source: 'time_weeks', label: 'Approved weekly hours' },
         { key: 'journal_csv', direction: 'push', source: 'payroll_journal', label: 'Payroll journal lines' }
     ],
-    credentialFields: [{ key: 'sftpPassword', label: 'SFTP password (SFTP driver)', secret: true }, { key: 'sftpPrivateKey', label: 'SFTP private key (SFTP driver)', secret: true }],
+    // optional: the local-folder driver needs no credentials at all, and SFTP takes a password or a key
+    credentialFields: [{ key: 'sftpPassword', label: 'SFTP password (SFTP driver)', secret: true, optional: true }, { key: 'sftpPrivateKey', label: 'SFTP private key (SFTP driver)', secret: true, optional: true }],
     configFields: [{ key: 'driver', label: 'Driver', default: 'local', help: 'local or sftp' }, { key: 'folder', label: 'Folder name (local driver)', default: 'default' }, { key: 'sftp.host', label: 'SFTP host' }, { key: 'sftp.port', label: 'SFTP port', default: 22 }, { key: 'sftp.username', label: 'SFTP user' }, { key: 'sftp.remoteDir', label: 'SFTP remote directory' }, ...ACCOUNT_FIELDS],
     needsVerification: [
         'SFTP: install ssh2-sftp-client, load the host key fingerprint, and test against the real server (the interface is implemented but has only been exercised through the local-folder driver)',

@@ -5,16 +5,21 @@
  *   { target: 'Vendor.DisplayName', source: 'display_name', transform: 'trim' | ['trim','upper'] | { fn: 'date', format: 'MM/DD/YYYY' },
  *     default: 'N/A', required: true, disabled: false }
  * `source` is a path in the canonical record ('job.title', 'hours.worked'); `target` is a dotted path in the output.
- * Per-connector defaults are merged with per-company overrides by `target` (an override with disabled:true removes a default).
+ * Per-connector defaults are merged with per-company overrides by `target` (an override with disabled:true removes a default;
+ * one with replace:true takes the default's place whole; any other override is layered on top of the default).
  */
 
 const pad = (n, w = 2) => String(n).padStart(w, '0');
+
+/** Path parts that would reach the prototype shared by every object in the process: never read or written */
+const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const unsafePath = (path) => String(path).replace(/\[(\d+)\]/g, '.$1').split('.').some((p) => UNSAFE_KEYS.has(p));
 
 function getPath(obj, path) {
     if (path === undefined || path === null || path === '') return undefined;
     let cur = obj;
     for (const part of String(path).replace(/\[(\d+)\]/g, '.$1').split('.')) {
-        if (cur === undefined || cur === null) return undefined;
+        if (cur === undefined || cur === null || UNSAFE_KEYS.has(part)) return undefined;
         cur = cur[part];
     }
     return cur;
@@ -22,6 +27,7 @@ function getPath(obj, path) {
 
 function setPath(obj, path, value) {
     const parts = String(path).replace(/\[(\d+)\]/g, '.$1').split('.');
+    if (parts.some((p) => UNSAFE_KEYS.has(p))) throw new Error(`"${path}" is not an allowed path`);
     let cur = obj;
     parts.forEach((p, i) => {
         if (i === parts.length - 1) { cur[p] = value; return; }
@@ -102,7 +108,8 @@ function mergeMappings(defaults = [], overrides = []) {
     for (const o of overrides || []) {
         if (!o || !o.target) continue;
         if (o.disabled) { map.delete(o.target); continue; }
-        map.set(o.target, { ...(map.get(o.target) || {}), ...o });
+        // replace:true (written by the mapping editor) swaps the default rule for this one instead of layering on top of it
+        if (o.replace) { const { replace, ...rule } = o; map.set(o.target, rule); } else map.set(o.target, { ...(map.get(o.target) || {}), ...o });
     }
     return [...map.values()];
 }
@@ -117,8 +124,10 @@ function validateMapping(rules) {
         const at = `rule ${i + 1}`;
         if (!r || typeof r !== 'object') { errors.push(`${at}: must be an object`); return; }
         if (!r.target || !/^[A-Za-z0-9_.\[\]]+$/.test(String(r.target))) errors.push(`${at}: target is required (letters, digits, . _ [ ])`);
+        else if (unsafePath(r.target)) errors.push(`${at}: target "${r.target}" is not allowed`);
         else if (seen.has(r.target)) errors.push(`${at}: duplicate target ${r.target}`); else seen.add(r.target);
         if (r.source !== undefined && !/^[A-Za-z0-9_.\[\]]*$/.test(String(r.source))) errors.push(`${at}: source path is not valid`);
+        else if (r.source !== undefined && unsafePath(r.source)) errors.push(`${at}: source "${r.source}" is not allowed`);
         const list = Array.isArray(r.transform) ? r.transform : (r.transform ? [r.transform] : []);
         for (const t of list) {
             const n = normalizeTransform(t);
@@ -129,4 +138,78 @@ function validateMapping(rules) {
     return errors;
 }
 
-module.exports = { getPath, setPath, formatDate, TRANSFORMS, runTransforms, applyMapping, mergeMappings, validateMapping };
+/* ------------------------------- mapping editor helpers ------------------------------- */
+
+/** Transform as the short text shown in the editor: "trim, upper" for simple chains, JSON for anything with settings */
+function transformToText(transform) {
+    if (transform === undefined || transform === null || transform === '') return '';
+    const list = Array.isArray(transform) ? transform : [transform];
+    if (list.every((t) => typeof t === 'string')) return list.join(', ');
+    return JSON.stringify(transform);
+}
+
+/** The reverse: "" -> none, "trim, upper" -> ['trim','upper'], JSON text -> the parsed object or list. Returns { value } or { error } */
+function parseTransformText(text) {
+    const s = String(text === undefined || text === null ? '' : text).trim();
+    if (!s) return { value: undefined };
+    if (s.startsWith('{') || s.startsWith('[')) {
+        try { return { value: JSON.parse(s) }; } catch (_) { return { error: 'the change is not valid JSON' }; }
+    }
+    const names = s.split(',').map((x) => x.trim()).filter(Boolean);
+    return { value: names.length === 1 ? names[0] : names };
+}
+
+const RULE_KEYS = ['target', 'source', 'transform', 'default', 'required'];
+const cleanRule = (r) => {
+    const out = {};
+    for (const k of RULE_KEYS) if (r[k] !== undefined && r[k] !== '' && r[k] !== null && !(k === 'required' && r[k] === false)) out[k] = r[k];
+    return out;
+};
+const sameRule = (a, b) => JSON.stringify(RULE_KEYS.map((k) => cleanRule(a)[k])) === JSON.stringify(RULE_KEYS.map((k) => cleanRule(b)[k]));
+
+/**
+ * Rows for the editor: connector defaults merged with the company's changes. origin is
+ * "default" (untouched), "changed" (a default the company altered), "added" (the company's own) or "removed" (a default switched off).
+ */
+function describeMapping(defaults = [], overrides = []) {
+    const def = new Map(defaults.map((r) => [r.target, r]));
+    const off = new Set((overrides || []).filter((o) => o && o.target && o.disabled).map((o) => o.target));
+    const rows = mergeMappings(defaults, overrides).map((r) => {
+        const d = def.get(r.target);
+        return { ...cleanRule(r), transform_text: transformToText(r.transform), required: r.required === true, origin: !d ? 'added' : (sameRule(d, r) ? 'default' : 'changed') };
+    });
+    for (const d of defaults) if (off.has(d.target)) rows.push({ ...cleanRule(d), transform_text: transformToText(d.transform), required: d.required === true, origin: 'removed' });
+    return rows;
+}
+
+/**
+ * Turns the full list the editor sends back into the smallest set of company changes to store.
+ * Each edited row: { target, source, transform | transform_text, default, required, removed }.
+ * Returns { overrides, errors }.
+ */
+function overridesFromEdited(defaults = [], edited) {
+    if (!Array.isArray(edited)) return { overrides: [], errors: ['rules must be a list'] };
+    const errors = []; const overrides = []; const seen = new Set();
+    const def = new Map(defaults.map((r) => [r.target, r]));
+    edited.forEach((row, i) => {
+        const at = `rule ${i + 1}`;
+        if (!row || typeof row !== 'object') { errors.push(`${at}: must be an object`); return; }
+        const target = String(row.target === undefined || row.target === null ? '' : row.target).trim();
+        if (!target) { errors.push(`${at}: the output field is required`); return; }
+        if (seen.has(target)) { errors.push(`${at}: duplicate target ${target}`); return; }
+        seen.add(target);
+        if (row.removed === true || row.disabled === true) { if (def.has(target)) overrides.push({ target, disabled: true }); return; }
+        let transform = row.transform;
+        if (row.transform_text !== undefined) { const p = parseTransformText(row.transform_text); if (p.error) { errors.push(`${at}: ${p.error}`); return; } transform = p.value; }
+        const rule = cleanRule({ target, source: row.source === undefined || row.source === null ? undefined : String(row.source).trim(), transform, default: row.default, required: row.required === true });
+        const d = def.get(target);
+        if (d && sameRule(d, rule)) return;
+        // a changed default is stored whole (replace), so a cleared source / change / default really is cleared
+        overrides.push(d ? { ...rule, replace: true } : rule);
+    });
+    for (const d of defaults) if (!seen.has(d.target)) overrides.push({ target: d.target, disabled: true });
+    if (!errors.length) errors.push(...validateMapping(mergeMappings(defaults, overrides)));
+    return { overrides, errors };
+}
+
+module.exports = { UNSAFE_KEYS, getPath, setPath, formatDate, TRANSFORMS, runTransforms, applyMapping, mergeMappings, validateMapping, transformToText, parseTransformText, describeMapping, overridesFromEdited };

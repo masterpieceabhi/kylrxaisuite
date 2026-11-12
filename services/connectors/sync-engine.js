@@ -95,7 +95,8 @@ async function pushEntity({ adapter, conn, ctx, store, sources, entity, s, curso
     const since = opts.onlyRecordIds ? null : (cursors[entity.key] || null);
     const records = (await sources[entity.source](conn, { since, ids: opts.onlyRecordIds })).slice().sort((a, b) => String(a.updated_at || '').localeCompare(String(b.updated_at || '')) || String(a.id).localeCompare(String(b.id)));
     s.fetched = records.length;
-    let advance = true; let maxTs = since;
+    let advance = true; let maxTs = since; let failedFrom = null; // updated_at of the first record that failed in this run
+    const fail = (record) => { if (advance) failedFrom = record.updated_at || ''; advance = false; };
     const batch = [];
     for (const record of records) {
         const rid = String(record.id);
@@ -109,7 +110,7 @@ async function pushEntity({ adapter, conn, ctx, store, sources, entity, s, curso
             s.failed += 1; note(entity.key, `${rid}: ${e.message}`);
             await store.addDeadLetter(conn.id, { entity: entity.key, recordId: rid, error: redact(e.message), kind: e.validation ? 'validation' : 'mapping', attempts: 0, payload: null });
             await store.putState(conn.id, entity.key, rid, { status: 'error', error: redact(e.message), hash: state && state.hash, remoteId: state && state.remoteId });
-            advance = false; continue;
+            fail(record); continue;
         }
         const hash = sha(mapped.payload);
         if (state && state.status === 'ok' && state.hash === hash) {
@@ -127,7 +128,7 @@ async function pushEntity({ adapter, conn, ctx, store, sources, entity, s, curso
             s.failed += 1; note(entity.key, `${rid}: ${e.message}`);
             await store.addDeadLetter(conn.id, { entity: entity.key, recordId: rid, error: redact(e.message), kind: 'push', attempts: e.attempts || 1, payload: mapped.payload });
             await store.putState(conn.id, entity.key, rid, { status: 'error', error: redact(e.message), hash: state && state.hash, remoteId: state && state.remoteId });
-            advance = false;
+            fail(record);
         }
     }
     if (adapter.batch && batch.length) {
@@ -136,7 +137,9 @@ async function pushEntity({ adapter, conn, ctx, store, sources, entity, s, curso
             for (const b of batch) {
                 await store.putState(conn.id, entity.key, String(b.record.id), { status: 'ok', hash: b.hash, remoteId: (out.value && out.value.file) || null, lastSyncedAt: new Date().toISOString(), error: null });
                 if (b.state && b.state.remoteId) s.updated += 1; else s.created += 1;
-                if (b.record.updated_at && (!maxTs || b.record.updated_at > maxTs)) maxTs = b.record.updated_at;
+                await store.resolveDeadLetters(conn.id, entity.key, String(b.record.id));
+                // never move the cursor past a record that failed earlier in this run, or it would not be picked up again
+                if (b.record.updated_at && (advance || b.record.updated_at < failedFrom) && (!maxTs || b.record.updated_at > maxTs)) maxTs = b.record.updated_at;
             }
         } catch (e) {
             s.failed += batch.length; note(entity.key, `batch export failed: ${e.message}`);
