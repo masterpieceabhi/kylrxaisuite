@@ -37,12 +37,16 @@ const T = {
         next: 'NEXT', ok: 'OK', clear: 'CLEAR', hi: 'Hello, {n}', pick: 'What would you like to do?', in: 'CLOCK IN', out: 'CLOCK OUT', brk: 'START BREAK', brkEnd: 'END BREAK',
         notMe: 'This is not me', done_in: 'You are clocked IN', done_out: 'You are clocked OUT. Thank you!', done_bs: 'Break started', done_be: 'Back to work', at: 'at {t}',
         wrong: 'Number or PIN is not right', locked: 'Too many tries. Ask your manager for help.', expired: 'Time ran out. Start again.', fail: 'Cannot connect. Try again.',
-        already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.', inactive: 'This account is not active.' },
+        already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.', inactive: 'This account is not active.',
+        agree: 'I AGREE', disagree: 'I do not agree', noticeOf: 'Notice {a} of {b}', declined: 'You did not accept the notice. Talk to your manager.', photoTitle: 'Look at the camera', snap: 'TAKE PHOTO', skip: 'Continue without a photo', noCam: 'The camera is not working. Tell your manager.', session_expired: 'Time ran out. Start again.',
+        consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed.', outside_geofence: 'This device is outside the work site area.', week_locked: 'This week has been approved. Ask your manager.' },
   es: { setup: 'Esta tableta aún no está configurada', setupHelp: 'Pida el enlace de configuración a su supervisor.', num: 'Su número', numHelp: 'Escriba su número de empleado', pin: 'Su PIN', pinHelp: 'Escriba su PIN secreto',
         next: 'SIGUIENTE', ok: 'OK', clear: 'BORRAR', hi: 'Hola, {n}', pick: '¿Qué desea hacer?', in: 'ENTRAR', out: 'SALIR', brk: 'EMPEZAR DESCANSO', brkEnd: 'TERMINAR DESCANSO',
         notMe: 'No soy yo', done_in: 'Entrada registrada', done_out: 'Salida registrada. ¡Gracias!', done_bs: 'Descanso iniciado', done_be: 'De vuelta al trabajo', at: 'a las {t}',
         wrong: 'Número o PIN incorrecto', locked: 'Demasiados intentos. Pida ayuda a su supervisor.', expired: 'Se acabó el tiempo. Empiece de nuevo.', fail: 'No hay conexión. Intente de nuevo.',
-        already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.', inactive: 'Esta cuenta no está activa.' }
+        already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.', inactive: 'Esta cuenta no está activa.',
+        agree: 'ACEPTO', disagree: 'No acepto', noticeOf: 'Aviso {a} de {b}', declined: 'Usted no aceptó el aviso. Hable con su supervisor.', photoTitle: 'Mire a la cámara', snap: 'TOMAR FOTO', skip: 'Continuar sin foto', noCam: 'La cámara no funciona. Avise a su supervisor.', session_expired: 'Se acabó el tiempo. Empiece de nuevo.',
+        consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto.', outside_geofence: 'Este equipo está fuera del área del lugar de trabajo.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor.' }
 };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
@@ -57,13 +61,16 @@ try {
 const KEY = (() => { try { return localStorage.getItem('kylrx_kiosk_key'); } catch (_) { return null; } })();
 
 let step = 'number', typed = '', number = '', session = '', who = null, resetTimer = null, countdown = null;
+let flow = null, stream = null; // flow: the punch being finished ({ action, notices, index, consents, photo })
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function stopCam() { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } }
 
 async function api(path, body) {
   const res = await fetch(`/api/time/kiosk/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Kiosk-Key': KEY }, body: JSON.stringify(body) });
   return { ok: res.ok, json: await res.json().catch(() => ({})) };
 }
 
-function reset() { clearTimeout(resetTimer); clearInterval(countdown); step = 'number'; typed = ''; number = ''; session = ''; who = null; render(); }
+function reset() { stopCam(); flow = null; clearTimeout(resetTimer); clearInterval(countdown); step = 'number'; typed = ''; number = ''; session = ''; who = null; render(); }
 function armReset(sec) { clearTimeout(resetTimer); resetTimer = setTimeout(reset, sec * 1000); }
 
 function keypad() {
@@ -92,6 +99,15 @@ function render() {
       + `</div><button class="ghost" id="notMe">${tr('notMe')}</button>`;
     return;
   }
+  if (step === 'notice') {
+    const n = flow.notices[flow.index]; const title = (lang === 'es' && n.title_es) || n.title_en; const body = (lang === 'es' && n.body_es) || n.body_en;
+    card.innerHTML = `<p>${esc(tr('noticeOf', { a: flow.index + 1, b: flow.notices.length }))}</p><h1 style="font-size:30px">${esc(title)}</h1><div style="text-align:left;white-space:pre-wrap;font-size:20px;line-height:1.4;max-height:42vh;overflow:auto;border:2px solid #e2e8f0;border-radius:16px;padding:14px;margin:12px 0">${esc(body)}</div><div class="actions"><button class="in" data-n="accepted">${esc(tr('agree'))}</button></div><button class="ghost" data-n="declined">${esc(tr('disagree'))}</button>`;
+    return;
+  }
+  if (step === 'photo') {
+    card.innerHTML = `<h1>${esc(tr('photoTitle'))}</h1><div id="msg" class="bad"></div><video id="cam" autoplay playsinline muted style="width:100%;border-radius:20px;background:#000;transform:scaleX(-1);margin:12px 0"></video><div class="actions"><button class="in" id="snap" disabled>${esc(tr('snap'))}</button></div>${flow.photoRequired ? '' : `<button class="ghost" id="skipPhoto">${esc(tr('skip'))}</button>`}<button class="ghost" id="notMe">${esc(tr('notMe'))}</button>`;
+    return;
+  }
   if (step === 'done') {
     const kind = who.doneKind; const bad = kind === 'err';
     card.innerHTML = `<div class="big ${bad ? 'bad' : 'ok'}">${bad ? '✕' : '✓'}</div><h1>${who.doneText}</h1>${who.doneTime ? `<p>${who.doneTime}</p>` : ''}<h2>${who.name}</h2>`;
@@ -107,12 +123,40 @@ async function submitPin() {
   if (typed.length < 4) return setMsg(tr('wrong'));
   const r = await api('identify', { employeeNumber: number, pin: typed });
   if (!r.ok) { typed = ''; step = r.json.code === 'locked' ? 'number' : 'pin'; if (r.json.code === 'wrong_pin') { step = 'number'; number = ''; } render(); return setMsg(errText(r.json)); }
-  session = r.json.session; who = { name: r.json.name, firstName: r.json.firstName, status: r.json.status }; typed = '';
+  session = r.json.session; who = { name: r.json.name, firstName: r.json.firstName, status: r.json.status, compliance: r.json.compliance || null }; typed = '';
   step = 'actions'; render(); armReset(30);
 }
 
-async function act(action) {
-  const r = await api('punch', { session, action });
+/** Notices first, then the photo, then the punch */
+function act(action) {
+  const c = who.compliance || {};
+  flow = { action, notices: c.pending || [], index: 0, consents: [], photo: undefined, photoRequired: c.selfie === 'required', wantsPhoto: Boolean(c.selfie && c.selfie !== 'off') && ['in', 'out'].includes(action) };
+  nextStep();
+}
+function nextStep() {
+  if (flow.index < flow.notices.length) { step = 'notice'; render(); armReset(120); return; }
+  if (flow.wantsPhoto && flow.photo === undefined) { step = 'photo'; render(); armReset(40); openCam(); return; }
+  sendPunch();
+}
+function openCam() {
+  const fail = () => { if (flow.photoRequired) { setMsg(tr('noCam')); armReset(6); } else { flow.photo = null; nextStep(); } };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fail();
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }).then((s) => {
+    const v = $('cam'); if (!v || step !== 'photo') { s.getTracks().forEach((t) => t.stop()); return; }
+    stream = s; v.srcObject = s; v.onloadedmetadata = () => { const b = $('snap'); if (b) b.disabled = false; };
+  }).catch(fail);
+}
+function snap() {
+  const v = $('cam'); const w = Math.min(480, v.videoWidth || 480); const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
+  const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(v, 0, 0, w, h);
+  let q = 0.7; let url = c.toDataURL('image/jpeg', q);
+  while (url.length > 380000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); } // the server takes up to 300 KB
+  flow.photo = url; stopCam(); nextStep();
+}
+async function sendPunch() {
+  stopCam(); const action = flow.action; const declined = flow.consents.some((c) => c.decision === 'declined');
+  const r = await api('punch', { session, action, photo: flow.photo || undefined, consents: flow.consents.length ? flow.consents : undefined });
+  if (declined) { who.doneKind = 'err'; who.doneText = tr('declined'); who.doneTime = ''; step = 'done'; render(); armReset(6); return; }
   if (r.ok) {
     const st = r.json.status;
     const t = new Date(st.lastPunchAt).toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit', timeZone: st.timeZone });
@@ -126,6 +170,10 @@ async function act(action) {
 $('card').addEventListener('click', (e) => {
   const kb = e.target.closest('[data-k]'); const ab = e.target.closest('[data-a]');
   if (e.target.id === 'notMe') return reset();
+  if (e.target.id === 'snap') return snap();
+  if (e.target.id === 'skipPhoto') { flow.photo = null; stopCam(); return nextStep(); }
+  const nb = e.target.closest('[data-n]');
+  if (nb) { flow.consents.push({ type: flow.notices[flow.index].type, decision: nb.dataset.n }); if (nb.dataset.n === 'declined') return sendPunch(); flow.index += 1; return nextStep(); }
   if (ab) return act(ab.dataset.a);
   if (!kb) return;
   const v = kb.dataset.k;

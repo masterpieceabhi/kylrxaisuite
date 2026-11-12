@@ -180,9 +180,11 @@ router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     const info = await orgInfo(kiosk.orgId);
     const nowIso = new Date().toISOString();
     const status = buildStatus(await punchesSince(kiosk.orgId, doc.id, daysAgoIso(8)), info, nowIso);
-    const session = jwt.sign({ type: 'kiosk_session', uid: doc.id, orgId: kiosk.orgId, kioskId: kiosk.id }, process.env.JWT_SECRET, { expiresIn: KIOSK_SESSION_SECONDS });
     let compliance = null;
     try { const c = await clockIo.pendingFor(kiosk.orgId, doc.id); if (c && c.policy) compliance = { pending: c.pending, selfie: c.selfie, required: c.required }; } catch (e) { logger.error(`Kiosk compliance lookup failed: ${e.message}`); }
+    // Reading a notice or taking a photo needs more time than a plain punch
+    const extra = compliance && ((compliance.pending || []).length || compliance.selfie !== 'off');
+    const session = jwt.sign({ type: 'kiosk_session', uid: doc.id, orgId: kiosk.orgId, kioskId: kiosk.id }, process.env.JWT_SECRET, { expiresIn: extra ? KIOSK_SESSION_SECONDS * 4 : KIOSK_SESSION_SECONDS });
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, session, name: u.name || employeeId, firstName: String(u.name || '').split(' ')[0], status, compliance });
 });

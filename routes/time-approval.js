@@ -124,6 +124,7 @@ router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
         orgId: req.orgId, userId: user.id, employeeId: user.data.employeeId || null, name: user.data.name || null, weekStart,
         status: 'submitted', submittedAt: new Date().toISOString(), submittedBy: req.user.id, totals: view.totals, flags: view.flags, decisionNote: null, decidedAt: null, decidedBy: null
     });
+    require('../services/events').emit(req.orgId, 'timesheet.submitted', { person_id: user.id, week_start: weekStart, worked_hours: (view.totals && view.totals.workedHours) ?? null });
     res.json({ success: true, status: 'submitted', totals: view.totals });
 });
 
@@ -158,6 +159,9 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
     }
     await ref.update(patch);
     rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', targetId: userId, actorId: req.user.id, at: new Date().toISOString(), weekStart }).catch(() => {});
+    require('../services/events').emit(req.orgId, decision === 'approve' ? 'timesheet.approved' : 'timesheet.rejected', decision === 'approve'
+        ? { person_id: userId, week_start: weekStart, worked_hours: (patch.totals && patch.totals.workedHours) ?? null, overtime_hours: (patch.totals && patch.totals.overtimeHours) ?? null }
+        : { person_id: userId, week_start: weekStart });
     res.json({ success: true, status: patch.status });
 });
 

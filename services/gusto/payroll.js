@@ -8,6 +8,7 @@
  */
 const rules = require('./rules');
 const sync = require('./sync');
+const payResultsIo = require('./pay-results');
 const { GustoError } = require('./client');
 
 const nowIso = () => new Date().toISOString();
@@ -167,7 +168,13 @@ async function submitPayroll(ctx, payrollUuid, { confirm, confirmPayrollId, acce
         throw e;
     }
     const saved = await ctx.store.savePayroll(ctx.orgId, payrollUuid, { status: 'submitted', submittedAt: nowIso(), submittedBy: actor || null, submittedTotals: p.totals, acceptedLate: Boolean(acceptLate && cutoff.status === 'passed') });
-    return { payrollUuid, status: saved.status, totals: p.totals, submittedAt: saved.submittedAt, cutoff };
+    // Keep what each person was paid, for the register, cost reports, the accounting journal and the API.
+    // The payroll is already submitted at this point, so a failure here must not look like a failed submit.
+    let payResults = null;
+    try { payResults = await payResultsIo.store(ctx, payrollUuid, p, { status: 'submitted', people: await sync.loadPeople(ctx) }); }
+    catch (e) { try { await ctx.store.logError(ctx.orgId, { scope: 'pay_results', ref: payrollUuid, message: `Pay results were not saved: ${String(e.message).slice(0, 200)}`, code: 'pay_results_failed' }); } catch (_) { /* best effort */ } }
+    try { (ctx.emitEvent || require('../events').emit)(ctx.orgId, 'payroll.run.completed', { run_id: payrollUuid, pay_date: p.check_date || null, period_start: record.periodStart, period_end: record.periodEnd }); } catch (_) { /* never blocks a submit */ }
+    return { payrollUuid, status: saved.status, totals: p.totals, submittedAt: saved.submittedAt, cutoff, payResults };
 }
 
 async function cancelPayroll(ctx, payrollUuid, { actor } = {}) {
@@ -181,6 +188,7 @@ async function cancelPayroll(ctx, payrollUuid, { actor } = {}) {
     if (record.status !== 'submitted') throw fail(409, 'wrong_state', `This payroll is "${record.status}" and cannot be cancelled.`);
     await ctx.client.put(`/v1/companies/${c}/payrolls/${payrollUuid}/cancel`, {});
     await ctx.store.savePayroll(ctx.orgId, payrollUuid, { status: 'cancelled', cancelledAt: nowIso(), cancelledBy: actor || null });
+    try { await payResultsIo.remove(ctx, payrollUuid); } catch (_) { /* the payroll is cancelled either way */ }
     return { payrollUuid, status: 'cancelled' };
 }
 
@@ -194,11 +202,29 @@ async function refreshPayroll(ctx, payrollUuid) {
     if (p.processed) { try { patch.receipt = await ctx.client.get(`/v1/payrolls/${payrollUuid}/receipt`); } catch (e) { if (e.code !== 'not_found') throw e; } }
     if (p.payment_status === 'paid' || p.paid_at) patch.status = 'paid';
     else if (p.processed && record.status === 'prepared') patch.status = 'submitted';
-    return ctx.store.savePayroll(ctx.orgId, payrollUuid, patch);
+    const out = await ctx.store.savePayroll(ctx.orgId, payrollUuid, patch);
+    // Refresh the stored pay results too: Gusto's final figures can differ from the preview, and older payrolls may have none
+    if (p.processed && ['submitted', 'paid'].includes(out.status)) { try { await payResultsIo.store(ctx, payrollUuid, p, { status: out.status, people: await sync.loadPeople(ctx) }); } catch (_) { /* shown as missing on the register */ } }
+    return out;
 }
 
 async function history(ctx) {
     return (await ctx.store.listPayrolls(ctx.orgId)).map((r) => ({ payrollUuid: r.payrollUuid, status: r.status, periodStart: r.periodStart, periodEnd: r.periodEnd, checkDate: r.checkDate, totals: r.submittedTotals || r.totals || null, preparedAt: r.preparedAt || null, preparedBy: r.preparedBy || null, submittedAt: r.submittedAt || null, submittedBy: r.submittedBy || null, feedTotals: r.feedTotals || null }));
+}
+
+/** What each person was paid in one payroll, from the stored pay results */
+async function register(ctx, payrollUuid) {
+    const record = await ctx.store.getPayroll(ctx.orgId, payrollUuid);
+    if (!record) throw fail(404, 'not_found', 'We have no payroll with that id.');
+    const rows = (await payResultsIo.listForPayroll(ctx, payrollUuid)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return { payrollUuid, status: record.status, periodStart: record.periodStart, periodEnd: record.periodEnd, checkDate: record.checkDate, rows, totals: payResultsIo.totalsOf(rows), allocated: rows.some((r) => r.allocated) };
+}
+
+/** Payroll cost between two pay dates, by department and by pay date */
+async function cost(ctx, { from, to } = {}) {
+    const rows = await payResultsIo.listForOrg(ctx, { from, to });
+    const group = (key) => { const m = new Map(); rows.forEach((r) => { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }); return [...m.entries()].map(([k, list]) => ({ key: k, ...payResultsIo.totalsOf(list) })); };
+    return { from: from || null, to: to || null, totals: payResultsIo.totalsOf(rows), byDepartment: group((r) => r.department || 'No department').sort((a, b) => b.employerCost - a.employerCost), byPayDate: group((r) => r.payDate || 'No pay date').sort((a, b) => String(a.key).localeCompare(String(b.key))), allocated: rows.some((r) => r.allocated) };
 }
 
 /* ------------------------------- read-only: stubs, taxes, reconciliation ------------------------------- */
@@ -228,4 +254,4 @@ async function reconciliation(ctx, start, end) {
     return { period: { start, end }, payrollUuid: payroll ? payroll.payroll_uuid : null, payrollProcessed: payroll ? Boolean(payroll.processed) : null, hasPayroll: Boolean(payroll), feedIssues: feed.issues, ...rec };
 }
 
-module.exports = { buildFeed, listPayrolls, findPayroll, preparePayroll, previewPayroll, submitPayroll, cancelPayroll, refreshPayroll, history, payStubs, taxFilings, reconciliation, waitCalculated };
+module.exports = { register, cost, buildFeed, listPayrolls, findPayroll, preparePayroll, previewPayroll, submitPayroll, cancelPayroll, refreshPayroll, history, payStubs, taxFilings, reconciliation, waitCalculated };

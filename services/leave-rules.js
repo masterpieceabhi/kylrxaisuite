@@ -200,7 +200,10 @@ function finish(policy, out, ctx) {
     return out;
 }
 
-/** Dates a request covers, skipping weekends (unless asked) and federal holidays (policy setting) */
+/**
+ * Dates a request covers, skipping weekends (unless asked) and holidays (policy setting).
+ * options.holidays: a Set of YYYY-MM-DD from the company holiday calendar. Without it, federal holidays are used.
+ */
 function requestDates(startDate, endDate, options = {}) {
     const s = parseIsoDate(startDate); const e = parseIsoDate(endDate);
     if (!s || !e || e < s) return null;
@@ -209,7 +212,7 @@ function requestDates(startDate, endDate, options = {}) {
         if (dates.length > 366) return null;
         const dow = d.getUTCDay();
         if (!options.includeWeekends && (dow === 0 || dow === 6)) continue;
-        if (options.skipHolidays && federalHolidays(d.getUTCFullYear()).has(isoDate(d))) continue;
+        if (options.skipHolidays && (options.holidays ? options.holidays.has(isoDate(d)) : federalHolidays(d.getUTCFullYear()).has(isoDate(d)))) continue;
         dates.push(isoDate(d));
     }
     return dates;
@@ -219,10 +222,10 @@ function requestDates(startDate, endDate, options = {}) {
  * Checks a time-off request. balance is the simulate() result for the request's policy.
  * Returns { errors, value } with value.dates and value.hours when valid.
  */
-function validateRequest(policy, input, balance, todayIso, overlapDates = []) {
+function validateRequest(policy, input, balance, todayIso, overlapDates = [], holidays = null) {
     const errors = [];
     const b = input || {};
-    const dates = requestDates(b.startDate, b.endDate, { includeWeekends: b.includeWeekends === true, skipHolidays: policy.skipHolidays !== false });
+    const dates = requestDates(b.startDate, b.endDate, { includeWeekends: b.includeWeekends === true, skipHolidays: policy.skipHolidays !== false, holidays });
     if (!dates) return { errors: ['startDate and endDate must be real dates (YYYY-MM-DD), end not before start, at most a year'], value: null };
     if (dates.length === 0) return { errors: ['those dates have no working days (weekends and holidays are skipped)'], value: null };
 

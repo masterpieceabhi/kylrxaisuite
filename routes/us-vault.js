@@ -68,6 +68,8 @@ router.post('/vault/documents', authorize(ADMIN_HR_ROLES), requireUsOrg, (req, r
         throw e;
     }
     audit(req.orgId, req, 'vault_document_uploaded', ref.id, { category: value.category, scope: value.scope, userId: value.userId, size: doc.size });
+    // Confidential files are never announced to integrations, not even as an id
+    if (require('../services/canonical').isDocumentVisible({ ...doc, category: value.category })) require('../services/events').emit(req.orgId, 'document.uploaded', { document_id: ref.id, category: value.category, person_id: value.userId || null });
     res.status(201).json({ success: true, document: publicDoc(ref.id, doc) });
 });
 

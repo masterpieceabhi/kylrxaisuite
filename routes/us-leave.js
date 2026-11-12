@@ -155,7 +155,13 @@ router.post('/leave/requests', requireUsOrg, async (req, res) => {
     const bal = await balanceFor(req.orgId, emp, policy, info);
     if (bal.error) return res.status(409).json({ success: false, error: 'Your start date is not on file. Ask HR.' });
     const mine = (await loadRequests(req.orgId, 'userId', emp.id)).filter((r) => ACTIVE.includes(r.status));
-    const { errors, value } = L.validateRequest(policy, req.body, bal.balance, bal.asOf, mine.flatMap((r) => r.dates));
+    // Days the company is closed do not use up time off: the company holiday calendar (observed federal days plus the company's own)
+    let companyHolidays = null;
+    const b0 = req.body || {};
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(b0.startDate || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(b0.endDate || '')) && b0.endDate >= b0.startDate && b0.endDate.slice(0, 4) - b0.startDate.slice(0, 4) <= 1) {
+        try { companyHolidays = await require('../services/company-holidays').holidaySetForRange(req.orgId, b0.startDate, b0.endDate, { locationId: (emp.data.usProfile && emp.data.usProfile.workLocationId) || undefined }); } catch (_) { companyHolidays = null; /* falls back to federal holidays */ }
+    }
+    const { errors, value } = L.validateRequest(policy, req.body, bal.balance, bal.asOf, mine.flatMap((r) => r.dates), companyHolidays);
     if (errors.length) return res.status(400).json({ success: false, errors });
 
     const doc = {
@@ -167,6 +173,7 @@ router.post('/leave/requests', requireUsOrg, async (req, res) => {
     };
     const ref = await rawCollection('leave_requests').add(doc);
     audit(req.orgId, req, 'leave_requested', ref.id, { policy: policy.name, hours: value.hours });
+    require('../services/events').emit(req.orgId, 'leave.requested', { request_id: ref.id, person_id: emp.id, leave_type: policy.type, start_date: doc.startDate, end_date: doc.endDate, hours: value.hours });
     res.status(201).json({ success: true, request: { id: ref.id, ...doc } });
 });
 
@@ -211,6 +218,7 @@ router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (r
     const patch = { status: decision === 'approve' ? 'approved' : 'denied', decidedBy: req.user.id, decidedAt: new Date().toISOString(), decisionNote: String((req.body && req.body.note) || '').slice(0, 300) };
     await ref.update(patch);
     audit(req.orgId, req, decision === 'approve' ? 'leave_approved' : 'leave_denied', r.id, { userId: r.userId, hours: r.hours });
+    require('../services/events').emit(req.orgId, decision === 'approve' ? 'leave.approved' : 'leave.denied', decision === 'approve' ? { request_id: r.id, person_id: r.userId, leave_type: r.type, start_date: r.startDate, end_date: r.endDate, hours: r.hours } : { request_id: r.id, person_id: r.userId });
     res.json({ success: true, request: { ...r, ...patch } });
 });
 
@@ -228,6 +236,7 @@ router.post('/leave/requests/:id/cancel', requireUsOrg, async (req, res) => {
     }
     await ref.update({ status: 'cancelled', cancelledBy: req.user.id, cancelledAt: new Date().toISOString() });
     audit(req.orgId, req, 'leave_cancelled', r.id, { userId: r.userId });
+    require('../services/events').emit(req.orgId, 'leave.cancelled', { request_id: r.id, person_id: r.userId });
     res.json({ success: true });
 });
 

@@ -45,7 +45,14 @@ const PEOPLE = [person('u1', 'Ann Alpha'), person('u2', 'Bob Beta'), person('u3'
 
 let mock; let baseUrl; let store; let weeks = []; let leave = [];
 const silent = { info() {}, warn() {}, error() {} };
-const deps = () => ({ store, log: silent, org, loadPeople: async () => PEOPLE, loadLeave: async () => leave, loadWeeks: async () => weeks, optsOverride: { baseUrl, backoffBaseMs: 5, rateLimitPerMinute: 100000, lockLeaseMs: 3000 }, pollOpts: { intervalMs: 20 } });
+const payDb = new Map(); const sentEvents = [];
+const payHooks = {
+    savePayResults: async (orgId, rows) => rows.forEach((r) => payDb.set(r.id, { ...r })),
+    listPayResults: async (orgId, uuid) => [...payDb.values()].filter((r) => r.orgId === orgId && (!uuid || r.payrollUuid === uuid)),
+    deletePayResults: async (orgId, ids) => ids.forEach((id) => payDb.delete(id)),
+    emitEvent: (orgId, type, data) => { sentEvents.push({ orgId, type, data }); return 'evt_test'; }
+};
+const deps = () => ({ ...payHooks, store, log: silent, org, loadPeople: async () => PEOPLE, loadLeave: async () => leave, loadWeeks: async () => weeks, optsOverride: { baseUrl, backoffBaseMs: 5, rateLimitPerMinute: 100000, lockLeaseMs: 3000 }, pollOpts: { intervalMs: 20 } });
 const ctxFor = () => makeContext(ORG, deps());
 const refreshCtx = async (ctx) => { ctx.conn = await store.getConnection(ORG); return ctx; };
 const mockPost = (path, body) => fetch(`${baseUrl}/__mock${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }).then((r) => r.json());
@@ -228,6 +235,17 @@ test('hours feed -> prepare -> preview -> submit with confirmation, stale-hours 
     assert.equal([r1, r2].filter((r) => r.status === 'fulfilled').length, 1, 'exactly one concurrent submit wins');
     const hist = await payroll.history(ctx);
     assert.equal(hist[0].status, 'submitted');
+
+    // what each person was paid is stored once (the losing concurrent submit wrote nothing), and one event went out
+    const reg = await payroll.register(ctx, prep2.payrollUuid);
+    assert.equal(reg.rows.length, 3);
+    assert.equal(reg.totals.gross, 3930);
+    assert.equal(reg.totals.net + reg.totals.employeeTaxes + reg.totals.deductions, reg.totals.gross);
+    assert.ok(reg.rows.every((r) => r.payDate && r.periodStart === start && r.status === 'submitted'));
+    assert.equal(sentEvents.filter((e) => e.type === 'payroll.run.completed' && e.data.run_id === prep2.payrollUuid).length, 1);
+    const cost = await payroll.cost(ctx, {});
+    assert.equal(cost.totals.gross, 3930);
+    assert.equal(cost.totals.employerCost, cost.totals.gross + cost.totals.employerTaxes);
     await assert.rejects(() => payroll.submitPayroll(ctx, prep2.payrollUuid, { confirm: true, confirmPayrollId: prep2.payrollUuid, actor: 'p' }), (e) => e.code === 'wrong_state');
 
     // reconciliation agrees with Gusto after submit

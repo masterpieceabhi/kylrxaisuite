@@ -213,6 +213,23 @@ router.post('/payroll/prepare', ...RUN, run(async (req, res) => {
     return res.json({ success: true, note: NOTE, ...out });
 }));
 
+/** Payroll cost from stored pay results (?from=&to= are pay dates) */
+router.get('/payroll/cost', ...VIEW, run(async (req, res) => {
+    const ok = (v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(String(v));
+    if (!ok(req.query.from) || !ok(req.query.to)) return res.status(400).json({ success: false, error: 'from and to must be dates (YYYY-MM-DD)' });
+    const ctx = await ctxFor(req, { needConfig: false });
+    await audit(req.orgId, req, 'payroll_cost_viewed', null, { from: req.query.from || null, to: req.query.to || null });
+    return res.json({ success: true, note: NOTE, ...(await payroll.cost(ctx, { from: req.query.from, to: req.query.to })) });
+}));
+
+/** What each person was paid in one submitted payroll */
+router.get('/payroll/:id/register', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    const out = await payroll.register(ctx, String(req.params.id));
+    await audit(req.orgId, req, 'payroll_register_viewed', out.payrollUuid, { rows: out.rows.length });
+    return res.json({ success: true, note: NOTE, ...out });
+}));
+
 router.get('/payroll/:id', ...VIEW, run(async (req, res) => {
     const ctx = await ctxFor(req);
     res.json({ success: true, note: NOTE, ...(await payroll.previewPayroll(ctx, String(req.params.id))) });

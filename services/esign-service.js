@@ -111,6 +111,7 @@ async function completeSigning(reqDoc, sig, ctx) {
         }
     }
     auditPublic(data.orgId, 'esign_document_signed', id, ctx.ip, { templateType: data.templateType, signerType: data.signerType, vaultDocumentId: vaultRef.id });
+    require('./events').emit(data.orgId, 'document.signed', { document_id: vaultRef.id, person_id: data.userId || null, signed_at: signedAt });
     return { signedAt, vaultDocumentId: vaultRef.id, documentHash: data.documentHash };
 }
 

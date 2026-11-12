@@ -24,7 +24,9 @@ async function makeContext(orgId, deps = {}) {
     const opts = { ...config.resolve(stored), ...(deps.optsOverride || {}) };
     const log = deps.log || defaultLog;
     const client = createClient({ orgId, opts, store, log, fetchImpl: deps.fetchImpl, sleep: deps.sleep });
-    return { orgId, store, client, opts, conn, log, org: deps.org, loadPeople: deps.loadPeople, loadLeave: deps.loadLeave, loadWeeks: deps.loadWeeks, pollOpts: deps.pollOpts };
+    return { orgId, store, client, opts, conn, log, org: deps.org, loadPeople: deps.loadPeople, loadLeave: deps.loadLeave, loadWeeks: deps.loadWeeks, pollOpts: deps.pollOpts,
+        // optional storage and event hooks (tests pass in-memory ones; production uses Firestore and the event outbox)
+        savePayResults: deps.savePayResults, listPayResults: deps.listPayResults, deletePayResults: deps.deletePayResults, emitEvent: deps.emitEvent };
 }
 
 module.exports = { makeContext, defaultLog };

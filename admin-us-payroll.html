@@ -102,6 +102,12 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 
   <div id="tab-history" hidden style="display:grid;gap:20px">
     <section class="card"><h2>Payrolls</h2><table><thead><tr><th>Period</th><th>Pay date</th><th>Status</th><th>Gross</th><th>Net</th><th>Prepared</th><th>Submitted</th><th></th></tr></thead><tbody id="history"></tbody></table></section>
+    <section class="card" id="registerCard" hidden><h2 id="registerTitle">Payroll register</h2><p class="hint" id="registerNote"></p>
+      <table><thead><tr><th>Person</th><th>Department</th><th>Hours</th><th>Gross</th><th>Employee taxes</th><th>Deductions</th><th>Net pay</th><th>Employer taxes</th></tr></thead><tbody id="registerRows"></tbody><tfoot id="registerFoot"></tfoot></table>
+      <div class="row"><button class="ghost" id="registerCsv">Download CSV</button></div></section>
+    <section class="card"><h2>Payroll cost</h2><p class="hint">From payrolls submitted through this page. Pay dates in the range are counted.</p>
+      <div class="row"><label>From<input id="costFrom" type="date"></label><label>To<input id="costTo" type="date"></label><button class="ghost" id="costGo">Show</button></div>
+      <p id="costSum"></p><table><thead><tr><th>Department</th><th>People paid</th><th>Gross</th><th>Employer taxes</th><th>Total cost</th></tr></thead><tbody id="costRows"></tbody></table></section>
     <section class="card"><h2>Payroll taxes and forms</h2><p class="hint">Read from Gusto. Gusto files and pays these; nothing is filed from this screen.</p>
       <table><thead><tr><th>Tax</th><th>Amount</th><th>Status</th><th>Due</th></tr></thead><tbody id="taxes"></tbody></table>
       <h3>Company forms</h3><table><thead><tr><th>Form</th><th>Signed</th></tr></thead><tbody id="forms"></tbody></table>
@@ -259,14 +265,37 @@ $('discard').addEventListener('click', guard(async () => { if (!prepared) return
 async function loadHistory() {
   const r = await req('GET', '/payroll/history');
   const cls = { submitted: 'good', paid: 'good', prepared: 'warnTag', cancelled: 'grey', discarded: 'grey', submitting: 'warnTag' };
-  $('history').innerHTML = r.data.map((h) => `<tr><td>${esc(day(h.periodStart))} to ${esc(day(h.periodEnd))}</td><td>${esc(day(h.checkDate))}</td><td>${tag(h.status, cls[h.status] || 'grey')}</td><td>${money(h.totals && h.totals.gross_pay)}</td><td>${money(h.totals && h.totals.net_pay)}</td><td>${esc(when(h.preparedAt))}</td><td>${esc(when(h.submittedAt))}</td><td>${h.status === 'prepared' ? `<button class="ghost" data-open="${esc(h.payrollUuid)}">Open</button>` : ''}${h.status === 'submitted' && status.can.run ? `<button class="ghost" data-refresh="${esc(h.payrollUuid)}">Update</button> <button class="no" data-cancel="${esc(h.payrollUuid)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No payrolls yet.</td></tr>';
+  $('history').innerHTML = r.data.map((h) => `<tr><td>${esc(day(h.periodStart))} to ${esc(day(h.periodEnd))}</td><td>${esc(day(h.checkDate))}</td><td>${tag(h.status, cls[h.status] || 'grey')}</td><td>${money(h.totals && h.totals.gross_pay)}</td><td>${money(h.totals && h.totals.net_pay)}</td><td>${esc(when(h.preparedAt))}</td><td>${esc(when(h.submittedAt))}</td><td>${h.status === 'prepared' ? `<button class="ghost" data-open="${esc(h.payrollUuid)}">Open</button>` : ''}${['submitted', 'paid'].includes(h.status) ? `<button class="ghost" data-register="${esc(h.payrollUuid)}">Who was paid</button> ` : ''}${h.status === 'submitted' && status.can.run ? `<button class="ghost" data-refresh="${esc(h.payrollUuid)}">Update</button> <button class="no" data-cancel="${esc(h.payrollUuid)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No payrolls yet.</td></tr>';
 }
 $('history').addEventListener('click', guard(async (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
   if (b.dataset.open) { const p = await req('GET', `/payroll/${b.dataset.open}`); showPreview({ ...p, payrollUuid: b.dataset.open }); show('run'); }
+  if (b.dataset.register) await showRegister(b.dataset.register);
   if (b.dataset.refresh) { const r = await req('POST', `/payroll/${b.dataset.refresh}/refresh`, {}); say(`Status in Gusto: ${r.status}.`); await loadHistory(); }
   if (b.dataset.cancel) { if (!window.confirm('Cancel this submitted payroll in Gusto? This only works before Gusto has started paying.')) return; await req('POST', `/payroll/${b.dataset.cancel}/cancel`, {}); say('Cancelled.'); await loadHistory(); }
 }));
+let registerData = null;
+async function showRegister(id) {
+  const r = await req('GET', `/payroll/${id}/register`); registerData = r;
+  $('registerCard').hidden = false; $('registerTitle').textContent = `Payroll register: ${day(r.periodStart)} to ${day(r.periodEnd)}, paid ${day(r.checkDate)}`;
+  $('registerNote').textContent = !r.rows.length ? 'No pay details are stored for this payroll. Press Update on the payroll to fetch them from Gusto.' : r.allocated ? 'Gusto did not give tax amounts for each person on this payroll, so the company tax totals were shared out by gross pay. Treat the per-person tax columns as estimates.' : 'Amounts are the ones Gusto calculated.';
+  $('registerRows').innerHTML = r.rows.map((x) => `<tr><td><b>${esc(x.name || '')}</b> <span class="hint">${esc(x.employeeId || '')}</span></td><td>${esc(x.department || '')}</td><td>${esc(x.hours)}</td><td>${money(x.gross)}</td><td>${money(x.employeeTaxes)}</td><td>${money(x.deductions)}</td><td><b>${money(x.net)}</b></td><td>${money(x.employerTaxes)}</td></tr>`).join('');
+  const t = r.totals; $('registerFoot').innerHTML = r.rows.length ? `<tr><th>${esc(t.people)} people</th><th></th><th>${esc(t.hours)}</th><th>${money(t.gross)}</th><th>${money(t.employeeTaxes)}</th><th>${money(t.deductions)}</th><th>${money(t.net)}</th><th>${money(t.employerTaxes)}</th></tr>` : '';
+  $('registerCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('registerCsv').addEventListener('click', () => {
+  if (!registerData || !registerData.rows.length) return;
+  const cell = (v) => { let x = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(x)) x = `'${x}`; return /[",\n\r]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
+  const lines = [['Employee ID', 'Name', 'Department', 'Hours', 'Gross', 'Employee taxes', 'Deductions', 'Net pay', 'Employer taxes'].join(',')].concat(registerData.rows.map((x) => [x.employeeId, x.name, x.department, x.hours, x.gross, x.employeeTaxes, x.deductions, x.net, x.employerTaxes].map(cell).join(',')));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([lines.join('\r\n') + '\r\n'], { type: 'text/csv' })); a.download = `payroll-register-${registerData.checkDate || 'payroll'}.csv`; document.body.appendChild(a); a.click(); a.remove();
+});
+async function loadCost() {
+  const q = new URLSearchParams(); if ($('costFrom').value) q.set('from', $('costFrom').value); if ($('costTo').value) q.set('to', $('costTo').value);
+  const r = await req('GET', `/payroll/cost?${q}`); const t = r.totals;
+  $('costSum').textContent = t.people ? `Total cost ${money(t.employerCost)}: gross pay ${money(t.gross)} plus employer taxes ${money(t.employerTaxes)}.${r.allocated ? ' Some tax amounts are estimates shared out by gross pay.' : ''}` : 'No submitted payrolls in these dates.';
+  $('costRows').innerHTML = r.byDepartment.map((d) => `<tr><td>${esc(d.key)}</td><td>${esc(d.people)}</td><td>${money(d.gross)}</td><td>${money(d.employerTaxes)}</td><td><b>${money(d.employerCost)}</b></td></tr>`).join('');
+}
+$('costGo').addEventListener('click', guard(loadCost));
 async function loadTaxes() {
   if (!status.connection.connected) return;
   const r = await req('GET', '/taxes');
@@ -294,7 +323,7 @@ $('poll').addEventListener('click', guard(async () => { const r = await req('POS
 $('disconnect').addEventListener('click', guard(async () => { if ($('discWord').value.trim() !== 'DISCONNECT') throw new Error('Type DISCONNECT to confirm.'); await req('POST', '/disconnect', { confirm: true }); say('Disconnected from Gusto.'); await loadStatus(); await loadSetup(false); }));
 
 /* ---------- tabs ---------- */
-const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, history: async () => { await loadHistory(); await loadTaxes(); }, health: loadHealth };
+const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
 function show(tab) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;

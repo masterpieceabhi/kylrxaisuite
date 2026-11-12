@@ -1,6 +1,27 @@
 import { auth, db, doc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from "./firebase-config.js";
 import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, OAuthProvider, SAMLAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 
+/** A page inside this app that asked for sign-in first (for example the app-approval page). Only plain same-site pages are accepted. */
+function afterLoginTarget() {
+    try {
+        const t = sessionStorage.getItem('kylrx_after_login');
+        sessionStorage.removeItem('kylrx_after_login');
+        return t && /^\/[A-Za-z0-9_-]+\.html(\?[^#\s]{0,2000})?$/.test(t) ? t : null;
+    } catch (_) { return null; }
+}
+
+/** The company's country, asked from the server with the signed-in user's token ('US', 'IN' or null when unknown) */
+async function companyCountry() {
+    try {
+        if (!auth.currentUser) return null;
+        const res = await fetch('/api/time/status', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+        if (!res.ok) return null;
+        return (await res.json()).country || null;
+    } catch (_) { return null; }
+}
+
+const US_STAFF_ROLES = ['hradmin', 'hrms', 'hr', 'payrolladmin', 'manager', 'accountant', 'auditor', 'executive'];
+
 async function getRedirectUrl(userData, role) {
     if (!role) {
         throw new Error("Access denied: Account has no assigned role. Please contact HR.");
@@ -9,6 +30,15 @@ async function getRedirectUrl(userData, role) {
         throw new Error("Your account is currently inactive. Please contact support.");
     }
     const cleanRole = (role || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const known = ['superadmin', 'admin', 'employee', ...US_STAFF_ROLES].includes(cleanRole);
+    const back = known ? afterLoginTarget() : null;
+    if (back) return back;
+    // United States companies have their own pages; the dashboards below are the India ones
+    if (known && (await companyCountry()) === 'US') {
+        if (userData?.orgId) localStorage.setItem('orgId', userData.orgId);
+        if (cleanRole === 'superadmin' || cleanRole === 'admin') { localStorage.setItem('orgConfigured', 'true'); return 'admin-dashboard.html'; }
+        return cleanRole === 'employee' ? 'punch.html' : 'us-home.html';
+    }
     if (cleanRole === 'superadmin' || cleanRole === 'admin') {
         const orgId = userData?.orgId || localStorage.getItem('orgId') || 'org_kylrx_ai';
         localStorage.setItem('orgId', orgId);

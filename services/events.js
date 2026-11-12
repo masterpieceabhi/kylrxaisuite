@@ -28,7 +28,7 @@ const CATALOG = {
     'timesheet.rejected': { description: 'A weekly timesheet was sent back', payload: ['person_id', 'week_start'] },
     'document.uploaded': { description: 'A document was added to the vault', payload: ['document_id', 'category', 'person_id'] },
     'document.signed': { description: 'A document was signed', payload: ['document_id', 'person_id', 'signed_at'] },
-    'payroll.run.completed': { description: 'A payroll run finished (placeholder until the payroll provider module ships)', payload: ['run_id', 'pay_date', 'period_start', 'period_end'] },
+    'payroll.run.completed': { description: 'A payroll was submitted to the payroll provider', payload: ['run_id', 'pay_date', 'period_start', 'period_end'] },
     'connector.sync.failed': { description: 'A connector sync run ended with errors', payload: ['connection_id', 'connector', 'errors'] },
     'webhook.test': { description: 'Sent when an admin presses "Send test event"', payload: ['message'] }
 };
