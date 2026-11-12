@@ -26,14 +26,16 @@ function personFromDoc(id, d = {}) {
         workState: p.workState || null, home: p.homeAddress || null, classification: p.classification || null,
         payType: p.payType || null, payRate: p.payRate === undefined ? null : Number(p.payRate), flsa: p.flsaStatus || null, payFrequency: p.payFrequency || null,
         active: !/^(terminated|inactive|offboarded)$/i.test(String(d.status || 'Active')), hasSsn: Boolean(p.taxpayerIdEncrypted), ssnEnc: p.taxpayerIdEncrypted || null,
-        ssnLast4: p.taxpayerIdLast4 || null, w4, managerId: p.managerId || null
+        ssnLast4: p.taxpayerIdLast4 || null, w4, managerId: p.managerId || null,
+        // bank accounts keep their numbers encrypted here; state tax answers are plain (they are not identifiers)
+        bank: bankAccountsFromForms(d.usForms || {}), stateTax: (d.usForms && d.usForms.stateTax) || null
     };
 }
 
 /** Why a person cannot be sent to Gusto yet (plain language), or [] when ready. */
 function problemsFor(person) {
     const out = [];
-    if (person.classification && person.classification !== 'W2') out.push('Contractors (1099) are not synced to Gusto payroll yet.');
+    if (person.classification && person.classification !== 'W2') out.push('This person is a contractor (1099), so they are not sent as an employee. Add them under Contractors and send them from the Contractors section.');
     if (!person.first || !person.last) out.push('Legal first and last name are missing.');
     if (!person.email) out.push('Email is missing.');
     if (!person.dob) out.push('Date of birth is missing.');
@@ -80,6 +82,110 @@ function toGustoFederalTaxes(w4) {
     };
     return body;
 }
+
+/* ------------------------------- bank accounts and state tax answers ------------------------------- */
+
+/**
+ * A person's direct deposit accounts as stored on their record (usForms): the split list when there is one, else the
+ * single account. Mirrors storedSplits() in routes/us-comp.js. Account numbers stay encrypted here.
+ */
+function bankAccountsFromForms(f = {}) {
+    const d = f.directDeposit;
+    const pick = (a, i) => ({ id: a.id || `acct${i + 1}`, bankName: a.bankName || null, routingNumber: a.routingNumber || null, accountType: a.accountType || 'checking', accountNumberEnc: a.accountNumberEncrypted || null, last4: a.accountLast4 || null, allocation: a.allocation || { type: 'remainder', value: null } });
+    if (Array.isArray(f.directDepositSplits) && f.directDepositSplits.length && !(d && !d.split)) return f.directDepositSplits.map(pick);
+    if (d && d.accountLast4) return [pick({ ...d, id: 'legacy', allocation: { type: 'remainder', value: null } }, 0)];
+    return [];
+}
+
+/** Changes when any account or its share changes. Never includes an account number (only the last 4). */
+const bankHash = (accounts) => hash((accounts || []).map((a) => [a.id, a.routingNumber, a.last4, a.accountType, a.allocation && a.allocation.type, a.allocation && a.allocation.value]));
+
+/** VERIFY against Gusto: name, routing_number, account_number, account_type ("Checking" / "Savings") */
+function toGustoBankAccount(a, accountNumber) {
+    return { name: a.bankName || `Account ending ${a.last4 || ''}`.trim(), routing_number: a.routingNumber, account_number: String(accountNumber || '').replace(/\D/g, ''), account_type: a.accountType === 'savings' ? 'Savings' : 'Checking' };
+}
+
+/**
+ * How pay is split across the accounts, as the provider's payment method. `uuidOf(account)` gives the provider's id
+ * of each account. Our splits may mix fixed amounts and percents; the provider splits by one or the other, so a mix
+ * is not sent and the reason is returned instead.
+ * VERIFY against Gusto: type "Direct Deposit", split_by "Amount" | "Percentage", splits[{ uuid, name, priority,
+ * split_amount }]; that Percentage needs whole numbers adding up to 100; that Amount is in CENTS with null for the
+ * account that takes the rest.
+ */
+function toGustoPaymentSplits(accounts, uuidOf = (a) => a.id) {
+    const list = accounts || [];
+    const rest = list.filter((a) => a.allocation.type === 'remainder');
+    if (!list.length) return { ok: false, reason: 'No bank account is on file.' };
+    if (rest.length !== 1) return { ok: false, reason: 'Exactly one account must take the rest of the pay.' };
+    const kinds = new Set(list.filter((a) => a.allocation.type !== 'remainder').map((a) => a.allocation.type));
+    if (kinds.size > 1) return { ok: false, reason: 'The pay is split by both fixed amounts and percents. Gusto splits by one or the other, so this split was not sent: set it up in Gusto by hand.' };
+    const line = (a, i, amount) => ({ uuid: uuidOf(a), name: a.bankName || `Account ending ${a.last4 || ''}`.trim(), priority: i + 1, split_amount: amount });
+    if (kinds.has('amount')) {
+        const ordered = [...list.filter((a) => a.allocation.type === 'amount'), rest[0]];
+        return { ok: true, body: { type: 'Direct Deposit', split_by: 'Amount', splits: ordered.map((a, i) => line(a, i, a.allocation.type === 'amount' ? Math.round(Number(a.allocation.value) * 100) : null)) } };
+    }
+    const pcts = list.filter((a) => a.allocation.type === 'percent');
+    if (pcts.some((a) => !Number.isInteger(Number(a.allocation.value)))) return { ok: false, reason: 'A percent with decimals cannot be sent: Gusto takes whole percents. Set this split up in Gusto by hand.' };
+    const left = 100 - pcts.reduce((s, a) => s + Number(a.allocation.value), 0);
+    if (left < 1) return { ok: false, reason: 'The percents leave nothing for the account that takes the rest.' };
+    return { ok: true, body: { type: 'Direct Deposit', split_by: 'Percentage', splits: list.map((a, i) => line(a, i, a.allocation.type === 'percent' ? Number(a.allocation.value) : left)) } };
+}
+
+/** One state's answers typed in by payroll: { state, answers: { questionKey: value } } */
+function validateStateTaxAnswers(input) {
+    const errors = []; const b = input || {};
+    const state = String(b.state || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(state)) errors.push('state must be two letters');
+    const answers = {};
+    const src = b.answers && typeof b.answers === 'object' && !Array.isArray(b.answers) ? b.answers : null;
+    if (!src) errors.push('answers must be a list of question and answer');
+    else {
+        const keys = Object.keys(src);
+        if (keys.length > 40) errors.push('too many answers');
+        for (const k of keys.slice(0, 40)) {
+            const v = src[k];
+            if (!/^[A-Za-z0-9_.-]{1,80}$/.test(k)) { errors.push(`"${String(k).slice(0, 20)}" is not a question name`); continue; }
+            if (v === '' || v === null || v === undefined) continue; // an empty answer is "not answered"
+            if (!['string', 'number', 'boolean'].includes(typeof v) || String(v).length > 120) { errors.push(`the answer to ${k} is not valid`); continue; }
+            answers[k] = typeof v === 'string' ? v.trim() : v;
+        }
+    }
+    return { errors, value: { state, answers } };
+}
+
+/**
+ * Our saved answers -> the provider's state tax update, using only the questions the provider actually asks.
+ *   saved:    { TX: { answers: { key: value } }, ... }
+ *   provider: GET /v1/employees/{id}/state_taxes  [{ state, questions: [{ key, label }] }]
+ * Returns { states (the body), sent, unknown (answers the provider does not ask for), unanswered (questions with no answer) }.
+ * VERIFY against Gusto: PUT body { states: [{ state, questions: [{ key, answers: [{ value, valid_from, valid_up_to }] }] }] }
+ * and the valid_from value ("2010-01-01" is what Gusto's examples use).
+ */
+function toGustoStateTaxes(saved, provider) {
+    const states = []; const unknown = []; const unanswered = []; let sent = 0;
+    const byState = new Map((Array.isArray(provider) ? provider : []).map((s) => [s.state, s]));
+    for (const [state, rec] of Object.entries(saved || {})) {
+        const answers = (rec && rec.answers) || {};
+        const p = byState.get(state);
+        if (!p) { if (Object.keys(answers).length) unknown.push(`${state}: Gusto does not list this state for the person`); continue; }
+        const asked = new Set((p.questions || []).map((q) => q.key));
+        const questions = [];
+        for (const [key, value] of Object.entries(answers)) {
+            if (!asked.has(key)) { unknown.push(`${state}: ${key}`); continue; }
+            questions.push({ key, answers: [{ value, valid_from: '2010-01-01', valid_up_to: null }] }); sent += 1;
+        }
+        if (questions.length) states.push({ state, questions });
+    }
+    for (const p of byState.values()) for (const q of p.questions || []) {
+        const mine = saved && saved[p.state] && saved[p.state].answers;
+        const has = mine && mine[q.key] !== undefined;
+        const already = (q.answers || []).some((a) => a.value !== null && a.value !== undefined && a.value !== '');
+        if (!has && !already) unanswered.push(`${p.state}: ${q.label || q.key}`);
+    }
+    return { states, sent, unknown, unanswered };
+}
+const stateTaxHash = (saved) => hash(Object.keys(saved || {}).sort().map((st) => [st, Object.entries((saved[st] && saved[st].answers) || {}).sort(([a], [b]) => a.localeCompare(b))]));
 
 /* ------------------------------- company pieces ------------------------------- */
 
@@ -138,5 +244,6 @@ function drift(person, gusto) {
 module.exports = {
     W4_STATUS, W4_CHILD_CREDIT, W4_OTHER_DEPENDENT_CREDIT, hash, money,
     personFromDoc, problemsFor, toGustoEmployee, toGustoHomeAddress, toGustoJob, toGustoCompensation, toGustoFederalTaxes,
+    bankAccountsFromForms, bankHash, toGustoBankAccount, toGustoPaymentSplits, validateStateTaxAnswers, toGustoStateTaxes, stateTaxHash,
     toGustoLocation, toGustoPaySchedule, validatePaySchedule, toGustoTimeOff, fromGustoEmployee, drift
 };

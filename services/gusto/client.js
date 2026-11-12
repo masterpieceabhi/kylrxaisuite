@@ -302,8 +302,35 @@ function createClient({ orgId, opts, store, log, fetchImpl, sleep = defaultSleep
         throw lastErr || new GustoError('Version conflict that did not resolve', { status: 409, code: 'version_conflict' });
     }
 
+    /**
+     * Fetch a file the provider points at (for example the short-lived link behind a W-2 PDF) so the browser never
+     * sees a provider address. No bearer token is sent: these links carry their own signature.
+     * Only https links are followed, or links on the configured provider host (the local mock is http).
+     */
+    async function download(url, { maxBytes = 15 * 1024 * 1024 } = {}) {
+        let u;
+        try { u = new URL(String(url)); } catch (_) { throw new GustoError('The payroll provider returned a file link that is not valid', { status: 502, code: 'bad_file_link' }); }
+        const sameHost = (() => { try { return new URL(opts.baseUrl).origin === u.origin; } catch (_) { return false; } })();
+        if (u.protocol !== 'https:' && !sameHost) throw new GustoError('The payroll provider returned a file link that is not secure', { status: 502, code: 'bad_file_link' });
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), opts.timeoutMs);
+        try {
+            await throttle();
+            let res;
+            try { res = await doFetch(u.toString(), { method: 'GET', signal: ctl.signal, redirect: 'error' }); } finally { app.limiter.end(now()); }
+            emit('info', 'download', { host: u.host, status: res.status });
+            if (!res.ok) throw new GustoError(`The file could not be fetched from the payroll provider (HTTP ${res.status})`, { status: res.status === 404 ? 404 : 502, code: res.status === 404 ? 'not_found' : 'download_failed' });
+            const buffer = Buffer.from(await res.arrayBuffer());
+            if (buffer.length > maxBytes) throw new GustoError('The file from the payroll provider is too large', { status: 502, code: 'download_too_large' });
+            return { buffer, contentType: (res.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim() };
+        } catch (e) {
+            if (e.name === 'GustoError') throw e;
+            throw new GustoError('Could not fetch the file from the payroll provider', { status: 502, code: 'download_failed', retryable: true });
+        } finally { clearTimeout(timer); }
+    }
+
     return {
-        orgId, opts, request, get, post, put, del, paginate, putVersioned, systemToken, companyToken,
+        orgId, opts, request, get, post, put, del, paginate, putVersioned, systemToken, companyToken, download,
         stats: () => ({ ...app.stats, windowSize: app.limiter.size })
     };
 }

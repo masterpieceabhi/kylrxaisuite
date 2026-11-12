@@ -43,7 +43,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <div class="danger" id="cfgWarn" hidden></div>
   </section>
 
-  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
+  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="offcycle">Off-cycle pay</button><button data-tab="contractors">Contractors</button><button data-tab="deduct">Deductions and garnishments</button><button data-tab="forms">W-2 and 1099</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
 
   <div id="tab-setup" style="display:grid;gap:20px">
     <section class="card" id="connectCard" hidden>
@@ -68,8 +68,14 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <h2>People in Gusto</h2>
       <p class="hint">A person needs a complete US profile (address, date of birth, SSN, pay) and a W-4 before they can be sent. Gusto pays only people who have finished onboarding there.</p>
       <div class="row" style="margin:0 0 12px"><button id="syncPeople">Send people to Gusto</button><button class="ghost" id="pullPeople">Compare with Gusto</button><button class="ghost" id="syncTimeOff">Send approved time off</button></div>
-      <table><thead><tr><th>Person</th><th>Type</th><th>In Gusto</th><th>Finished there</th><th>State</th><th>What is needed</th><th>Last sent</th></tr></thead><tbody id="people"></tbody></table>
+      <table><thead><tr><th>Person</th><th>Type</th><th>In Gusto</th><th>Finished there</th><th>State</th><th>What is needed</th><th>Bank details</th><th>State tax</th><th>Last sent</th></tr></thead><tbody id="people"></tbody></table>
       <div id="pullOut" class="hint" style="margin-top:10px"></div>
+      <p class="hint">Bank details and state tax answers are sent with the person. Once a person has finished in Gusto, Gusto's own copy wins and later changes here are not sent over it.</p>
+    </section>
+    <section class="card" id="stateTaxCard" hidden>
+      <h2 id="stateTaxTitle">State tax answers</h2>
+      <p class="hint" id="stateTaxNote"></p>
+      <div id="stateTaxBody"></div>
     </section>
   </div>
 
@@ -97,6 +103,93 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <table><thead><tr><th>Person</th><th>Gross pay</th><th>Net pay</th></tr></thead><tbody id="prevPeople"></tbody></table>
       <div class="danger">Submitting pays these people. Type the word <b>PAY</b> to confirm you reviewed the totals above.</div>
       <div class="row"><input id="confirmWord" placeholder="Type PAY" autocomplete="off" style="width:120px"><label style="display:flex;gap:6px;align-items:center;color:var(--ink);font-weight:500" id="lateWrap" hidden><input type="checkbox" id="acceptLate"> I understand the deadline has passed and pay may arrive late</label><button class="pay" id="submitPay" disabled>Submit payroll</button><button class="no" id="discard">Discard this preparation</button></div>
+    </section>
+  </div>
+
+  <div id="tab-offcycle" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Off-cycle pay</h2>
+      <p class="hint">A payroll outside the normal schedule: a bonus, a correction, or final pay for someone leaving. It pays only the people and amounts you enter here. Preparing it calculates it in Gusto; nothing is paid until you review it and type PAY on the "Run payroll" tab.</p>
+      <div class="grid">
+        <label>Why<select id="ocReason"></select></label>
+        <label>Pay date<input id="ocCheck" type="date"></label>
+        <label>Work dates from (optional)<input id="ocStart" type="date"></label>
+        <label>Work dates to (optional)<input id="ocEnd" type="date"></label>
+      </div>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--ink);font-weight:500;margin-top:10px"><input type="checkbox" id="ocDeduct"> Also take the usual benefit deductions from this pay</label>
+      <h3>Who and how much</h3>
+      <table><thead><tr><th></th><th>Person</th><th>Amount ($)</th><th>Hours at their hourly rate</th><th>Note</th></tr></thead><tbody id="ocPeople"></tbody></table>
+      <p class="hint" id="ocHint"></p>
+      <div class="row"><button id="ocPrepare">Prepare in Gusto</button></div>
+    </section>
+  </div>
+
+  <div id="tab-contractors" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Contractors in Gusto</h2>
+      <p class="hint">Contractors and their W-9 are added on the <a href="admin-us-pay.html">Pay and contractors</a> page. A contractor needs a W-9 (legal name, taxpayer ID, address) before they can be sent.</p>
+      <div class="row" style="margin:0 0 12px"><button id="syncContractors">Send contractors to Gusto</button></div>
+      <table><thead><tr><th>Contractor</th><th>W-9</th><th>In Gusto</th><th>State</th><th>What is needed</th><th>Last sent</th></tr></thead><tbody id="contractors"></tbody></table>
+    </section>
+    <section class="card" id="cpayCard">
+      <h2>Record a contractor payment</h2>
+      <p class="hint" id="cpayNote"></p>
+      <form id="cpayForm"><div class="grid">
+        <label>Contractor<select name="contractorId" required></select></label>
+        <label>Date paid<input name="date" type="date" required></label>
+        <label>Amount ($)<input name="amount" type="number" step="0.01" min="0"></label>
+        <label>or hours<input name="hours" type="number" step="0.01" min="0"></label>
+        <label>at rate ($ an hour)<input name="rate" type="number" step="0.01" min="0"></label>
+        <label>Reimbursement ($, not 1099 income)<input name="reimbursement" type="number" step="0.01" min="0"></label>
+        <label>Note<input name="memo" maxlength="300"></label>
+      </div><div class="row"><button type="submit">Record payment</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Contractor payments</h2>
+      <table><thead><tr><th>Date</th><th>Contractor</th><th>Amount</th><th>Reimbursement</th><th>Status</th><th>1099 ledger</th><th></th></tr></thead><tbody id="cpayRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-deduct" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Benefit deductions</h2>
+      <p class="hint" id="dedNote"></p>
+      <div class="row" style="margin-top:0"><label>Pay period ends<input id="dedEnd" type="date"></label><button class="ghost" id="dedPreview">Show what would change</button><button id="dedSend" disabled>Send to Gusto</button></div>
+      <p id="dedSum"></p>
+      <table><thead><tr><th>Person</th><th>Plan</th><th>In Gusto now</th><th>From the benefits feed</th><th>What sending does</th></tr></thead><tbody id="dedRows"></tbody></table>
+      <div id="dedOther" class="hint" style="margin-top:10px"></div>
+    </section>
+    <section class="card">
+      <h2>Garnishments</h2>
+      <div class="warn" id="garNote"></div>
+      <table><thead><tr><th>Person</th><th>Type</th><th>Case number</th><th>Taken each pay</th><th>Limits</th><th>Dates</th><th>Status</th><th>Needs attention</th><th></th></tr></thead><tbody id="garRows"></tbody></table>
+      <form id="garForm" hidden><h3>Record an order</h3><div class="grid">
+        <label>Person<select name="userId" required></select></label>
+        <label>Type<select name="type" required></select></label>
+        <label data-for="tax_levy" hidden>Who issued the levy<select name="levyAuthority"><option value="federal">Federal (IRS)</option><option value="state">State</option></select></label>
+        <label>Case, order or levy number<input name="caseNumber" maxlength="60" autocomplete="off" required></label>
+        <label>Take<select name="amountType"><option value="amount">A fixed amount each pay ($)</option><option value="percent">A percent of pay (%)</option></select></label>
+        <label>Amount or percent<input name="value" type="number" step="0.01" min="0.01" required></label>
+        <label>Most per pay period ($, optional)<input name="perPayPeriodMax" type="number" step="0.01" min="0"></label>
+        <label>Most per year ($, optional)<input name="annualMax" type="number" step="0.01" min="0"></label>
+        <label>Total owed ($, optional)<input name="totalAmount" type="number" step="0.01" min="0"></label>
+        <label>Starts<input name="startDate" type="date" required></label>
+        <label>Ends (optional)<input name="endDate" type="date"></label>
+        <label data-for="child_support" hidden>State that issued the order<input name="issuingState" maxlength="2"></label>
+        <label data-for="child_support" hidden>How often the order says<select name="paymentPeriod"><option value="">Not stated</option></select></label>
+        <label data-for="child_support" hidden>Remittance number (optional)<input name="remittanceNumber" maxlength="40" autocomplete="off"></label>
+        <label data-for="child_support" hidden>County code, FIPS (optional)<input name="fipsCode" maxlength="7" inputmode="numeric"></label>
+        <label>Who is paid, and notes<input name="payeeNotes" maxlength="500"></label>
+      </div><div class="row"><button type="submit">Record and send to Gusto</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-forms" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>W-2 and 1099 forms</h2>
+      <p class="hint" id="formsNote">Gusto prepares and files these forms. This list shows which years are ready.</p>
+      <div class="row" style="margin-top:0"><button class="ghost" id="formsLoad">Check with Gusto</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Form</th><th>Years ready</th><th>Download</th></tr></thead><tbody id="formsRows"></tbody></table>
     </section>
   </div>
 
@@ -223,7 +316,7 @@ async function loadPeople() {
   const r = await req('GET', '/people');
   const cls = { synced: 'good', blocked: 'badTag', error: 'badTag', not_sent: 'grey' };
   const word = { synced: 'Up to date', blocked: 'Cannot be sent', error: 'Problem', not_sent: 'Not sent yet' };
-  $('people').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}${p.active ? '' : ' <span class="hint">(left)</span>'}</td><td>${esc(p.classification || '')} ${esc(p.payType || '')}</td><td>${p.inGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${p.finishedInGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${tag(word[p.syncState] || p.syncState, cls[p.syncState] || 'grey')}</td><td>${esc((p.blockedReasons || []).join('; ') || p.lastError || (p.drift && p.drift.length ? `Different in Gusto: ${p.drift.map((d) => d.field || d).join(', ')}` : ''))}</td><td>${esc(when(p.lastSyncedAt))}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No people with a US profile yet.</td></tr>';
+  $('people').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}${p.active ? '' : ' <span class="hint">(left)</span>'}</td><td>${esc(p.classification || '')} ${esc(p.payType || '')}</td><td>${p.inGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${p.finishedInGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${tag(word[p.syncState] || p.syncState, cls[p.syncState] || 'grey')}</td><td>${esc((p.blockedReasons || []).join('; ') || p.lastError || (p.drift && p.drift.length ? `Different in Gusto: ${p.drift.map((d) => d.field || d).join(', ')}` : ''))}</td><td>${p.bank === 'sent' ? tag('Sent', 'good') : p.bank === 'cannot_send' ? `${tag('Not sent', 'badTag')}<div class="hint">${esc(p.bankNote || '')}</div>` : p.bank === 'not_sent' ? tag('Not sent yet', 'grey') : '<span class="hint">None on file</span>'}</td><td>${p.stateTax === 'sent' ? tag('Sent', 'good') : p.stateTax === 'not_sent' ? tag('Not sent yet', 'grey') : ''}${p.stateTaxNote ? `<div class="hint">${esc(p.stateTaxNote)}</div>` : ''}${p.inGusto ? ` <button class="ghost" data-statetax="${esc(p.userId)}">State tax</button>` : ''}</td><td>${esc(when(p.lastSyncedAt))}</td></tr>`).join('') || '<tr><td colspan="9" class="hint">No people with a US profile yet.</td></tr>';
 }
 $('syncPeople').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/people', {}); say(`Sent ${r.synced}, already up to date ${r.unchanged}, cannot be sent ${r.blocked}, problems ${r.errors}.`, !r.errors); await loadPeople(); await loadStatus(); }));
 $('pullPeople').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/pull', {}); $('pullOut').textContent = `Gusto has ${r.gustoCount} people. Updated ${r.updated}. In Gusto but not matched here: ${r.unmatched.map((u) => u.name || u.email).join(', ') || 'none'}. Linked here but missing in Gusto: ${r.missingInGusto.length}.`; await loadPeople(); }));
@@ -247,7 +340,7 @@ function showPreview(p) {
   const c = p.cutoff || {};
   $('cutoff').innerHTML = c.message ? `<div class="${c.status === 'passed' || c.status === 'urgent' ? 'danger' : 'warn'}">${esc(c.message)}</div>` : '';
   $('lateWrap').hidden = c.status !== 'passed';
-  $('prevIssues').innerHTML = issueList(p.issues) + (p.blockers && p.blockers.length ? `<div class="danger"><b>Gusto will not accept this payroll yet:</b><br>${p.blockers.map(esc).join('<br>')}</div>` : '') + (p.stale ? '<div class="danger">Hours changed after this was prepared. Prepare it again.</div>' : '');
+  $('prevIssues').innerHTML = issueList(p.issues) + (p.blockers && p.blockers.length ? `<div class="danger"><b>Gusto will not accept this payroll yet:</b><br>${p.blockers.map(esc).join('<br>')}</div>` : '') + (p.kind === 'off_cycle' ? '<div class="warn">This is an off-cycle payroll. It pays only the people and amounts listed below.</div>' : '') + (p.stale ? `<div class="danger">${p.kind === 'off_cycle' ? 'The totals in Gusto changed after this was prepared.' : 'Hours changed after this was prepared.'} Prepare it again.</div>` : '');
   $('prevPeople').innerHTML = (p.employees || []).map((e) => `<tr><td>${esc(e.name || e.employeeUuid)}${e.excluded ? ' <span class="hint">(left out)</span>' : ''}</td><td>${money(e.gross)}</td><td>${money(e.net)}</td></tr>`).join('');
   $('confirmWord').value = ''; canSubmit();
 }
@@ -257,15 +350,209 @@ $('prepare').addEventListener('click', guard(async () => { const p = periodOf();
 $('submitPay').addEventListener('click', guard(async () => {
   const id = prepared.payrollUuid;
   try { const r = await req('POST', `/payroll/${id}/submit`, { confirm: true, confirmPayrollId: id, acceptLate: $('acceptLate').checked }); say(`Payroll submitted. Gross pay ${money(r.totals && r.totals.gross_pay)}.`); $('previewCard').hidden = true; prepared = null; await loadHistory(); }
-  catch (e) { if (e.data && e.data.code === 'stale_hours') { prepared.stale = true; showPreview(prepared); } throw e; }
+  catch (e) { if (e.data && ['stale_hours', 'stale_totals'].includes(e.data.code)) { prepared.stale = true; showPreview(prepared); } throw e; }
 }));
 $('discard').addEventListener('click', guard(async () => { if (!prepared) return; await req('POST', `/payroll/${prepared.payrollUuid}/cancel`, {}); $('previewCard').hidden = true; prepared = null; say('Discarded. Nothing was paid.'); }));
+
+/* ---------- shared helpers for the sections below ---------- */
+const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const newRequestId = () => (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `r${Date.now()}${Math.random().toString(16).slice(2, 10)}`);
+const numOrNone = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v));
+async function downloadFile(path, fallbackName) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/gusto${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Could not download (${res.status})`); }
+  const blob = await res.blob();
+  const name = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || fallbackName;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+}
+
+/* ---------- state tax answers (People tab) ---------- */
+let stateTaxFor = null;
+async function openStateTax(userId) {
+  const r = await req('GET', `/people/${encodeURIComponent(userId)}/state-tax`);
+  stateTaxFor = userId;
+  $('stateTaxCard').hidden = false;
+  $('stateTaxTitle').textContent = `State tax answers: ${r.name || ''}`;
+  $('stateTaxNote').textContent = r.inGusto ? r.note : 'This person is not in Gusto yet, so the questions cannot be shown. Send people to Gusto first.';
+  $('stateTaxBody').innerHTML = (r.states || []).map((s) => `<form data-state="${esc(s.state)}" style="margin-bottom:14px"><h3>${esc(s.state)}${s.isWorkState ? ' <span class="hint">(work state)</span>' : ''}</h3>${s.questions.length ? `<div class="grid">${s.questions.map((q) => {
+    const val = s.saved[q.key] !== undefined ? s.saved[q.key] : (q.current === null ? '' : q.current);
+    const input = q.options.length ? `<select name="${esc(q.key)}"><option value=""></option>${q.options.map((o) => `<option value="${esc(o.value)}"${String(o.value) === String(val) ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>` : `<input name="${esc(q.key)}" value="${esc(val)}" maxlength="120">`;
+    return `<label>${esc(q.label)}${input}${q.description ? `<span class="hint" style="font-weight:400">${esc(q.description)}</span>` : ''}</label>`;
+  }).join('')}</div>${status.can.run ? '<div class="row"><button type="submit">Save and send to Gusto</button></div>' : ''}` : '<p class="hint">Gusto asks nothing for this state.</p>'}</form>`).join('') || '<p class="hint">No states to answer for yet.</p>';
+  $('stateTaxCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('people').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-statetax]'); if (b) await openStateTax(b.dataset.statetax); }));
+$('stateTaxBody').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target; const btn = form.querySelector('button'); btn.disabled = true;
+  try {
+    const r = await req('PUT', `/people/${encodeURIComponent(stateTaxFor)}/state-tax`, { state: form.dataset.state, answers: Object.fromEntries(new FormData(form).entries()) });
+    say(r.sentToGusto ? `Saved and sent ${r.sent} answer(s) to Gusto.${r.unanswered && r.unanswered.length ? ` Still not answered: ${r.unanswered.join('; ')}.` : ''}` : (r.note || 'Saved.'));
+    await loadPeople();
+  } catch (e) { say(e.message, false); } finally { btn.disabled = false; }
+});
+
+/* ---------- off-cycle pay ---------- */
+let ocOptions = null;
+async function loadOffCycle() {
+  ocOptions = await req('GET', '/off-cycle/options');
+  if (!$('ocReason').options.length) $('ocReason').innerHTML = Object.entries(ocOptions.reasons).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+  if (!$('ocCheck').value) $('ocCheck').min = todayLocal();
+  paintOffCyclePeople();
+  $('ocPrepare').hidden = !status.can.run;
+}
+function paintOffCyclePeople() {
+  const leaving = $('ocReason').value === 'final_pay';
+  const list = (ocOptions ? ocOptions.people : []).filter((p) => p.active || leaving);
+  $('ocDeduct').checked = leaving;
+  $('ocHint').textContent = leaving ? 'People who already left are listed too. An amount entered for final pay is sent to Gusto as severance: check in Gusto that this is the right kind of pay.' : 'Hours can only be entered for people paid by the hour.';
+  $('ocPeople').innerHTML = list.map((p) => `<tr data-user="${esc(p.userId)}"><td><input type="checkbox" class="ocPick" aria-label="Include ${esc(p.name)}"></td><td>${esc(p.name)}${p.active ? '' : ' <span class="hint">(left)</span>'}${p.finishedInGusto ? '' : ' <span class="hint">(not finished in Gusto)</span>'}</td><td><input class="ocAmount" type="number" step="0.01" min="0" style="width:120px"></td><td><input class="ocHours" type="number" step="0.01" min="0" style="width:100px"${p.payType === 'hourly' ? '' : ' disabled'}></td><td><input class="ocNote" maxlength="200"></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody is in Gusto yet. Send people to Gusto first.</td></tr>';
+}
+$('ocReason').addEventListener('change', paintOffCyclePeople);
+$('ocPeople').addEventListener('input', (ev) => { const tr = ev.target.closest('tr'); if (tr && !ev.target.classList.contains('ocPick')) tr.querySelector('.ocPick').checked = true; });
+$('ocPrepare').addEventListener('click', guard(async () => {
+  const people = [...document.querySelectorAll('#ocPeople tr[data-user]')].filter((tr) => tr.querySelector('.ocPick').checked).map((tr) => ({ userId: tr.dataset.user, amount: numOrNone(tr.querySelector('.ocAmount').value), hours: numOrNone(tr.querySelector('.ocHours').value), note: tr.querySelector('.ocNote').value }));
+  if (!people.length) throw new Error('Tick at least one person.');
+  if (!$('ocCheck').value) throw new Error('Choose the pay date.');
+  const body = { reason: $('ocReason').value, checkDate: $('ocCheck').value, start: $('ocStart').value || undefined, end: $('ocEnd').value || undefined, skipRegularDeductions: !$('ocDeduct').checked, people };
+  let r;
+  try { r = await req('POST', '/off-cycle', body); } catch (e) {
+    if (!(e.data && e.data.code === 'already_submitted') || !window.confirm('An off-cycle payroll with exactly these people, amounts and dates was already submitted. Prepare it again and pay these people a second time?')) throw e;
+    r = await req('POST', '/off-cycle', { ...body, allowRepeat: true });
+  }
+  showPreview(r); show('run'); $('previewCard').scrollIntoView({ behavior: 'smooth' });
+  say('Off-cycle payroll prepared. Review the totals below, then type PAY to submit. Nothing is paid until you do.');
+}));
+
+/* ---------- contractors ---------- */
+let cpayRequestId = newRequestId();
+async function loadContractors() {
+  const r = await req('GET', '/contractors');
+  const cls = { synced: 'good', blocked: 'badTag', error: 'badTag', not_sent: 'grey', pending: 'warnTag' };
+  const word = { synced: 'Up to date', blocked: 'Cannot be sent', error: 'Problem', not_sent: 'Not sent yet', pending: 'Not finished' };
+  $('contractors').innerHTML = r.data.map((c) => `<tr><td>${esc(c.name)}${c.active ? '' : ' <span class="hint">(inactive)</span>'}</td><td>${c.w9 === 'received' ? tag('On file', 'good') : tag('Missing', 'warnTag')}</td><td>${c.inGusto ? tag('Yes', 'good') : tag('No', 'grey')}</td><td>${tag(word[c.syncState] || c.syncState, cls[c.syncState] || 'grey')}</td><td>${esc((c.blockedReasons || []).join('; ') || c.lastError || '')}</td><td>${esc(when(c.lastSyncedAt))}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No contractors yet. Add them on the Pay and contractors page.</td></tr>';
+  $('cpayNote').textContent = r.note;
+  const sel = $('cpayForm').elements.contractorId; const keep = sel.value;
+  sel.innerHTML = '<option value="">Choose</option>' + r.data.filter((c) => c.inGusto && c.active).map((c) => `<option value="${esc(c.contractorId)}">${esc(c.name)}</option>`).join('');
+  sel.value = keep;
+  if (!$('cpayForm').elements.date.value) { $('cpayForm').elements.date.value = todayLocal(); $('cpayForm').elements.date.max = todayLocal(); }
+  $('syncContractors').hidden = !status.can.run; $('cpayCard').hidden = !status.can.run;
+  await loadContractorPayments();
+}
+async function loadContractorPayments() {
+  const r = await req('GET', '/contractor-payments');
+  const cls = { recorded: 'good', cancelled: 'grey', failed: 'badTag', sending: 'warnTag', cancelling: 'warnTag' };
+  $('cpayRows').innerHTML = r.data.map((p) => `<tr><td>${esc(day(p.date))}</td><td>${esc(p.contractorName || '')}${p.hours ? ` <span class="hint">${esc(p.hours)} h at ${money(p.rate)}</span>` : ''}${p.memo ? `<div class="hint">${esc(p.memo)}</div>` : ''}</td><td>${money(p.amount)}</td><td>${p.reimbursement ? money(p.reimbursement) : ''}</td><td>${tag(p.status, cls[p.status] || 'grey')}${p.lastError ? `<div class="hint">${esc(p.lastError)}</div>` : ''}</td><td>${p.status === 'cancelled' ? tag('Voided', 'grey') : p.inLedger ? tag('Written', 'good') : p.status === 'recorded' ? tag('Not written', 'badTag') : ''}</td><td>${status.can.run && p.status === 'recorded' && !p.inLedger ? `<button class="ghost" data-ledger="${esc(p.id)}">Write to ledger</button> ` : ''}${status.can.run && p.mayCancel ? `<button class="no" data-cancelpay="${esc(p.id)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No contractor payments yet.</td></tr>';
+}
+$('syncContractors').addEventListener('click', guard(async () => { const r = await req('POST', '/sync/contractors', {}); say(`Sent ${r.synced}, already up to date ${r.unchanged}, cannot be sent ${r.blocked}, problems ${r.errors}.`, !r.errors); await loadContractors(); await loadStatus(); }));
+$('cpayForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target; const btn = form.querySelector('button'); btn.disabled = true;
+  const o = Object.fromEntries(new FormData(form).entries());
+  const body = { contractorId: o.contractorId, date: o.date, amount: numOrNone(o.amount), hours: numOrNone(o.hours), rate: numOrNone(o.rate), reimbursement: numOrNone(o.reimbursement), memo: o.memo, requestId: cpayRequestId };
+  try {
+    let r;
+    try { r = await req('POST', '/contractor-payments', body); } catch (e) {
+      if (!(e.data && e.data.code === 'possible_duplicate') || !window.confirm(`${e.message}\n\nRecord it as a second payment?`)) throw e;
+      r = await req('POST', '/contractor-payments', { ...body, allowDuplicate: true });
+    }
+    say(r.duplicate ? 'This payment was already recorded. Nothing new was added.' : `Recorded ${money(r.payment.amount + r.payment.reimbursement)} for ${r.payment.contractorName}.${r.payment.inLedger ? ' It is in the 1099 ledger.' : ' It is NOT in the 1099 ledger yet: press "Write to ledger" in the list.'}`, r.duplicate || r.payment.inLedger);
+    cpayRequestId = newRequestId(); // the next payment is a new request
+    for (const n of ['amount', 'hours', 'rate', 'reimbursement', 'memo']) form.elements[n].value = '';
+    await loadContractorPayments();
+  } catch (e) { say(e.message, false); } finally { btn.disabled = false; }
+});
+$('cpayForm').addEventListener('input', (ev) => { if (['contractorId', 'date', 'amount', 'hours', 'rate', 'reimbursement'].includes(ev.target.name)) cpayRequestId = newRequestId(); });
+$('cpayRows').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.ledger) { await req('POST', `/contractor-payments/${b.dataset.ledger}/ledger`, {}); say('Written to the 1099 ledger.'); }
+  if (b.dataset.cancelpay) { const reason = window.prompt('Why is this payment cancelled? It is removed in Gusto and marked void in the 1099 ledger.'); if (!reason) return; await req('POST', `/contractor-payments/${b.dataset.cancelpay}/cancel`, { reason }); say('Payment cancelled.'); }
+  await loadContractorPayments();
+}));
+
+/* ---------- benefit deductions ---------- */
+let dedPreview = null;
+const dedShow = (v) => (!v ? '-' : `${v.percent ? `${esc(v.percent)}% of pay` : money(v.employee)}${v.employer ? ` <span class="hint">company ${money(v.employer)}</span>` : ''}${v.active === false ? ' <span class="hint">(switched off)</span>' : ''}`);
+function paintDeductions(p) {
+  dedPreview = p;
+  const word = { create: ['Adds it', 'warnTag'], update: ['Changes it', 'warnTag'], end: ['Switches it off', 'warnTag'], unchanged: ['Nothing, it matches', 'good'], not_in_provider: ['Skipped', 'grey'], cannot_send: ['Cannot be sent', 'badTag'] };
+  const t = p.totals;
+  $('dedSum').textContent = `For the pay period ending ${day(p.periodEnd)}: ${t.create} to add, ${t.update} to change, ${t.end} to switch off, ${t.unchanged} already matching${t.notInProvider ? `, ${t.notInProvider} skipped (person not in Gusto)` : ''}${t.cannotSend ? `, ${t.cannotSend} cannot be sent` : ''}.${p.feedErrors && p.feedErrors.length ? ` ${p.feedErrors.length} deduction(s) could not be worked out in the benefits feed.` : ''}${p.lastSent ? ` Last sent ${when(p.lastSent.at)}.` : ''}`;
+  $('dedRows').innerHTML = p.rows.map((r) => `<tr><td>${esc(r.name || r.userId)}</td><td>${esc(r.planName)}${r.taxTreatment ? ` <span class="hint">${esc(r.taxTreatment.replace('_', ' '))}</span>` : ''}</td><td>${dedShow(r.current)}</td><td>${dedShow(r.wanted)}</td><td>${tag(word[r.action][0], word[r.action][1])}${r.reason ? `<div class="hint">${esc(r.reason)}</div>` : ''}${(r.notes || []).map((n) => `<div class="hint">${esc(n)}</div>`).join('')}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No benefit deductions for this pay period.</td></tr>';
+  $('dedOther').textContent = p.notFromHere && p.notFromHere.length ? `In Gusto but not from here (left alone): ${p.notFromHere.map((u) => `${u.description} ${u.percent ? `${u.percent}%` : money(u.employee)}`).join('; ')}.` : '';
+  $('dedSend').disabled = !(p.changes > 0 && status.can.run);
+}
+$('dedPreview').addEventListener('click', guard(async () => { const q = $('dedEnd').value ? `?periodEnd=${$('dedEnd').value}` : ''; const p = await req('GET', `/benefit-deductions/preview${q}`); $('dedNote').textContent = p.note; if (!$('dedEnd').value) $('dedEnd').value = p.periodEnd; paintDeductions(p); }));
+$('dedSend').addEventListener('click', guard(async () => {
+  if (!dedPreview) return;
+  if (!window.confirm(`Send ${dedPreview.changes} deduction change(s) to Gusto? Gusto will take these amounts from pay.`)) return;
+  try {
+    const r = await req('POST', '/benefit-deductions/send', { confirm: true, periodEnd: dedPreview.periodEnd, fingerprint: dedPreview.fingerprint });
+    say(r.failed ? `Sent ${r.sent}. ${r.failed} did not go through: ${r.results.filter((x) => !x.ok).map((x) => `${x.name || ''} ${x.planName}: ${x.error}`).join('; ')}` : `Sent ${r.sent} change(s). Gusto now matches the benefits feed.`, !r.failed);
+    paintDeductions({ ...r.after, lastSent: { at: new Date().toISOString() } });
+  } catch (e) { if (e.data && e.data.code === 'changed') $('dedSend').disabled = true; throw e; }
+}));
+
+/* ---------- garnishments ---------- */
+let garData = null;
+async function loadGarnishments() {
+  const r = await req('GET', '/garnishments'); garData = r;
+  $('garNote').textContent = r.note;
+  const st = { active: 'good', scheduled: 'warnTag', ended: 'grey' };
+  const limits = (l) => [l.perPayPeriodMax ? `${money(l.perPayPeriodMax)} a pay period` : '', l.annualMax ? `${money(l.annualMax)} a year` : '', l.totalAmount ? `${money(l.totalAmount)} in total` : ''].filter(Boolean).join(', ');
+  $('garRows').innerHTML = r.data.map((g) => `<tr><td>${esc(g.name || g.userId)}</td><td>${esc(g.typeLabel)}${g.levyAuthority ? ` <span class="hint">${esc(g.levyAuthority)}</span>` : ''}${g.issuingState ? ` <span class="hint">${esc(g.issuingState)}</span>` : ''}</td><td>${g.caseNumberHidden ? '<span class="hint">Hidden</span>' : esc(g.caseNumber || '')}</td><td>${g.amountType === 'percent' ? `${esc(g.value)}% of pay` : money(g.value)}</td><td>${esc(limits(g.limits || {}) || 'None entered')}</td><td>${esc(day(g.startDate))}${g.endDate ? ` to ${esc(day(g.endDate))}` : ''}</td><td>${tag(g.status, st[g.status] || 'grey')} ${g.provider.state === 'sent' ? tag(g.provider.active ? 'On in Gusto' : 'Off in Gusto', g.provider.active ? 'good' : 'grey') : tag('Not in Gusto', 'warnTag')}</td><td>${esc((g.attention || []).join(' '))}${g.payeeNotes ? `<div class="hint">${esc(g.payeeNotes)}</div>` : ''}</td><td>${r.can.write && g.status === 'active' && g.provider.state !== 'sent' ? `<button class="ghost" data-garsend="${esc(g.id)}">Send to Gusto</button> ` : ''}${r.can.write && !g.endedAt ? `<button class="no" data-garend="${esc(g.id)}">End</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="hint">No garnishments recorded.</td></tr>';
+  const form = $('garForm'); form.hidden = !r.can.write;
+  if (r.can.write && !form.elements.type.options.length) {
+    form.elements.type.innerHTML = Object.entries(r.types).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+    form.elements.paymentPeriod.insertAdjacentHTML('beforeend', r.paymentPeriods.map((p) => `<option>${esc(p)}</option>`).join(''));
+    const people = await req('GET', '/people');
+    form.elements.userId.innerHTML = '<option value="">Choose</option>' + people.data.filter((p) => p.classification !== '1099').map((p) => `<option value="${esc(p.userId)}">${esc(p.name)}${p.inGusto ? '' : ' (not in Gusto yet)'}</option>`).join('');
+    form.elements.startDate.value = todayLocal(); garTypeFields();
+  }
+}
+function garTypeFields() { const t = $('garForm').elements.type.value; $('garForm').querySelectorAll('[data-for]').forEach((el) => { el.hidden = el.dataset.for !== t; }); }
+$('garForm').elements.type.addEventListener('change', garTypeFields);
+$('garForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const form = ev.target; const btn = form.querySelector('button[type=submit]'); btn.disabled = true;
+  const o = Object.fromEntries(new FormData(form).entries());
+  try {
+    const r = await req('POST', '/garnishments', { userId: o.userId, type: o.type, levyAuthority: o.type === 'tax_levy' ? o.levyAuthority : undefined, caseNumber: o.caseNumber, amountType: o.amountType, value: numOrNone(o.value), limits: { perPayPeriodMax: numOrNone(o.perPayPeriodMax), annualMax: numOrNone(o.annualMax), totalAmount: numOrNone(o.totalAmount) }, startDate: o.startDate, endDate: o.endDate || undefined, payeeNotes: o.payeeNotes, issuingState: o.issuingState, paymentPeriod: o.paymentPeriod || undefined, remittanceNumber: o.remittanceNumber, fipsCode: o.fipsCode });
+    const g = r.garnishment;
+    say(g.provider.state === 'sent' ? 'Recorded and sent to Gusto.' : `Recorded. ${(g.attention || []).join(' ')}`, g.provider.state === 'sent' || g.status === 'scheduled');
+    for (const n of ['caseNumber', 'value', 'perPayPeriodMax', 'annualMax', 'totalAmount', 'endDate', 'payeeNotes', 'remittanceNumber', 'fipsCode']) form.elements[n].value = '';
+    await loadGarnishments();
+  } catch (e) { say(e.message, false); } finally { btn.disabled = false; }
+});
+$('garRows').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.garsend) { const r = await req('POST', `/garnishments/${b.dataset.garsend}/send`, {}); say(r.garnishment.provider.state === 'sent' ? 'Sent to Gusto.' : (r.garnishment.attention || []).join(' '), r.garnishment.provider.state === 'sent'); }
+  if (b.dataset.garend) {
+    const endDate = window.prompt('Last day of this garnishment (YYYY-MM-DD). Leave as today to stop it now.', todayLocal()); if (!endDate) return;
+    const reason = window.prompt('Why does it end? (for example: released by the court, paid in full)') || '';
+    const r = await req('POST', `/garnishments/${b.dataset.garend}/end`, { endDate, reason });
+    say(r.planned ? `End date saved. It stays on in Gusto until you end it on ${day(endDate)}.` : 'Ended. It is switched off in Gusto.');
+  }
+  await loadGarnishments();
+}));
+
+/* ---------- W-2 and 1099 forms ---------- */
+async function loadTaxForms() {
+  const r = await req('GET', '/tax-forms');
+  $('formsNote').textContent = r.note;
+  const rows = [...r.employees.map((p) => ({ ...p, label: 'W-2' })), ...r.contractors.map((p) => ({ ...p, label: '1099' }))];
+  $('formsRows').innerHTML = rows.map((p) => `<tr><td>${esc(p.name || p.id)}</td><td>${esc(p.label)}</td><td>${p.error ? `<span class="hint">Could not check: ${esc(p.error)}</span>` : p.years.length ? p.years.map((y) => tag(String(y), 'good')).join(' ') : '<span class="hint">None yet</span>'}</td><td>${p.forms.map((f) => (f.draft ? `<span class="hint">${esc(f.title)} (draft)</span>` : `<button class="ghost" data-form="${esc(f.id)}" data-kind="${esc(p.kind)}" data-owner="${esc(p.id)}">${esc(f.title)}</button>`)).join(' ')}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nobody is in Gusto yet.</td></tr>';
+}
+$('formsLoad').addEventListener('click', guard(loadTaxForms));
+$('formsRows').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-form]'); if (!b) return; await downloadFile(`/tax-forms/${b.dataset.kind}/${encodeURIComponent(b.dataset.owner)}/${encodeURIComponent(b.dataset.form)}/pdf`, 'tax-form.pdf'); }));
 
 /* ---------- history, taxes, reconciliation ---------- */
 async function loadHistory() {
   const r = await req('GET', '/payroll/history');
   const cls = { submitted: 'good', paid: 'good', prepared: 'warnTag', cancelled: 'grey', discarded: 'grey', submitting: 'warnTag' };
-  $('history').innerHTML = r.data.map((h) => `<tr><td>${esc(day(h.periodStart))} to ${esc(day(h.periodEnd))}</td><td>${esc(day(h.checkDate))}</td><td>${tag(h.status, cls[h.status] || 'grey')}</td><td>${money(h.totals && h.totals.gross_pay)}</td><td>${money(h.totals && h.totals.net_pay)}</td><td>${esc(when(h.preparedAt))}</td><td>${esc(when(h.submittedAt))}</td><td>${h.status === 'prepared' ? `<button class="ghost" data-open="${esc(h.payrollUuid)}">Open</button>` : ''}${['submitted', 'paid'].includes(h.status) ? `<button class="ghost" data-register="${esc(h.payrollUuid)}">Who was paid</button> ` : ''}${h.status === 'submitted' && status.can.run ? `<button class="ghost" data-refresh="${esc(h.payrollUuid)}">Update</button> <button class="no" data-cancel="${esc(h.payrollUuid)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No payrolls yet.</td></tr>';
+  $('history').innerHTML = r.data.map((h) => `<tr><td>${esc(day(h.periodStart))} to ${esc(day(h.periodEnd))}${h.kind === 'off_cycle' ? ` <span class="tag warnTag">Off-cycle${h.reason ? `: ${esc(String(h.reason).replace('_', ' '))}` : ''}</span>` : ''}</td><td>${esc(day(h.checkDate))}</td><td>${tag(h.status, cls[h.status] || 'grey')}</td><td>${money(h.totals && h.totals.gross_pay)}</td><td>${money(h.totals && h.totals.net_pay)}</td><td>${esc(when(h.preparedAt))}</td><td>${esc(when(h.submittedAt))}</td><td>${h.status === 'prepared' ? `<button class="ghost" data-open="${esc(h.payrollUuid)}">Open</button>` : ''}${['submitted', 'paid'].includes(h.status) ? `<button class="ghost" data-register="${esc(h.payrollUuid)}">Who was paid</button> ` : ''}${h.status === 'submitted' && status.can.run ? `<button class="ghost" data-refresh="${esc(h.payrollUuid)}">Update</button> <button class="no" data-cancel="${esc(h.payrollUuid)}">Cancel</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No payrolls yet.</td></tr>';
 }
 $('history').addEventListener('click', guard(async (ev) => {
   const b = ev.target.closest('button'); if (!b) return;
@@ -323,7 +610,7 @@ $('poll').addEventListener('click', guard(async () => { const r = await req('POS
 $('disconnect').addEventListener('click', guard(async () => { if ($('discWord').value.trim() !== 'DISCONNECT') throw new Error('Type DISCONNECT to confirm.'); await req('POST', '/disconnect', { confirm: true }); say('Disconnected from Gusto.'); await loadStatus(); await loadSetup(false); }));
 
 /* ---------- tabs ---------- */
-const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
+const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, offcycle: loadOffCycle, contractors: loadContractors, deduct: loadGarnishments, forms: async () => {}, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
 function show(tab) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;

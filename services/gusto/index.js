@@ -26,7 +26,9 @@ async function makeContext(orgId, deps = {}) {
     const client = createClient({ orgId, opts, store, log, fetchImpl: deps.fetchImpl, sleep: deps.sleep });
     return { orgId, store, client, opts, conn, log, org: deps.org, loadPeople: deps.loadPeople, loadLeave: deps.loadLeave, loadWeeks: deps.loadWeeks, pollOpts: deps.pollOpts,
         // optional storage and event hooks (tests pass in-memory ones; production uses Firestore and the event outbox)
-        savePayResults: deps.savePayResults, listPayResults: deps.listPayResults, deletePayResults: deps.deletePayResults, emitEvent: deps.emitEvent };
+        savePayResults: deps.savePayResults, listPayResults: deps.listPayResults, deletePayResults: deps.deletePayResults, emitEvent: deps.emitEvent,
+        // seams for the extra features: local contractors, the 1099 ledger, the benefit deduction feed, today's date, saving a person's state tax answers
+        loadContractors: deps.loadContractors, ledger: deps.ledger, loadDeductionFeed: deps.loadDeductionFeed, today: deps.today, fetchImpl: deps.fetchImpl };
 }
 
 module.exports = { makeContext, defaultLog };

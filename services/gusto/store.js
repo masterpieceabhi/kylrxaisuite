@@ -19,7 +19,9 @@ const { encryptField, decryptField } = require('../pii-crypto');
 
 const COL = {
     connections: 'gusto_connections', locks: 'gusto_locks', links: 'gusto_links',
-    errors: 'gusto_errors', events: 'gusto_events', payrolls: 'gusto_payrolls'
+    errors: 'gusto_errors', events: 'gusto_events', payrolls: 'gusto_payrolls',
+    // records kept by the extra payroll features (same shape rules: top-level, every doc has orgId)
+    contractorPayments: 'gusto_contractor_payments', garnishments: 'payroll_garnishments', deductionRuns: 'gusto_deduction_runs'
 };
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -181,6 +183,20 @@ function createStore(kv) {
         async claimPayroll(orgId, uuid, fromStatuses, patch) {
             return kv.transact(COL.payrolls, `${orgId}__${uuid}`, (cur) => {
                 if (!cur || !fromStatuses.includes(cur.status)) return { result: null };
+                const next = { ...cur, ...patch, updatedAt: nowIso() };
+                return { write: next, result: next };
+            });
+        },
+        /* generic records for contractor payments, garnishments and deduction runs (name = a key of COL) */
+        async getRecord(name, orgId, id) { const r = await kv.get(COL[name], `${orgId}__${id}`); return r && r.orgId === orgId ? r : null; },
+        async saveRecord(name, orgId, id, patch) { await kv.set(COL[name], `${orgId}__${id}`, { orgId, id, ...patch, updatedAt: nowIso() }, true); return kv.get(COL[name], `${orgId}__${id}`); },
+        /** Create only if it does not exist yet. Returns true when this call created it. */
+        async createRecord(name, orgId, id, data) { return kv.create(COL[name], `${orgId}__${id}`, { orgId, id, ...data, createdAt: nowIso(), updatedAt: nowIso() }); },
+        async listRecords(name, orgId) { return kv.where(COL[name], orgId); }, // each record carries its own `id`, which wins over the document id
+        /** Atomically move a record from one of `fromStatuses` to a new state. Returns the record or null. */
+        async claimRecord(name, orgId, id, fromStatuses, patch) {
+            return kv.transact(COL[name], `${orgId}__${id}`, (cur) => {
+                if (!cur || cur.orgId !== orgId || !fromStatuses.includes(cur.status)) return { result: null };
                 const next = { ...cur, ...patch, updatedAt: nowIso() };
                 return { write: next, result: next };
             });

@@ -110,6 +110,9 @@ async function syncPerson(ctx, person, o = {}) {
         };
         const loc = await locationFor(ctx);
         want.work = mapping.hash({ loc: loc && loc.gustoUuid, st: person.workState });
+        // only people who have bank details or state tax answers get these parts (so nothing changes for the others)
+        if (person.bank && person.bank.length) want.bank = mapping.bankHash(person.bank);
+        if (person.stateTax && Object.keys(person.stateTax).length) want.stateTax = mapping.stateTaxHash(person.stateTax);
         let calls = 0;
         let gustoUuid = link && link.gustoUuid;
         let version = link && link.version;
@@ -173,6 +176,18 @@ async function syncPerson(ctx, person, o = {}) {
             hashes.w4 = want.w4; calls += 1;
         }
 
+        // 7. bank accounts and how pay is split
+        if (want.bank && hashes.bank !== want.bank && pushPay) {
+            const r = await pushBank(ctx, person, gustoUuid, meta, want.bank);
+            Object.assign(meta, r.meta);
+            if (r.sent) { hashes.bank = want.bank; calls += r.calls; }
+        }
+        // 8. state tax answers
+        if (want.stateTax && hashes.stateTax !== want.stateTax && pushPay) {
+            const r = await pushStateTax(ctx, person, gustoUuid);
+            meta.stateTaxNote = r.note; hashes.stateTax = want.stateTax; calls += r.calls;
+        }
+
         link = await store.saveLink(orgId, 'employee', person.id, {
             gustoUuid, version, hashes: stripUndefined(hashes), meta, syncState: 'synced', lastError: null, blockedReasons: null, lastSyncedAt: new Date().toISOString(),
             gusto: { onboarded, ...((link && link.gusto) || {}), ...(onboarded ? { onboarded: true } : {}) }
@@ -188,6 +203,85 @@ async function syncPerson(ctx, person, o = {}) {
     }
 }
 function stripUndefined(o) { return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)); }
+
+/**
+ * Bank accounts and the pay split for one person (US-F03).
+ * Account numbers are decrypted here, at the moment they are sent, and go nowhere else: not into logs (the client
+ * masks account_number and routing_number), not into the link, not into errors.
+ * Order matters: the new accounts are added and the pay method is switched to them BEFORE the accounts we sent
+ * earlier are removed, so a failure half way leaves the person's old, working setup in place.
+ * VERIFY against Gusto: POST /v1/employees/{id}/bank_accounts, DELETE /v1/employees/{id}/bank_accounts/{bank_id},
+ * GET/PUT /v1/employees/{id}/payment_method (PUT needs `version`).
+ */
+async function pushBank(ctx, person, gustoUuid, meta, bankHash) {
+    const { orgId, client, store } = ctx;
+    const check = mapping.toGustoPaymentSplits(person.bank);
+    if (!check.ok) return { sent: false, calls: 0, meta: { bankNote: check.reason } };
+    const numbers = new Map();
+    for (const a of person.bank) {
+        let n = null;
+        try { n = a.accountNumberEnc ? decryptField(a.accountNumberEnc, `${orgId}:${person.id}:bank`) : null; } catch (_) { n = null; }
+        if (!n) return { sent: false, calls: 0, meta: { bankNote: 'A bank account number on file could not be read. Ask the person to enter their bank details again.' } };
+        numbers.set(a.id, n);
+    }
+    const gen = meta.bankGen || 0; const tries = meta.bankTries || 0;
+    const uuids = new Map(); let calls = 0;
+    try {
+        for (const a of person.bank) {
+            const made = await client.post(`/v1/employees/${gustoUuid}/bank_accounts`, mapping.toGustoBankAccount(a, numbers.get(a.id)), { idempotencyKey: `kylrx:${orgId}:bank:${person.id}:${a.id}:${bankHash}:${gen}:${tries}` });
+            uuids.set(a.id, made.uuid); calls += 1;
+        }
+        const body = mapping.toGustoPaymentSplits(person.bank, (a) => uuids.get(a.id)).body;
+        await client.putVersioned(`/v1/employees/${gustoUuid}/payment_method`, `/v1/employees/${gustoUuid}/payment_method`, () => body);
+        calls += 1;
+    } catch (e) {
+        // a clear refusal is replayed for the same idempotency key: move the key on for the next try
+        if (e.status >= 400 && e.status < 500 && e.status !== 429) await store.saveLink(orgId, 'employee', person.id, { meta: { bankTries: tries + 1 } });
+        throw e;
+    }
+    const fresh = [...uuids.values()];
+    for (const old of (meta.bankUuids || []).filter((u) => !fresh.includes(u))) {
+        try { await client.del(`/v1/employees/${gustoUuid}/bank_accounts/${old}`); calls += 1; } catch (e) { if (e.code !== 'not_found') emit(ctx, 'warn', 'old_bank_account_not_removed', { userId: person.id, code: e.code }); }
+    }
+    return { sent: true, calls, meta: { bankUuids: fresh, bankGen: gen + 1, bankTries: 0, bankNote: null, bankSentAt: new Date().toISOString() } };
+}
+
+/**
+ * State tax answers for one person (US-F03): only answers to questions the provider asks are sent.
+ * VERIFY against Gusto: GET/PUT /v1/employees/{id}/state_taxes (see mapping.toGustoStateTaxes).
+ */
+async function pushStateTax(ctx, person, gustoUuid) {
+    const provider = await ctx.client.get(`/v1/employees/${gustoUuid}/state_taxes`);
+    const r = mapping.toGustoStateTaxes(person.stateTax, provider);
+    let calls = 1;
+    if (r.states.length) { await ctx.client.put(`/v1/employees/${gustoUuid}/state_taxes`, { states: r.states }); calls += 1; }
+    const note = r.unknown.length ? `Not sent, because Gusto does not ask for them: ${r.unknown.join(', ')}`.slice(0, 300) : null;
+    return { calls, sent: r.sent, note, unknown: r.unknown, unanswered: r.unanswered };
+}
+
+/** The provider's state tax questions for a person, next to the answers saved here */
+async function stateTaxFor(ctx, person) {
+    const link = await ctx.store.getLink(ctx.orgId, 'employee', person.id);
+    const saved = person.stateTax || {};
+    if (!link || !link.gustoUuid) return { inGusto: false, states: Object.keys(saved).map((state) => ({ state, questions: [], saved: (saved[state] && saved[state].answers) || {} })) };
+    const provider = await ctx.client.get(`/v1/employees/${link.gustoUuid}/state_taxes`);
+    return {
+        inGusto: true,
+        states: provider.map((s) => ({
+            state: s.state, isWorkState: Boolean(s.is_work_state), saved: (saved[s.state] && saved[s.state].answers) || {},
+            questions: (s.questions || []).map((q) => ({ key: q.key, label: q.label || q.key, description: q.description || '', type: (q.input_question_format && q.input_question_format.type) || 'Text', options: ((q.input_question_format && q.input_question_format.options) || []).map((o) => ({ value: o.value, label: o.label || String(o.value) })), current: ((q.answers || [])[0] || {}).value ?? null }))
+        }))
+    };
+}
+
+/** Send one person's saved state tax answers now (an explicit action by payroll, so it does not wait for a people sync) */
+async function sendStateTax(ctx, person) {
+    const link = await ctx.store.getLink(ctx.orgId, 'employee', person.id);
+    if (!link || !link.gustoUuid) throw new GustoError('This person is not in Gusto yet. Send people to Gusto first.', { status: 409, code: 'not_linked' });
+    const r = await pushStateTax(ctx, person, link.gustoUuid);
+    await ctx.store.saveLink(ctx.orgId, 'employee', person.id, { hashes: { stateTax: mapping.stateTaxHash(person.stateTax) }, meta: { stateTaxNote: r.note, stateTaxSentAt: new Date().toISOString() } });
+    return { sent: r.sent, notAsked: r.unknown, unanswered: r.unanswered };
+}
 
 /** Push everyone (or the given ids). Locations first because work addresses need one. */
 async function syncPeople(ctx, { ids = null, force = false, overwrite = false } = {}) {
@@ -321,4 +415,4 @@ async function retryError(ctx, errorDoc) {
     return { status: 'skipped', reason: 'This kind of error is retried from its own screen.' };
 }
 
-module.exports = { loadPeople, syncLocations, syncPerson, syncPeople, pullPeople, syncPaySchedule, syncDepartments, syncTimeOff, retryError };
+module.exports = { stateTaxFor, sendStateTax, loadPeople, syncLocations, syncPerson, syncPeople, pullPeople, syncPaySchedule, syncDepartments, syncTimeOff, retryError };

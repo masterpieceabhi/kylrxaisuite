@@ -40,7 +40,7 @@ function createMockGusto(options = {}) {
             refresh: new Map(),    // token -> { companyUuid, revoked }
             companies: new Map(), locations: new Map(), banks: new Map(), schedules: new Map(), employees: new Map(), homes: new Map(), works: new Map(),
             jobs: new Map(), comps: new Map(), fedTax: new Map(), taxReq: new Map(), signatories: new Map(), forms: new Map(), departments: new Map(),
-            payrolls: new Map(), timeOff: new Map(), subs: new Map(), events: [], idem: new Map(), deliveries: [], inject: [], rate: new Map(),
+            payrolls: new Map(), timeOff: new Map(), contractors: new Map(), contractorPayments: new Map(), taxForms: new Map(), garnishments: new Map(), companyBenefits: new Map(), employeeBenefits: new Map(), empBanks: new Map(), payMethods: new Map(), stateTax: new Map(), subs: new Map(), events: [], idem: new Map(), deliveries: [], inject: [], rate: new Map(),
             stats: { requests: 0, systemTokens: 0, refreshes: 0, refreshRejected: 0, rateLimited: 0, conflicts: 0, injected: 0, byPath: {} },
             rateOverride: null
         };
@@ -64,7 +64,8 @@ function createMockGusto(options = {}) {
         res.json({
             companies: pick(S.companies, (x) => ({ uuid: x.uuid, name: x.name, approved: x.approved, onboardingCompleted: x.onboarding_completed, terms: x.terms_accepted })),
             employees: pick(S.employees, ({ ssn, ...e }) => ({ ...e, hasSsn: Boolean(ssn) })), payrolls: pick(S.payrolls), subscriptions: [...S.subs.values()].map((s) => ({ uuid: s.uuid, url: s.url, status: s.status })),
-            timeOff: pick(S.timeOff), deliveries: S.deliveries.slice(-50)
+            timeOff: pick(S.timeOff), contractors: pick(S.contractors, ({ ssn, ein, ...k }) => ({ ...k, hasTin: Boolean(ssn || ein) })), contractorPayments: pick(S.contractorPayments), garnishments: [...S.garnishments.values()], employeeBenefits: [...S.employeeBenefits.values()], companyBenefits: pick(S.companyBenefits),
+            employeeBanks: [...S.empBanks.values()].map(({ account_number, ...b }) => ({ ...b, hasNumber: Boolean(account_number) })), paymentMethods: [...S.payMethods.entries()].map(([employee_uuid, m]) => ({ employee_uuid, ...m })), stateTaxes: [...S.stateTax.entries()].map(([employee_uuid, m]) => ({ employee_uuid, states: m })), taxForms: [...S.taxForms.values()], deliveries: S.deliveries.slice(-50)
         });
     });
     ctl.post('/expire-tokens', (req, res) => {
@@ -98,7 +99,35 @@ function createMockGusto(options = {}) {
         emit('payroll.paid', p.company_uuid, { resource_type: 'Payroll', resource_uuid: p.payroll_uuid, entity_type: 'Payroll' });
         res.json({ ok: true });
     });
+    // year end: W-2 for every onboarded employee and 1099-NEC for every contractor paid in that year (or one form by hand)
+    ctl.post('/year-end', (req, res) => {
+        const b = req.body || {}; const year = Number(b.year) || new Date().getUTCFullYear() - 1; let n = 0;
+        for (const e of S.employees.values()) if ((!b.company_uuid || e.company_uuid === b.company_uuid) && e.onboarded) { addTaxForm({ employee_uuid: e.uuid, name: 'US_W-2', title: `W-2 ${year}`, year }); n += 1; }
+        for (const k of S.contractors.values()) if ((!b.company_uuid || k.company_uuid === b.company_uuid) && (b.all_contractors || [...S.contractorPayments.values()].some((p) => p.contractor_uuid === k.uuid && String(p.date).startsWith(String(year))))) { addTaxForm({ contractor_uuid: k.uuid, name: 'US_1099', title: `1099-NEC ${year}`, year }); n += 1; }
+        res.json({ created: n, year });
+    });
+    ctl.post('/tax-form', (req, res) => res.json(addTaxForm(req.body || {})));
+    ctl.post('/contractor-payment-funded', (req, res) => {
+        const p = S.contractorPayments.get((req.body || {}).uuid);
+        if (!p) return res.status(404).json({ error: 'unknown payment' });
+        p.status = 'Funded'; p.may_cancel = false; return res.json({ ok: true });
+    });
     app.use('/__mock', ctl);
+    function addTaxForm(b) {
+        const dup = [...S.taxForms.values()].find((x) => x.name === (b.name || 'US_W-2') && x.year === (b.year || null) && x.employee_uuid === (b.employee_uuid || null) && x.contractor_uuid === (b.contractor_uuid || null));
+        if (dup) return dup;
+        const f = { uuid: uuid(), name: b.name || 'US_W-2', title: b.title || b.name || 'W-2', description: b.description || '', draft: Boolean(b.draft), year: b.year || null, quarter: null, requires_signing: false, document_content_type: 'application/pdf', employee_uuid: b.employee_uuid || null, contractor_uuid: b.contractor_uuid || null };
+        S.taxForms.set(f.uuid, f);
+        return f;
+    }
+    // Stands in for the short-lived file link the real provider returns for a form PDF (no auth, like a signed link)
+    app.get('/__files/:id', (req, res) => {
+        const f = S.taxForms.get(String(req.params.id).replace(/\.pdf$/, ''));
+        if (!f) return res.status(404).end();
+        const text = `${f.title} (mock)`;
+        const pdf = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length ${text.length + 32}>>stream\nBT /F1 14 Tf 20 100 Td (${text}) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n`;
+        return res.set('Content-Type', 'application/pdf').send(Buffer.from(pdf, 'latin1'));
+    });
 
     /* ------------------------------- auth, rate limit, fault injection ------------------------------- */
     app.use((req, res, next) => {
@@ -407,11 +436,67 @@ function createMockGusto(options = {}) {
         e.onboarded = true; e.onboarding_status = 'onboarding_completed'; bump(e);
         res.json({ uuid: e.uuid, onboarding_status: e.onboarding_status, onboarding_steps: [] });
     });
+    /* employee bank accounts, payment method (direct deposit splits) and state tax answers */
+    app.post('/v1/employees/:id/bank_accounts', needs('company'), (req, res) => {
+        const e = empFor(req, res); if (!e) return undefined;
+        const b = req.body || {};
+        if (!b.name || !/^\d{9}$/.test(String(b.routing_number || '')) || !/^\d{4,17}$/.test(String(b.account_number || '')) || !['Checking', 'Savings'].includes(b.account_type)) return err(res, 422, 'invalid_request', 'name, routing_number (9 digits), account_number and account_type (Checking or Savings) are required');
+        const a = { uuid: uuid(), employee_uuid: e.uuid, name: b.name, routing_number: b.routing_number, account_number: String(b.account_number), hidden_account_number: `XXXX${String(b.account_number).slice(-4)}`, account_type: b.account_type };
+        S.empBanks.set(a.uuid, a);
+        const { account_number, ...pub } = a;
+        return res.status(201).json(pub);
+    });
+    app.get('/v1/employees/:id/bank_accounts', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json([...S.empBanks.values()].filter((a) => a.employee_uuid === e.uuid).map(({ account_number, ...pub }) => pub)); });
+    app.delete('/v1/employees/:id/bank_accounts/:bid', needs('company'), (req, res) => {
+        const e = empFor(req, res); if (!e) return undefined;
+        const a = S.empBanks.get(req.params.bid);
+        if (!a || a.employee_uuid !== e.uuid) return err(res, 404, 'not_found', 'Bank account not found');
+        S.empBanks.delete(a.uuid);
+        const m = S.payMethods.get(e.uuid);
+        if (m && m.splits) { m.splits = m.splits.filter((x) => x.uuid !== a.uuid); if (!m.splits.length) { m.type = 'Check'; m.split_by = null; m.splits = null; e.payment_method = 'Check'; } m.version = ver(); }
+        return res.status(204).end();
+    });
+    const payMethodOf = (e) => { if (!S.payMethods.has(e.uuid)) S.payMethods.set(e.uuid, { version: ver(), type: 'Check', split_by: null, splits: null }); return S.payMethods.get(e.uuid); };
+    app.get('/v1/employees/:id/payment_method', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json(payMethodOf(e)); });
     app.put('/v1/employees/:id/payment_method', needs('company'), (req, res) => {
-        const e = empFor(req, res); if (!e) return;
-        if (!checkVersion(req, res, { version: e.pm_version || e.version })) return;
-        e.payment_method = (req.body || {}).type || e.payment_method;
-        res.json({ type: e.payment_method, version: e.pm_version || e.version });
+        const e = empFor(req, res); if (!e) return undefined;
+        const m = payMethodOf(e); const b = req.body || {};
+        if (!checkVersion(req, res, m)) return undefined;
+        if (!['Direct Deposit', 'Check'].includes(b.type)) return err(res, 422, 'invalid_request', 'type must be Direct Deposit or Check');
+        if (b.type === 'Check') { Object.assign(m, { type: 'Check', split_by: null, splits: null, version: ver() }); e.payment_method = 'Check'; return res.json(m); }
+        if (!['Amount', 'Percentage'].includes(b.split_by) || !Array.isArray(b.splits) || !b.splits.length) return err(res, 422, 'invalid_request', 'split_by (Amount or Percentage) and splits are required for direct deposit');
+        for (const x of b.splits) { const a = S.empBanks.get(x.uuid); if (!a || a.employee_uuid !== e.uuid) return err(res, 422, 'invalid_request', 'Every split must name one of the employee\'s bank accounts'); }
+        if (b.split_by === 'Percentage' && Math.round(b.splits.reduce((n, x) => n + Number(x.split_amount || 0), 0) * 100) !== 10000) return err(res, 422, 'invalid_request', 'Percentage splits must add up to 100');
+        if (b.split_by === 'Amount' && b.splits.filter((x) => x.split_amount === null || x.split_amount === undefined).length !== 1) return err(res, 422, 'invalid_request', 'Amount splits need exactly one account that takes the remainder (split_amount null)');
+        Object.assign(m, { type: 'Direct Deposit', split_by: b.split_by, splits: b.splits.map((x, i) => ({ uuid: x.uuid, name: x.name || S.empBanks.get(x.uuid).name, priority: x.priority || i + 1, split_amount: x.split_amount === undefined ? null : x.split_amount })), version: ver() });
+        e.payment_method = 'Direct Deposit';
+        return res.json(m);
+    });
+    // Questions differ by state. The mock asks a small made-up set for a few states and nothing elsewhere.
+    const STATE_QUESTIONS = { CA: ['filing_status', 'withholding_allowance', 'additional_withholding'], NY: ['filing_status', 'withholding_allowance'], WI: ['filing_status', 'withholding_allowance', 'additional_withholding'] };
+    const stateTaxOf = (e) => {
+        if (!S.stateTax.has(e.uuid)) {
+            const work = [...S.works.values()].filter((w) => w.employee_uuid === e.uuid).map((w) => (S.locations.get(w.location_uuid) || {}).state);
+            const home = [...S.homes.values()].filter((h) => h.employee_uuid === e.uuid).map((h) => h.state);
+            S.stateTax.set(e.uuid, [...new Set([...work, ...home].filter(Boolean))].map((st) => ({ employee_uuid: e.uuid, state: st, file_new_hire_report: null, is_work_state: work.includes(st), questions: (STATE_QUESTIONS[st] || []).map((key) => ({ key, label: key.replace(/_/g, ' '), description: '', input_question_format: { type: key === 'filing_status' ? 'Select' : 'Number' }, answers: [] })) })));
+        }
+        return S.stateTax.get(e.uuid);
+    };
+    app.get('/v1/employees/:id/state_taxes', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json(stateTaxOf(e)); });
+    app.put('/v1/employees/:id/state_taxes', needs('company'), (req, res) => {
+        const e = empFor(req, res); if (!e) return undefined;
+        const cur = stateTaxOf(e);
+        for (const st of ((req.body || {}).states || [])) {
+            const tgt = cur.find((x) => x.state === st.state);
+            if (!tgt) return err(res, 422, 'invalid_request', `${st.state} is not one of this employee's states`);
+            for (const q of (st.questions || [])) {
+                const tq = tgt.questions.find((x) => x.key === q.key);
+                if (!tq) return err(res, 422, 'invalid_request', `Unknown question ${q.key} for ${st.state}`);
+                if (!Array.isArray(q.answers) || !q.answers.length || q.answers[0].value === undefined || q.answers[0].value === null || q.answers[0].value === '') return err(res, 422, 'invalid_request', `An answer is required for ${q.key}`);
+                tq.answers = q.answers.map((a) => ({ value: a.value, valid_from: a.valid_from || '2010-01-01', valid_up_to: a.valid_up_to || null }));
+            }
+        }
+        return res.json(cur);
     });
 
     /* single-object reads (used by versioned updates) */
@@ -566,7 +651,7 @@ function createMockGusto(options = {}) {
             if (cmp) {
                 const rate = Number(cmp.rate) || 0;
                 if (cmp.payment_unit === 'Hour') g += (ec.hourly_compensations || []).reduce((a, h) => a + rate * Number(h.hours || 0) * Number(h.compensation_multiplier || 1), 0) + (ec.paid_time_off || []).reduce((a, h) => a + rate * Number(h.hours || 0), 0);
-                else g += cmp.payment_unit === 'Year' ? rate / factor : cmp.payment_unit === 'Month' ? rate * 12 / factor : rate;
+                else if (!p.off_cycle) g += cmp.payment_unit === 'Year' ? rate / factor : cmp.payment_unit === 'Month' ? rate * 12 / factor : rate; // an off-cycle payroll pays only what is entered
             }
             g += (ec.fixed_compensations || []).reduce((a, f) => a + Number(f.amount || 0), 0);
             ec.gross_pay = money(g); ec.net_pay = money(g * 0.8);
@@ -589,6 +674,8 @@ function createMockGusto(options = {}) {
         const q = req.query;
         const statuses = String(q.processing_statuses || '').split(',').filter(Boolean);
         if (statuses.length) rows = rows.filter((p) => (statuses.includes('processed') ? p.processed : false) || (statuses.includes('unprocessed') ? !p.processed : false));
+        const types = String(q.payroll_types || '').split(',').filter(Boolean);
+        if (types.length) rows = rows.filter((p) => types.includes(p.off_cycle ? 'off_cycle' : 'regular'));
         if (q.start_date) rows = rows.filter((p) => p.pay_period.end_date >= q.start_date);
         if (q.end_date) rows = rows.filter((p) => p.pay_period.start_date <= q.end_date);
         rows.sort((a, b) => a.pay_period.start_date.localeCompare(b.pay_period.start_date));
@@ -596,18 +683,39 @@ function createMockGusto(options = {}) {
         res.set('X-Total-Pages', String(Math.max(1, Math.ceil(rows.length / per))));
         res.json(rows.slice((page - 1) * per, page * per).map((p) => pubPayroll(p, c)));
     }));
+    const OFF_CYCLE_REASONS = ['Bonus', 'Correction', 'Dismissed employee', 'Transition from old pay schedule'];
+    const FIXED_NAMES = ['Bonus', 'Commission', 'Correction Payment', 'Severance', 'Reimbursement', 'Paycheck Tips', 'Cash Tips', 'Regular Wages'];
+    app.post(...asCompany('/v1/companies/:cid/payrolls', (req, res, c) => {
+        const b = req.body || {};
+        if (b.off_cycle !== true || !OFF_CYCLE_REASONS.includes(b.off_cycle_reason)) return err(res, 422, 'invalid_request', `off_cycle must be true and off_cycle_reason one of: ${OFF_CYCLE_REASONS.join(', ')}`);
+        if (!rules.parseIso(b.start_date) || !rules.parseIso(b.end_date) || b.end_date < b.start_date) return err(res, 422, 'invalid_request', 'start_date and end_date are required');
+        if (b.check_date && !rules.parseIso(b.check_date)) return err(res, 422, 'invalid_request', 'check_date is not a date');
+        const ids = Array.isArray(b.employee_uuids) ? b.employee_uuids : [];
+        for (const id of ids) { const e = S.employees.get(id); if (!e || e.company_uuid !== c.uuid) return err(res, 422, 'unknown_employee', 'employee_uuids has someone who is not in this company', { employee_uuid: id }); }
+        const p = makePayroll(c, null, b.start_date, b.end_date, b.check_date || b.end_date);
+        Object.assign(p, { payroll_type: 'off_cycle', off_cycle: true, off_cycle_reason: b.off_cycle_reason, employee_uuids: ids, skip_regular_deductions: Boolean(b.skip_regular_deductions), fixed_withholding_rate: Boolean(b.fixed_withholding_rate), withholding_pay_period: b.withholding_pay_period || null });
+        return res.status(201).json(pubPayroll(p, c));
+    }));
+    app.delete(...asCompany('/v1/companies/:cid/payrolls/:pid', (req, res, c) => {
+        const p = payrollFor(req, res, c); if (!p) return undefined;
+        if (p.processed) return err(res, 422, 'already_processed', 'A submitted payroll cannot be deleted; cancel it instead');
+        if (!p.off_cycle) return err(res, 422, 'not_off_cycle', 'Only an off-cycle payroll can be deleted');
+        S.payrolls.delete(p.payroll_uuid);
+        return res.status(204).end();
+    }));
     app.get(...asCompany('/v1/companies/:cid/payrolls/:pid', (req, res, c) => { const p = payrollFor(req, res, c); if (p) res.json(pubPayroll(p, c)); }));
     app.put(...asCompany('/v1/companies/:cid/payrolls/:pid/prepare', (req, res, c) => {
         const p = payrollFor(req, res, c); if (!p) return;
         if (p.processed) return err(res, 422, 'already_processed', 'This payroll is already processed');
-        p.employee_compensations = [...S.employees.values()].filter((e) => e.company_uuid === c.uuid && e.onboarded && !e.terminated).map((e) => {
+        const chosen = p.off_cycle && Array.isArray(p.employee_uuids) && p.employee_uuids.length ? new Set(p.employee_uuids) : null;
+        p.employee_compensations = [...S.employees.values()].filter((e) => e.company_uuid === c.uuid && e.onboarded && (chosen ? chosen.has(e.uuid) : !e.terminated)).map((e) => {
             const job = [...S.jobs.values()].find((j) => j.employee_uuid === e.uuid);
             const cmp = job && [...S.comps.values()].find((k) => k.job_uuid === job.uuid);
             const hourly = cmp && cmp.payment_unit === 'Hour';
             const existing = p.employee_compensations.find((x) => x.employee_uuid === e.uuid);
             return existing || {
                 employee_uuid: e.uuid, excluded: false, version: ver(), payment_method: e.payment_method,
-                fixed_compensations: hourly ? [] : [{ name: 'Regular Wages', amount: '0.00', job_uuid: job && job.uuid }],
+                fixed_compensations: p.off_cycle ? ['Bonus', 'Correction Payment', 'Severance'].map((name) => ({ name, amount: '0.00', job_uuid: job && job.uuid })) : hourly ? [] : [{ name: 'Regular Wages', amount: '0.00', job_uuid: job && job.uuid }],
                 hourly_compensations: hourly ? [{ name: 'Regular Hours', hours: '0.000', job_uuid: job.uuid, compensation_multiplier: 1 }, { name: 'Overtime', hours: '0.000', job_uuid: job.uuid, compensation_multiplier: 1.5 }, { name: 'Double overtime', hours: '0.000', job_uuid: job.uuid, compensation_multiplier: 2 }] : [],
                 paid_time_off: []
             };
@@ -625,7 +733,11 @@ function createMockGusto(options = {}) {
             if (!ec) return err(res, 422, 'unknown_employee', 'employee_uuid is not part of this payroll', { employee_uuid: upd.employee_uuid });
             if (upd.hourly_compensations) ec.hourly_compensations = upd.hourly_compensations;
             if (upd.paid_time_off) ec.paid_time_off = upd.paid_time_off;
-            if (upd.fixed_compensations) ec.fixed_compensations = upd.fixed_compensations;
+            if (upd.fixed_compensations) {
+                const bad = upd.fixed_compensations.find((x) => !FIXED_NAMES.includes(x.name) || !(Number(x.amount) >= 0));
+                if (bad) return err(res, 422, 'invalid_request', `Unknown fixed compensation: ${bad.name}`);
+                ec.fixed_compensations = upd.fixed_compensations;
+            }
             if (upd.excluded !== undefined) ec.excluded = upd.excluded;
         }
         p.totals = null; p.processing_request = null; p.calculated_at = null;
@@ -671,6 +783,177 @@ function createMockGusto(options = {}) {
         { payroll_uuid: p.payroll_uuid, tax_name: 'Federal income tax withholding', amount: p.totals.employee_taxes, status: 'scheduled', due_date: p.check_date },
         { payroll_uuid: p.payroll_uuid, tax_name: 'Employer taxes', amount: p.totals.employer_taxes, status: 'scheduled', due_date: p.check_date }
     ]))));
+
+    /* ------------------------------- contractors and contractor payments ------------------------------- */
+    const pubContractor = ({ ssn, ein, ...k }) => ({ ...k, has_ssn: Boolean(ssn), has_ein: Boolean(ein) });
+    app.post(...asCompany('/v1/companies/:cid/contractors', (req, res, c) => {
+        const b = req.body || {};
+        if (!['Individual', 'Business'].includes(b.type) || !['Fixed', 'Hourly'].includes(b.wage_type) || !rules.parseIso(b.start_date)) return err(res, 422, 'invalid_request', 'type (Individual or Business), wage_type (Fixed or Hourly) and start_date are required');
+        if (b.type === 'Individual' && (!b.first_name || !b.last_name)) return err(res, 422, 'invalid_request', 'first_name and last_name are required for an individual');
+        if (b.type === 'Business' && !b.business_name) return err(res, 422, 'invalid_request', 'business_name is required for a business');
+        if (b.wage_type === 'Hourly' && !(Number(b.hourly_rate) > 0)) return err(res, 422, 'invalid_request', 'hourly_rate is required for an hourly contractor');
+        if (b.self_onboarding && !b.email) return err(res, 422, 'invalid_request', 'email is required when the contractor onboards themselves');
+        const k = { uuid: uuid(), company_uuid: c.uuid, type: b.type, wage_type: b.wage_type, hourly_rate: b.wage_type === 'Hourly' ? money(Number(b.hourly_rate)) : '0.00', start_date: b.start_date, first_name: b.first_name || null, last_name: b.last_name || null, middle_initial: b.middle_initial || null, business_name: b.business_name || null, ssn: b.ssn || null, ein: b.ein || null, email: b.email || null, is_active: true, file_new_hire_report: Boolean(b.file_new_hire_report), work_state: b.work_state || null, onboarded: false, onboarding_status: 'admin_onboarding_incomplete', address: null, version: ver() };
+        S.contractors.set(k.uuid, k);
+        return res.status(201).json(pubContractor(k));
+    }));
+    app.get(...asCompany('/v1/companies/:cid/contractors', (req, res, c) => {
+        const all = [...S.contractors.values()].filter((k) => k.company_uuid === c.uuid);
+        const per = Math.max(1, Math.min(100, Number(req.query.per) || 25)); const page = Math.max(1, Number(req.query.page) || 1);
+        res.set('X-Total-Pages', String(Math.max(1, Math.ceil(all.length / per))));
+        res.json(all.slice((page - 1) * per, page * per).map(pubContractor));
+    }));
+    const contractorFor = (req, res) => {
+        const k = S.contractors.get(req.params.id);
+        if (!k || k.company_uuid !== req.tok.companyUuid) { err(res, 404, 'not_found', 'Contractor not found'); return null; }
+        return k;
+    };
+    app.get('/v1/contractors/:id', needs('company'), (req, res) => { const k = contractorFor(req, res); if (k) res.json(pubContractor(k)); });
+    app.put('/v1/contractors/:id', needs('company'), (req, res) => {
+        const k = contractorFor(req, res); if (!k) return;
+        if (!checkVersion(req, res, k)) return;
+        for (const f of ['first_name', 'last_name', 'middle_initial', 'business_name', 'email', 'ssn', 'ein', 'start_date', 'is_active']) if (req.body[f] !== undefined) k[f] = req.body[f];
+        res.json(pubContractor(bump(k)));
+    });
+    const addrOf = (k) => k.address || { version: k.addr_version || (k.addr_version = ver()), contractor_uuid: k.uuid, street_1: null, street_2: null, city: null, state: null, zip: null, country: 'USA' };
+    app.get('/v1/contractors/:id/address', needs('company'), (req, res) => { const k = contractorFor(req, res); if (k) res.json(addrOf(k)); });
+    app.put('/v1/contractors/:id/address', needs('company'), (req, res) => {
+        const k = contractorFor(req, res); if (!k) return undefined;
+        if (!checkVersion(req, res, addrOf(k))) return undefined;
+        const b = req.body || {};
+        if (!b.street_1 || !b.city || !b.state || !b.zip) return err(res, 422, 'invalid_request', 'street_1, city, state and zip are required');
+        k.address = { version: ver(), contractor_uuid: k.uuid, street_1: b.street_1, street_2: b.street_2 || null, city: b.city, state: b.state, zip: b.zip, country: 'USA' };
+        return res.json(k.address);
+    });
+    app.put('/v1/contractors/:id/onboarding_status', needs('company'), (req, res) => {
+        const k = contractorFor(req, res); if (!k) return undefined;
+        if ((req.body || {}).onboarding_status !== 'onboarding_completed') return err(res, 422, 'invalid_request', 'onboarding_status must be onboarding_completed');
+        if (!k.address) return err(res, 422, 'onboarding_incomplete', 'Contractor is missing: address', { missing: ['address'] });
+        k.onboarded = true; k.onboarding_status = 'onboarding_completed'; bump(k);
+        return res.json({ uuid: k.uuid, onboarding_status: k.onboarding_status, onboarding_steps: [] });
+    });
+    app.post(...asCompany('/v1/companies/:cid/contractor_payments', (req, res, c) => {
+        const b = req.body || {};
+        const k = S.contractors.get(b.contractor_uuid);
+        if (!k || k.company_uuid !== c.uuid) return err(res, 422, 'unknown_contractor', 'contractor_uuid is not in this company');
+        if (!k.onboarded) return err(res, 422, 'contractor_not_onboarded', 'The contractor has not finished onboarding');
+        if (!rules.parseIso(b.date)) return err(res, 422, 'invalid_request', 'date is required');
+        const method = b.payment_method || 'Direct Deposit';
+        if (!['Direct Deposit', 'Check', 'Historical Payment'].includes(method)) return err(res, 422, 'invalid_request', 'payment_method is not valid');
+        if (method === 'Direct Deposit') return err(res, 422, 'no_bank_account', 'The contractor has no bank account for direct deposit');
+        const n = (v) => (v === undefined || v === null || v === '' ? 0 : Number(v));
+        if ([b.wage, b.hours, b.bonus, b.reimbursement].some((v) => !(n(v) >= 0))) return err(res, 422, 'invalid_request', 'Amounts cannot be negative');
+        if (k.wage_type === 'Fixed' && n(b.hours) > 0) return err(res, 422, 'invalid_request', 'hours can only be sent for an hourly contractor');
+        if (k.wage_type === 'Hourly' && n(b.wage) > 0) return err(res, 422, 'invalid_request', 'wage can only be sent for a fixed-wage contractor');
+        const wageTotal = k.wage_type === 'Hourly' ? n(b.hours) * Number(k.hourly_rate) : n(b.wage);
+        if (!(wageTotal + n(b.bonus) + n(b.reimbursement) > 0)) return err(res, 422, 'invalid_request', 'The payment is empty');
+        const p = { uuid: uuid(), company_uuid: c.uuid, contractor_uuid: k.uuid, date: b.date, payment_method: method, wage_type: k.wage_type, hourly_rate: k.hourly_rate, hours: money(n(b.hours)), wage: money(n(b.wage)), bonus: money(n(b.bonus)), reimbursement: money(n(b.reimbursement)), wage_total: money(wageTotal), status: 'Unfunded', may_cancel: true };
+        S.contractorPayments.set(p.uuid, p);
+        return res.status(201).json(p);
+    }));
+    app.get(...asCompany('/v1/companies/:cid/contractor_payments', (req, res, c) => {
+        let rows = [...S.contractorPayments.values()].filter((p) => p.company_uuid === c.uuid);
+        if (req.query.start_date) rows = rows.filter((p) => p.date >= req.query.start_date);
+        if (req.query.end_date) rows = rows.filter((p) => p.date <= req.query.end_date);
+        const sum = (list, f) => money(list.reduce((a, p) => a + Number(p[f]), 0));
+        const byK = new Map(); rows.forEach((p) => { if (!byK.has(p.contractor_uuid)) byK.set(p.contractor_uuid, []); byK.get(p.contractor_uuid).push(p); });
+        res.json({ total: { reimbursements: sum(rows, 'reimbursement'), wages: sum(rows, 'wage_total') }, contractor_payments: [...byK.entries()].map(([contractor_uuid, payments]) => ({ contractor_uuid, reimbursement_total: sum(payments, 'reimbursement'), wage_total: sum(payments, 'wage_total'), payments })) });
+    }));
+    const cPayFor = (req, res, c) => { const p = S.contractorPayments.get(req.params.pid); if (!p || p.company_uuid !== c.uuid) { err(res, 404, 'not_found', 'Contractor payment not found'); return null; } return p; };
+    app.get(...asCompany('/v1/companies/:cid/contractor_payments/:pid', (req, res, c) => { const p = cPayFor(req, res, c); if (p) res.json(p); }));
+    app.delete(...asCompany('/v1/companies/:cid/contractor_payments/:pid', (req, res, c) => {
+        const p = cPayFor(req, res, c); if (!p) return undefined;
+        if (!p.may_cancel) return err(res, 422, 'cannot_cancel', 'This payment has already been funded and cannot be cancelled');
+        S.contractorPayments.delete(p.uuid);
+        return res.status(204).end();
+    }));
+
+    /* ------------------------------- W-2 / 1099 forms ------------------------------- */
+    const originOf = (req) => `http://${req.headers.host}`;
+    const formOf = (res, id, field, ownerUuid) => { const f = S.taxForms.get(id); if (!f || f[field] !== ownerUuid) { err(res, 404, 'not_found', 'Form not found'); return null; } return f; };
+    app.get('/v1/employees/:id/forms', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json([...S.taxForms.values()].filter((f) => f.employee_uuid === e.uuid)); });
+    app.get('/v1/employees/:id/forms/:fid', needs('company'), (req, res) => { const e = empFor(req, res); if (!e) return; const f = formOf(res, req.params.fid, 'employee_uuid', e.uuid); if (f) res.json(f); });
+    app.get('/v1/employees/:id/forms/:fid/pdf', needs('company'), (req, res) => { const e = empFor(req, res); if (!e) return; const f = formOf(res, req.params.fid, 'employee_uuid', e.uuid); if (f) res.json({ uuid: f.uuid, document_url: `${originOf(req)}/__files/${f.uuid}.pdf` }); });
+    app.get('/v1/contractors/:id/forms', needs('company'), (req, res) => { const k = contractorFor(req, res); if (k) res.json([...S.taxForms.values()].filter((f) => f.contractor_uuid === k.uuid)); });
+    app.get('/v1/contractors/:id/forms/:fid/pdf', needs('company'), (req, res) => { const k = contractorFor(req, res); if (!k) return; const f = formOf(res, req.params.fid, 'contractor_uuid', k.uuid); if (f) res.json({ uuid: f.uuid, document_url: `${originOf(req)}/__files/${f.uuid}.pdf` }); });
+
+    /* ------------------------------- garnishments ------------------------------- */
+    const GARNISHMENT_TYPES = ['child_support', 'federal_tax_lien', 'state_tax_lien', 'student_loan', 'creditor_garnishment', 'federal_loan', 'other_garnishment'];
+    const garnishmentBody = (b, cur = {}) => {
+        const g = { ...cur };
+        for (const f of ['active', 'amount', 'description', 'court_ordered', 'garnishment_type', 'times', 'recurring', 'annual_maximum', 'pay_period_maximum', 'total_amount', 'deduct_as_percentage', 'child_support']) if (b[f] !== undefined) g[f] = b[f];
+        if (!(Number(g.amount) > 0)) return { error: 'amount must be above zero' };
+        if (!g.description) return { error: 'description is required' };
+        if (typeof g.court_ordered !== 'boolean') return { error: 'court_ordered is required' };
+        if (g.garnishment_type && !GARNISHMENT_TYPES.includes(g.garnishment_type)) return { error: 'garnishment_type is not valid' };
+        if (g.deduct_as_percentage && Number(g.amount) > 100) return { error: 'a percentage cannot be above 100' };
+        if (g.garnishment_type === 'child_support' && !(g.child_support && g.child_support.state && g.child_support.case_number)) return { error: 'child_support.state and child_support.case_number are required for child support' };
+        return { g };
+    };
+    app.post('/v1/employees/:id/garnishments', needs('company'), (req, res) => {
+        const e = empFor(req, res); if (!e) return undefined;
+        const r = garnishmentBody(req.body || {}, { active: true, times: null, recurring: true, annual_maximum: null, pay_period_maximum: null, total_amount: null, deduct_as_percentage: false, garnishment_type: null, child_support: null });
+        if (r.error) return err(res, 422, 'invalid_request', r.error);
+        const g = { uuid: uuid(), employee_uuid: e.uuid, version: ver(), ...r.g };
+        S.garnishments.set(g.uuid, g);
+        return res.status(201).json(g);
+    });
+    app.get('/v1/employees/:id/garnishments', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json([...S.garnishments.values()].filter((g) => g.employee_uuid === e.uuid)); });
+    const garnFor = (req, res) => { const g = S.garnishments.get(req.params.gid); const e = g && S.employees.get(g.employee_uuid); if (!g || !e || e.company_uuid !== req.tok.companyUuid) { err(res, 404, 'not_found', 'Garnishment not found'); return null; } return g; };
+    app.get('/v1/garnishments/:gid', needs('company'), (req, res) => { const g = garnFor(req, res); if (g) res.json(g); });
+    app.put('/v1/garnishments/:gid', needs('company'), (req, res) => {
+        const g = garnFor(req, res); if (!g) return undefined;
+        if (!checkVersion(req, res, g)) return undefined;
+        const r = garnishmentBody(req.body || {}, g);
+        if (r.error) return err(res, 422, 'invalid_request', r.error);
+        Object.assign(g, r.g); bump(g);
+        return res.json(g);
+    });
+
+    /* ------------------------------- benefits (company benefits and each person's deduction) ------------------------------- */
+    // The benefit_type numbers here are the mock's own; the adapter looks benefits up by name, never by number.
+    const BENEFITS = [[1, 'Medical Insurance'], [2, 'Dental Insurance'], [3, 'Vision Insurance'], [5, '401(k)'], [6, 'Health Savings Account'], [7, 'Health FSA'], [9, 'Life Insurance'], [10, 'Short Term Disability'], [105, 'Roth 401(k)'], [998, 'Other (pre-tax)'], [999, 'Other (taxable)']].map(([benefit_type, name]) => ({ benefit_type, name, description: name, pretax: benefit_type !== 105 && benefit_type !== 999, posttax: benefit_type === 105 || benefit_type === 999 }));
+    app.get('/v1/benefits', needs('any'), (req, res) => res.json(BENEFITS));
+    app.post(...asCompany('/v1/companies/:cid/company_benefits', (req, res, c) => {
+        const b = req.body || {};
+        if (!BENEFITS.some((x) => x.benefit_type === Number(b.benefit_type)) || !b.description) return err(res, 422, 'invalid_request', 'benefit_type (from GET /v1/benefits) and description are required');
+        const cb = { uuid: uuid(), company_uuid: c.uuid, benefit_type: Number(b.benefit_type), description: b.description, active: b.active !== false, deletable: true, responsible_for_employer_taxes: Boolean(b.responsible_for_employer_taxes), responsible_for_employee_w2: Boolean(b.responsible_for_employee_w2), version: ver() };
+        S.companyBenefits.set(cb.uuid, cb);
+        return res.status(201).json(cb);
+    }));
+    app.get(...asCompany('/v1/companies/:cid/company_benefits', (req, res, c) => res.json([...S.companyBenefits.values()].filter((b) => b.company_uuid === c.uuid))));
+    const empBenefitBody = (b, cur) => {
+        const x = { ...cur };
+        for (const f of ['active', 'employee_deduction', 'deduct_as_percentage', 'employee_deduction_annual_maximum', 'contribution', 'elective', 'company_contribution_annual_maximum', 'limit_option', 'catch_up']) if (b[f] !== undefined) x[f] = b[f];
+        if (!(Number(x.employee_deduction) >= 0)) return { error: 'employee_deduction must be zero or more' };
+        if (x.deduct_as_percentage && Number(x.employee_deduction) > 100) return { error: 'a percentage cannot be above 100' };
+        if (x.contribution && (!['amount', 'percentage', 'tiered'].includes(x.contribution.type))) return { error: 'contribution.type must be amount, percentage or tiered' };
+        return { x };
+    };
+    app.post('/v1/employees/:id/employee_benefits', needs('company'), (req, res) => {
+        const e = empFor(req, res); if (!e) return undefined;
+        const b = req.body || {};
+        const cb = S.companyBenefits.get(b.company_benefit_uuid);
+        if (!cb || cb.company_uuid !== e.company_uuid) return err(res, 422, 'invalid_request', 'company_benefit_uuid is not one of this company\'s benefits');
+        if ([...S.employeeBenefits.values()].some((x) => x.employee_uuid === e.uuid && x.company_benefit_uuid === cb.uuid)) return err(res, 422, 'duplicate', 'This employee already has this benefit');
+        const r = empBenefitBody(b, { active: true, employee_deduction: '0.00', deduct_as_percentage: false, employee_deduction_annual_maximum: null, contribution: { type: 'amount', value: '0.00' }, elective: false, company_contribution_annual_maximum: null, limit_option: null, catch_up: false });
+        if (r.error) return err(res, 422, 'invalid_request', r.error);
+        const x = { uuid: uuid(), employee_uuid: e.uuid, company_benefit_uuid: cb.uuid, version: ver(), ...r.x };
+        S.employeeBenefits.set(x.uuid, x);
+        return res.status(201).json(x);
+    });
+    app.get('/v1/employees/:id/employee_benefits', needs('company'), (req, res) => { const e = empFor(req, res); if (e) res.json([...S.employeeBenefits.values()].filter((x) => x.employee_uuid === e.uuid)); });
+    const empBenFor = (req, res) => { const x = S.employeeBenefits.get(req.params.bid); const e = x && S.employees.get(x.employee_uuid); if (!x || !e || e.company_uuid !== req.tok.companyUuid) { err(res, 404, 'not_found', 'Employee benefit not found'); return null; } return x; };
+    app.get('/v1/employee_benefits/:bid', needs('company'), (req, res) => { const x = empBenFor(req, res); if (x) res.json(x); });
+    app.put('/v1/employee_benefits/:bid', needs('company'), (req, res) => {
+        const x = empBenFor(req, res); if (!x) return undefined;
+        if (!checkVersion(req, res, x)) return undefined;
+        const r = empBenefitBody(req.body || {}, x);
+        if (r.error) return err(res, 422, 'invalid_request', r.error);
+        Object.assign(x, r.x); bump(x);
+        return res.json(x);
+    });
+    app.delete('/v1/employee_benefits/:bid', needs('company'), (req, res) => { const x = empBenFor(req, res); if (!x) return; S.employeeBenefits.delete(x.uuid); res.status(204).end(); });
 
     /* time off (path and shape are our adapter's best guess; see docs) */
     app.post(...asCompany('/v1/companies/:cid/time_off_requests', (req, res, c) => {
