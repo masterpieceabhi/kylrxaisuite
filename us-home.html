@@ -50,6 +50,7 @@ const PAGES = [
   ['admin-us-calendar.html', 'Compliance calendar', 'Every dated duty in one list', ['compliance.view', 'people.read']],
   ['admin-us-checklists.html', 'Checklists', 'New-hire and leaving tasks', ['people.write']],
   ['admin-us-i9-report.html', 'I-9 audit report', 'Printable list of every form', ['reports.view']],
+  ['admin-us-performance.html', 'Goals and reviews', 'Team goals and performance reviews', ['people.read', 'people.read_team', 'people.write']],
   ['admin-us-offboarding.html', 'Offboarding', 'Terminations and final steps', ['people.write']],
   ['admin-us-privacy.html', 'Privacy requests', 'Data copies and deletions', ['privacy.manage']],
   ['admin-us-integrations.html', 'Integrations', 'API keys, webhooks, connected apps', ['integrations.view', 'integrations.manage']],
@@ -58,7 +59,7 @@ const PAGES = [
 ];
 const MINE = [
   ['punch.html', 'Clock in and out', 'Start and end your day'], ['timesheet.html', 'My hours', 'Check and send your week'], ['my-schedule.html', 'My schedule', 'Shifts, swaps, availability'],
-  ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
+  ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-goals.html', 'My goals', 'Goals and reviews'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
   ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data']
 ];
 const tile = ([href, name, text]) => { const a = document.createElement('a'); a.className = 'tile'; a.href = href; const b = document.createElement('b'); b.textContent = name; const s = document.createElement('span'); s.textContent = text; a.append(b, s); return a; };
