@@ -130,7 +130,7 @@ The pages and the server code sit in the same folder, and that folder is served 
 - Errors are appended to `LOG_DIR/errors.jsonl`. Nothing alerts anyone unless Sentry or a monitor is set up.
 - **Back up three things, and test a restore:** the Firestore database (Google's scheduled export), the `VAULT_DIR` folder, and the secret values from section 2. A database backup without `PII_ENCRYPTION_KEY` cannot show SSNs, bank numbers or documents.
 
-Backups, restore and alerting are not set up by anything in this repository.
+Backups are not scheduled by anything in this repository, and nothing alerts anyone. `npm run backup` and `npm run restore` exist for small installs and for moving data; read `docs/BACKUP.md` first. A real restore has not been run.
 
 ## 8. Known problems to fix before real customers
 
@@ -139,7 +139,7 @@ Backups, restore and alerting are not set up by anything in this repository.
 | Libraries with known security problems | `npm audit --omit=dev` on 2026-11-12 found 32 (2 critical, 17 high). The non-breaking `npm audit fix` was then run (only `package-lock.json` changed), which leaves 10: 0 critical, 2 high, 8 moderate. Still open: `nodemailer` (high; the fix is a major version, 10.x, so email sending must be re-tested with it), `xlsx` (high; no fix on npm, the vendor's patched build must be installed from their own site), and `firebase-admin` with the Google libraries under it (moderate; the fix is a major version, 14.x). After the update all 527 tests passed, the 39 policy and 42 equipment live checks passed, and every page file was still served. Not exercised on the updated libraries: sending real email, file uploads, and PDF creation. |
 | Personal data stored in the repository | `reports/*.csv` (attendance with names and emails), `data/conversion_store.json`, `data/messages_store.json` and `logs/attendance_excel_log.csv` are tracked in git. The `reports` files are also served to browsers without a login because a page loads them. Check whether they hold real people's data; if so remove them from the repository and its history, and serve reports through a signed-in route. |
 | Inline scripts are allowed | The Content-Security-Policy keeps `unsafe-inline` because many older pages need it. |
-| A demo password is written in `login.js` | It is only used when the page is opened on `localhost` against the emulators, and the account does not exist anywhere else. Remove it before a security review. |
+| Local demo sign-in helper | The demo password is no longer in `login.js`. The quick sign-in buttons on the login page call `/api/auth/dev-demo-login`, which exists only when both emulator settings are present and `NODE_ENV` is not `production`, and answers only to the same PC. On a real server it answers 404; check that after deploying. |
 | Only one copy of the server can run | See section 1. |
 | Sign-in codes by email only | No authenticator app or hardware key. |
 | No independent security test | No penetration test or SOC 2. |

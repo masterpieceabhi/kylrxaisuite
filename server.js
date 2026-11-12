@@ -306,6 +306,9 @@ app.use("/api/us", require("./routes/us-surveys")); // pulse surveys and eNPS
 app.use("/api/us", require("./routes/us-assets")); // company equipment
 app.use("/api/us", require("./routes/us-policies")); // policy library with versions
 app.use("/api/us", require("./routes/us-report-builder")); // custom reports and scheduled copies
+app.use("/api/us", require("./routes/us-review-cycles")); // review cycles and 360 feedback
+app.use("/api/us", require("./routes/us-recognition")); // announcements and thanks
+app.use("/api/us", require("./routes/us-payroll-import")); // historical payroll import
 app.use("/api/sso", require("./routes/sso"));
 app.use("/api/support", require("./routes/support-access"));
 app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors
