@@ -40,6 +40,25 @@ async function userDoc(orgId, userId) {
     return { id: snap.id, ref: snap.ref, data: snap.data() };
 }
 
+/** Company holidays that fall in a week, for this person's work location (United States companies only). Never fails the timesheet. */
+async function holidaysInWeek(orgId, user, weekStart, weekEnd, info) {
+    if (info.country !== 'US') return [];
+    try {
+        const cal = require('../services/company-holidays'); const H = require('../services/holiday-rules');
+        const locationId = (user.data.usProfile && user.data.usProfile.workLocationId) || undefined;
+        const out = [];
+        for (const year of new Set([weekStart.slice(0, 4), weekEnd.slice(0, 4)])) {
+            const calendar = await cal.calendarFor(orgId, Number(year));
+            for (let d = weekStart; d <= weekEnd; d = addDays(d, 1)) {
+                if (d.slice(0, 4) !== year) continue;
+                const h = H.holidayOn(calendar, d, locationId);
+                if (h) out.push({ date: d, name: h.name, paid: h.paid !== false });
+            }
+        }
+        return out;
+    } catch (_) { return []; }
+}
+
 /** Everything about one person's workweek: pay-hour split, flags, each day's punches */
 async function weekView(orgId, user, weekStart, info) {
     const weekEnd = addDays(weekStart, 6);
@@ -57,8 +76,11 @@ async function weekView(orgId, user, weekStart, info) {
         punches: punches.filter((p) => p.localDate === d.date).map((p) => ({ id: p.id, type: p.type, time: localTimeOf(p.at, info.tz), source: p.source }))
     }));
     const open = rules.stateOf(punches) !== 'out' && punches.some((p) => p.localDate >= weekStart && p.localDate <= weekEnd);
+    // Holidays are shown so the person approving can add holiday pay where the company gives it; hours are not added automatically
+    const holidays = await holidaysInWeek(orgId, user, weekStart, weekEnd, info);
+    days.forEach((d) => { const h = holidays.find((x) => x.date === d.date); if (h) d.holiday = { name: h.name, paid: h.paid }; });
     return {
-        weekStart, weekEnd, exempt, openShift: open,
+        weekStart, weekEnd, exempt, openShift: open, holidays,
         forgottenClockOut: rules.isForgottenClockOut(punches, nowIso),
         days, flags: pay.flags,
         totals: { workedHours: hours(pay.totals.workedMinutes), regularHours: hours(pay.totals.regularMinutes), overtimeHours: hours(pay.totals.overtimeMinutes), doubleTimeHours: hours(pay.totals.doubleTimeMinutes) }

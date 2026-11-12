@@ -252,7 +252,46 @@ function toCsv(columns, rows) {
     return [columns.map((c) => c.label).join(','), ...rows.map((r) => columns.map((c) => esc(r[c.key])).join(','))].join('\n') + '\n';
 }
 
+/**
+ * Form I-9 audit list: one row per person, current and former, with what is on file and whether it was on time.
+ * Section 1 is due by the first day of work, Section 2 within 3 business days of it (onboardingStatus works the dates out).
+ * Former employees show the date their form may be disposed of. Nothing here decides legal compliance: it is a worklist.
+ */
+function i9AuditReport(people, asOf) {
+    const day = (v) => (v ? String(v).slice(0, 10) : null);
+    const rows = [];
+    for (const p of people) {
+        if (!p.periods.length || p.classification === '1099') continue; // contractors do not complete Form I-9
+        const i9 = (p.usForms && p.usForms.i9) || {};
+        const s1 = i9.section1 || null; const s2 = i9.section2 || null;
+        const hire = p.periods[p.periods.length - 1].start;
+        const former = !isActiveOn(p, asOf) && p.periods.every((per) => per.end && per.end < asOf);
+        const lastDay = former ? p.periods[p.periods.length - 1].end : null;
+        const st = onboardingStatus({ firstDay: hire, w4: null, i9, todayIso: asOf });
+        const s1On = day(s1 && s1.signedAt); const s2On = day(s2 && (s2.examinedOn || s2.signedAt));
+        const findings = [];
+        if (!s1) findings.push(former ? 'Section 1 was never completed' : (asOf > st.i9Section1Due ? 'Section 1 missing and overdue' : 'Section 1 not done yet'));
+        else if (s1On > st.i9Section1Due) findings.push('Section 1 completed late');
+        if (!s2) findings.push(former ? 'Section 2 was never completed' : (asOf > st.i9Section2Due ? 'Section 2 missing and overdue' : 'Section 2 not done yet'));
+        else if (s2On > st.i9Section2Due) findings.push('Section 2 completed late');
+        const reverifyOn = reverificationDate(s1, s2);
+        if (!former && reverifyOn) { if (reverifyOn < asOf) findings.push('Work authorization expired: reverify now'); else if (daysBetween(asOf, reverifyOn) <= 90) findings.push('Work authorization expires within 90 days'); }
+        const keepUntil = former ? retainUntil(p.periods[0].start, lastDay) : null;
+        if (former && keepUntil && keepUntil < asOf && (s1 || s2)) findings.push('Retention period has passed: the form may be disposed of');
+        const needsAction = findings.some((f) => /missing|never|expired|overdue/.test(f));
+        rows.push({ id: p.id, employeeId: p.employeeId, name: p.name, department: p.department, status: former ? 'former' : 'current', hireDate: hire, lastDay,
+            section1On: s1On, section1Due: st.i9Section1Due, section2On: s2On, section2Due: st.i9Section2Due, reverifyOn, keepUntil, findings, needsAction });
+    }
+    rows.sort((a, b) => Number(b.needsAction) - Number(a.needsAction) || String(a.name).localeCompare(String(b.name)));
+    const current = rows.filter((r) => r.status === 'current');
+    return {
+        asOf, total: rows.length, current: current.length, former: rows.length - current.length,
+        complete: current.filter((r) => r.section1On && r.section2On).length, needsAction: rows.filter((r) => r.needsAction).length,
+        late: rows.filter((r) => r.findings.some((f) => /late/.test(f))).length, canDispose: rows.filter((r) => r.findings.some((f) => /disposed/.test(f))).length, list: rows
+    };
+}
+
 module.exports = {
-    normalizePerson, isActiveOn, headcountAt, tenureBucket, headcountReport, turnoverReport, separationCategory, hourlyRate,
+    i9AuditReport, normalizePerson, isActiveOn, headcountAt, tenureBucket, headcountReport, turnoverReport, separationCategory, hourlyRate,
     laborReport, leaveLiabilityReport, complianceReport, timeReport, toCsv, ISSUE_TEXT
 };

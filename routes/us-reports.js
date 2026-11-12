@@ -131,6 +131,18 @@ router.get('/reports/compliance', async (req, res) => {
     res.json({ success: true, ...report });
 });
 
+/** Form I-9 audit list for everyone, current and former */
+router.get('/reports/i9-audit', async (req, res) => {
+    const { today } = await context(req);
+    const { people } = await loadPeople(req.orgId);
+    const report = R.i9AuditReport(people, today);
+    if (req.query.format === 'csv') {
+        return sendCsv(res, 'i9-audit', [['employeeId', 'Employee ID'], ['name', 'Name'], ['department', 'Department'], ['status', 'Status'], ['hireDate', 'First day'], ['section1On', 'Section 1 signed'], ['section1Due', 'Section 1 due'], ['section2On', 'Section 2 examined'], ['section2Due', 'Section 2 due'], ['reverifyOn', 'Reverify by'], ['lastDay', 'Last day'], ['keepUntil', 'Keep until'], ['findings', 'Findings']].map(([key, label]) => ({ key, label })),
+            report.list.map((r) => ({ ...r, findings: r.findings.join('; ') })));
+    }
+    res.json({ success: true, note: 'A worklist, not a legal opinion. Confirm findings with a US immigration or employment advisor before an audit.', ...report });
+});
+
 router.get('/reports/time', async (req, res) => {
     const { today } = await context(req);
     const since = addDays(today, -7 * Math.min(26, Math.max(1, Number(req.query.weeks) || 8)));

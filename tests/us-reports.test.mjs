@@ -123,3 +123,30 @@ test('CSV quoting', () => {
     const csv = R.toCsv([{ key: 'a', label: 'Name' }, { key: 'b', label: 'Note' }], [{ a: 'Lopez, Maria', b: 'said "hi"' }, { a: 'Ann', b: null }]);
     assert.equal(csv, 'Name,Note\n"Lopez, Maria","said ""hi"""\nAnn,\n');
 });
+
+test('I-9 audit: on time, late, missing, expiring and former employees', () => {
+    // 2025-01-15 is a Wednesday: Section 1 is due that day, Section 2 by Tue 2025-01-21 (Monday the 20th is a federal holiday)
+    const i9 = (s1, s2, extra1 = {}, extra2 = {}) => ({ doc: { usForms: { i9: { ...(s1 ? { section1: { signedAt: `${s1}T15:00:00.000Z`, ...extra1 } } : {}), ...(s2 ? { section2: { examinedOn: s2, ...extra2 } } : {}) } } } });
+    const people = [
+        person(1, i9('2025-01-15', '2025-01-17')),
+        person(2, i9('2025-01-16', '2025-02-10')),
+        person(3, i9(null, null)),
+        person(4, i9('2025-01-15', '2025-01-16', { workAuthorizationExpires: '2026-12-15' })),
+        person(5, { profile: { startDate: '2021-03-01', termination: { lastDay: '2022-06-30', type: 'resignation', rehireEligible: true } }, ...i9('2021-03-01', '2021-03-02') }),
+        person(6, { profile: { classification: '1099' } })
+    ];
+    const r = R.i9AuditReport(people, '2026-11-11');
+    const by = Object.fromEntries(r.list.map((x) => [x.id, x]));
+    assert.equal(r.total, 5, 'the contractor is left out');
+    assert.deepEqual(by[1].findings, []);
+    assert.deepEqual(by[2].findings, ['Section 1 completed late', 'Section 2 completed late']);
+    assert.deepEqual(by[3].findings, ['Section 1 missing and overdue', 'Section 2 missing and overdue']);
+    assert.equal(by[3].needsAction, true);
+    assert.deepEqual(by[4].findings, ['Work authorization expires within 90 days']);
+    assert.equal(by[4].reverifyOn, '2026-12-15');
+    assert.equal(by[5].status, 'former');
+    assert.equal(by[5].keepUntil, '2024-03-01', 'three years after hire is later than one year after leaving');
+    assert.deepEqual(by[5].findings, ['Retention period has passed: the form may be disposed of']);
+    assert.equal(r.list[0].id, 3, 'people who need action come first');
+    assert.equal(r.current, 4); assert.equal(r.former, 1); assert.equal(r.complete, 3); assert.equal(r.needsAction, 1); assert.equal(r.late, 1); assert.equal(r.canDispose, 1);
+});

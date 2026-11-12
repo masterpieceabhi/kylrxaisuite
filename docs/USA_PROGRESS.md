@@ -2,7 +2,7 @@
 
 As of 2026-11-11 (evening) on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
 
-**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (464 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
+**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (467 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
 
 Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = core works, the named pieces are missing; **Existing, not adapted** = old India-app code only; **Not started** = nothing.
 
@@ -10,8 +10,8 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 50 | 22 |
-| Partial | 46 | 24 |
+| Done | 53 | 22 |
+| Partial | 43 | 24 |
 | Existing, not adapted | 5 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
@@ -27,10 +27,10 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | B People and organization | 8 | 2 | 0 | 0 |
 | C Hiring and onboarding | 8 | 2 | 0 | 0 |
 | D Time, attendance, scheduling | 9 | 2 | 0 | 0 |
-| E Leave and holidays | 5 | 3 | 0 | 0 |
+| E Leave and holidays | 6 | 2 | 0 | 0 |
 | F Payroll (Gusto) | 1 | 7 | 0 | 5 |
 | G Benefits | 4 | 2 | 0 | 0 |
-| H Documents and compliance | 4 | 3 | 1 | 0 |
+| H Documents and compliance | 6 | 1 | 1 | 0 |
 | I Performance and engagement | 0 | 1 | 3 | 2 |
 | J Analytics and reporting | 5 | 0 | 1 | 0 |
 | K Connectors | 3 | 11 | 0 | 0 |
@@ -60,7 +60,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-B03 | Done | Departments, managers, org chart, bulk reassignment; page `admin-us-org.html` | |
 | US-B04 | Done | Job and pay history with approval, tests, page `admin-us-pay.html` | |
 | US-B05 | Done | Pay schedules (`admin-us-org.html`), direct-deposit splits (`admin-us-pay.html`), tests | Split accounts are not sent to Gusto; employees cannot set splits themselves on a page |
-| US-B06 | Partial | Custom fields, tests, page `admin-us-changes.html`; employees fill theirs in `my-profile.html` | Tags; no button yet to reveal a sensitive value |
+| US-B06 | Partial | Custom fields, tests, page `admin-us-changes.html` with a Show button for sensitive values (asks for a reason, recorded, hidden again after 30 seconds); employees fill theirs in `my-profile.html` | Tags |
 | US-B07 | Done | Bulk import with check-first step | |
 | US-B08 | Done | Self-service change requests with approval; employee page `my-profile.html`, HR queue `admin-us-changes.html` | Supporting-document upload is not on the page |
 | US-B09 | Done | Termination and rehire | |
@@ -72,7 +72,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 |---|---|---|---|
 | US-C01 | Done | Requisitions, pipeline, scorecards, interviews, hire; HR page `admin-us-hiring.html`; public careers and apply page `careers.html` (English and Spanish); tests | Sending the offer for e-signature from the page (waits on the e-sign pages) |
 | US-C02 | Done | Offers, e-sign templates and requests; HR page `admin-us-esign.html`; public signing page `sign.html` (English and Spanish); a signed offer letter marks the offer accepted; tests | The signing link is shown to HR to pass on; the system does not email it |
-| US-C03 | Partial | Onboarding, offboarding, rehire checklists | Email reminders; template editor |
+| US-C03 | Partial | Onboarding, offboarding, rehire checklists; page `admin-us-checklists.html` with the open-task list and an editor (add your own tasks, switch off optional built-in ones; form and required tasks stay), tests | Email reminders |
 | US-C04 | Done | Federal W-4 | State withholding forms |
 | US-C05 | Done | I-9 Sections 1 and 2 | |
 | US-C06 | Done | E-Verify case tracking, tests, page `admin-us-hiring-compliance.html` | Tracking only: cases are created on the E-Verify website by hand |
@@ -106,7 +106,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-E03 | Done | Leave cases (FMLA style), HR and employee pages, linked | |
 | US-E04 | Done | Jury, military, bereavement, parental leave types | State rules are placeholders to be entered |
 | US-E05 | Done | Requests, approvals, calendar | |
-| US-E06 | Partial | Company holiday routes, tests, page (`admin-us-org.html`); time-off requests skip the company's holidays instead of the plain federal list (tests) | Timesheets do not add holiday pay or mark holidays |
+| US-E06 | Done | Company holiday routes, tests, page (`admin-us-org.html`); time-off requests skip the company's holidays; timesheets show the company holidays in the week | Holiday pay hours are not added automatically: the approver adds them where the company gives them |
 | US-E07 | Partial | Balances and payout summary | Payout calculation into pay |
 | US-E08 | Partial | Approved leave pushed to Gusto | One way only; no policy sync; mock only |
 
@@ -151,11 +151,11 @@ Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefi
 |---|---|---|---|
 | US-H01 | Done | Document vault | Retention jobs have no page or test |
 | US-H02 | Done | E-sign service, certificate, tests; pages `admin-us-esign.html`, `sign.html`, "to sign" list in `my-documents.html` | |
-| US-H03 | Partial | Deadline and expiry lists | One compliance calendar |
+| US-H03 | Done | Deadline and expiry lists; `admin-us-calendar.html` puts every dated duty in one list (I-9, documents, E-Verify, new-hire reports, background checks, privacy requests, COBRA, benefits, signing links, workplace notices) | Built in the page from the existing lists, so it shows only what the signed-in role may see |
 | US-H04 | Partial | Notice tracker | Notice texts; state lists |
 | US-H05 | Done | EEO-1 data | |
 | US-H06 | Done | OSHA log | |
-| US-H07 | Partial | I-9 status table | Printable audit report |
+| US-H07 | Done | I-9 status table; printable audit report `admin-us-i9-report.html` for current and former employees with on-time checks, reverify dates and keep-until dates, CSV, tests | |
 | US-H08 | Existing, not adapted | Old policy library | US adaptation |
 
 ## I. Performance and engagement
@@ -214,10 +214,10 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 
 ## Next, in order of value (no outside accounts needed)
 
-1. Smaller screens: checklist template editor (C03), printable I-9 audit report (H07), one compliance calendar (H03), reveal button for sensitive custom fields (B06).
-2. Holiday pay and holiday marking on timesheets (E06); rest breaks and missed-break pay (D04).
-3. US versions of the old India modules: goals and reviews, surveys, assets, policy library, report builder (I01, I03, I05, H08, J05).
-4. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
-5. Run the 14 Gusto setup steps again on the local mock and submit one payroll through the page, to see the register filled in the browser.
+1. Holiday pay hours on timesheets and into the payroll feed (needs a company rule for how many hours); rest breaks and missed-break pay (D04).
+2. US versions of the old India modules: goals and reviews, surveys, assets, policy library, report builder (I01, I03, I05, H08, J05).
+3. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
+4. Run the 14 Gusto setup steps again on the local mock and submit one payroll through the page, to see the register filled in the browser.
+5. Email: checklist reminders and sending signing links (needs a mail service decision).
 
 Needs an outside account before it can move: Gusto demo credentials (all of F), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10).

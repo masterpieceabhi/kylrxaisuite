@@ -109,9 +109,10 @@ function paint() {
   const dn = $('decision'); dn.style.display = st === 'rejected' && week.decisionNote ? 'block' : 'none'; dn.textContent = tr('rejNote', { n: week.decisionNote || '' });
   $('tTot').textContent = hm(week.totals.workedHours); $('tReg').textContent = hm(week.totals.regularHours); $('tOt').textContent = hm(week.totals.overtimeHours + week.totals.doubleTimeHours);
   const lockedWeek = st === 'approved';
-  $('days').innerHTML = week.days.length ? week.days.map((d) => `<div class="day"><div class="dh"><b>${fmtDay(d.date)}</b><span>${hm(d.workedHours)} ${tr('tot')}</span></div>
+  const holidayLine = (week.holidays || []).map((h) => `<div class="flag" style="background:#eff6ff;color:#1e3a8a">${fmtDay(h.date)}: ${String(h.name).replace(/[&<>"']/g, '')}${lang === 'es' ? (h.paid ? ' (día festivo pagado de la empresa)' : ' (día festivo de la empresa)') : (h.paid ? ' (paid company holiday)' : ' (company holiday)')}</div>`).join('');
+  $('days').innerHTML = holidayLine + (week.days.length ? week.days.map((d) => `<div class="day"><div class="dh"><b>${fmtDay(d.date)}</b><span>${hm(d.workedHours)} ${tr('tot')}</span></div>
     ${d.overtimeHours || d.doubleTimeHours ? `<div class="ot">+${hm(d.overtimeHours + d.doubleTimeHours)} ${tr('ot')}</div>` : ''}${d.flags.map((f) => `<div class="flag">⚠ ${tr(f)}</div>`).join('')}
-    <div class="pun">${d.punches.map((p) => `<button data-p="${p.id}" data-t="${p.type}" data-d="${d.date}" data-h="${p.time}" ${lockedWeek ? 'disabled' : ''}>${tr(p.type)} ${hhmm12(p.time)}</button>`).join('') || `<span class="s">${tr('noPunch')}</span>`}</div></div>`).join('') + (lockedWeek ? '' : `<p class="s" style="margin:10px 0 0">${tr('fixThis')}</p>`) : `<p class="s">${tr('noPunch')}</p>`;
+    <div class="pun">${d.punches.map((p) => `<button data-p="${p.id}" data-t="${p.type}" data-d="${d.date}" data-h="${p.time}" ${lockedWeek ? 'disabled' : ''}>${tr(p.type)} ${hhmm12(p.time)}</button>`).join('') || `<span class="s">${tr('noPunch')}</span>`}</div></div>`).join('') + (lockedWeek ? '' : `<p class="s" style="margin:10px 0 0">${tr('fixThis')}</p>`) : `<p class="s">${tr('noPunch')}</p>`);
   const canSend = ['open', 'rejected'].includes(st) && !week.openShift && week.days.length > 0;
   $('submit').disabled = !canSend; $('submit').style.display = st === 'approved' || st === 'submitted' ? 'none' : 'block';
   $('submitHelp').textContent = week.openShift ? tr('openShift') : tr('submitHelp'); $('submitHelp').style.display = st === 'approved' || st === 'submitted' ? 'none' : 'block';

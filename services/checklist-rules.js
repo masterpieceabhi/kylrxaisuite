@@ -54,11 +54,68 @@ function addDays(iso, n) {
     return isoDate(d);
 }
 
-/** Tasks for a checklist kind, with due dates counted from the anchor date */
+/** A built-in task tied to a form or a legal step (it completes itself from data, or is required) cannot be switched off */
+const canSwitchOff = (t) => !t.auto && !t.required;
+
+/**
+ * A company's changes to the built-in lists: { onboarding: { off: [keys], extra: [tasks] }, ... }.
+ * Only optional built-in tasks can be switched off; extra tasks are added after the built-in ones.
+ */
+function validateTemplateSettings(input) {
+    const errors = []; const value = {};
+    const b = input && typeof input === 'object' ? input : {};
+    for (const kind of KINDS) {
+        const k = b[kind] && typeof b[kind] === 'object' ? b[kind] : {};
+        const builtIn = new Map(TEMPLATES[kind].map((t) => [t.key, t]));
+        const off = [];
+        for (const key of Array.isArray(k.off) ? [...new Set(k.off.map(String))] : []) {
+            const t = builtIn.get(key);
+            if (!t) errors.push(`${kind}: "${key}" is not a built-in task`);
+            else if (!canSwitchOff(t)) errors.push(`${kind}: "${t.title}" cannot be switched off`);
+            else off.push(key);
+        }
+        const extra = [];
+        const list = Array.isArray(k.extra) ? k.extra : [];
+        if (list.length > 30) errors.push(`${kind}: at most 30 added tasks`);
+        list.slice(0, 30).forEach((t, i) => {
+            const title = String((t && t.title) || '').replace(/[<>]/g, '').trim();
+            const offset = Number(t && t.offset);
+            if (title.length < 3) errors.push(`${kind}: added task ${i + 1} needs a title`);
+            else if (!ASSIGNEES.includes(t.assignee)) errors.push(`${kind}: "${title}" needs who does it (${ASSIGNEES.join(', ')})`);
+            else if (!Number.isInteger(offset) || offset < -60 || offset > 365) errors.push(`${kind}: "${title}" due days must be a whole number from -60 to 365`);
+            else {
+                const given = String((t && t.key) || '');
+                const key = /^x_[a-z0-9]{4,16}$/.test(given) && !extra.some((e) => e.key === given) ? given : `x_${(Date.now() + i).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+                extra.push({ key, title: title.slice(0, 120), assignee: t.assignee, offset, required: t.required === true, help: String((t && t.help) || '').replace(/[<>]/g, '').trim().slice(0, 200) || null });
+            }
+        });
+        value[kind] = { off, extra };
+    }
+    return { errors, value: errors.length ? null : value };
+}
+
+/** The task templates a company uses for one kind: built-in ones (minus those switched off) then its own */
+function templatesFor(kind, custom) {
+    const c = (custom && custom[kind]) || {};
+    const off = new Set(Array.isArray(c.off) ? c.off : []);
+    return [...TEMPLATES[kind].filter((t) => !(off.has(t.key) && canSwitchOff(t))), ...(Array.isArray(c.extra) ? c.extra : [])];
+}
+
+/** What the editor shows: every built-in task with whether it is on and whether it can be switched off, plus the company's own */
+function describeTemplates(custom) {
+    const out = {};
+    for (const kind of KINDS) {
+        const c = (custom && custom[kind]) || {}; const off = new Set(c.off || []);
+        out[kind] = { builtIn: TEMPLATES[kind].map((t) => ({ key: t.key, title: t.title, assignee: t.assignee, required: t.required, due: t.business !== undefined ? `${t.business} business days` : `${t.offset || 0} days`, canSwitchOff: canSwitchOff(t), on: !(off.has(t.key) && canSwitchOff(t)), help: t.help || null })), extra: c.extra || [] };
+    }
+    return out;
+}
+
+/** Tasks for a checklist kind, with due dates counted from the anchor date. options.custom holds the company's template changes. */
 function buildChecklist(kind, anchorIso, options = {}) {
     if (!TEMPLATES[kind]) throw new Error(`Unknown checklist kind: ${kind}`);
     if (!parseIsoDate(anchorIso)) throw new Error('anchor date must be YYYY-MM-DD');
-    return TEMPLATES[kind].map((t) => ({
+    return templatesFor(kind, options.custom).map((t) => ({
         id: t.key, title: t.title, assignee: t.assignee, required: t.required, auto: t.auto || null, help: t.help || null,
         dueDate: t.business !== undefined ? addBusinessDays(anchorIso, t.business, options) : addDays(anchorIso, t.offset || 0),
         status: 'open', note: null, doneAt: null, doneBy: null, custom: false
@@ -118,4 +175,4 @@ function canComplete(task, role, isSelf) {
     return false;
 }
 
-module.exports = { ASSIGNEES, KINDS, TEMPLATES, buildChecklist, validateCustomTask, evaluate, canComplete };
+module.exports = { validateTemplateSettings, templatesFor, describeTemplates, ASSIGNEES, KINDS, TEMPLATES, buildChecklist, validateCustomTask, evaluate, canComplete };

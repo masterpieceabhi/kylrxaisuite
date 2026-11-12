@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compliance calendar | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}.hint{color:var(--muted);font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.badTag{background:#fee2e2;color:var(--bad)}.warnTag{background:#fef3c7;color:#92400e}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.stats{display:flex;gap:22px;flex-wrap:wrap}.stats b{display:block;font-size:22px}
+a.go{color:var(--blue);font-weight:600;text-decoration:none}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+</style>
+</head>
+<body>
+<header><h1>Compliance calendar</h1><div><a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-us-i9-report.html">I-9 report</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div class="warn">Every dated duty the system knows about, in one list. It cannot know about duties that are not recorded here, such as tax filings your payroll provider handles or state filings you track elsewhere.</div>
+  <section class="card">
+    <div class="stats" id="stats"></div>
+    <div class="row" style="margin-top:14px"><label class="hint">Show <select id="fWhen"><option value="60">Overdue and the next 60 days</option><option value="14">Overdue and the next 14 days</option><option value="overdue">Only overdue</option><option value="365">Everything in the next year</option></select></label><label class="hint">Kind <select id="fKind"><option value="">All kinds</option></select></label></div>
+    <table style="margin-top:12px"><thead><tr><th>Due</th><th>What</th><th>Who</th><th>Kind</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    <p class="hint" id="skipped"></p>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dayText = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+const iso = (v) => (v ? String(v).slice(0, 10) : null);
+const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const daysTo = (d, t) => Math.round((new Date(`${d}T12:00:00`) - new Date(`${t}T12:00:00`)) / 86400000);
+let items = []; let today = localToday(); const skipped = [];
+
+async function get(path) {
+  const res = await fetch(`/api/us${path}`, { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error(json.error || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+const add = (date, what, who, kind, page) => { const d = iso(date); if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) items.push({ date: d, what, who: who || '', kind, page }); };
+
+// Each source is read on its own: a role that cannot see one of them still gets the rest
+const SOURCES = [
+  ['Form I-9', async () => { const r = await get('/reports/i9-audit'); today = r.asOf || today; r.list.filter((x) => x.status === 'current').forEach((x) => { if (!x.section1On) add(x.section1Due, 'Form I-9 Section 1 to complete', x.name, 'Form I-9', 'admin-us-people.html'); if (!x.section2On) add(x.section2Due, 'Form I-9 Section 2 to complete', x.name, 'Form I-9', 'admin-us-people.html'); if (x.reverifyOn) add(x.reverifyOn, 'Work authorization expires: reverify', x.name, 'Form I-9', 'admin-us-people.html'); }); }],
+  ['Documents', async () => { const r = await get('/vault/expiring?days=365'); r.data.forEach((d) => add(d.expiresOn, `Document expires: ${d.title}`, d.employeeName || '', 'Documents', 'admin-us-compliance.html')); }],
+  ['E-Verify', async () => { const r = await get('/hiring/everify/cases'); if (!r.used) return; r.missing.forEach((m) => add(m.dueDate, 'E-Verify case to create', m.name, 'E-Verify', 'admin-us-hiring-compliance.html')); r.cases.forEach((c) => { if (c.status === 'tentative_nonconfirmation' && c.tnc) add(c.tnc.decisionDue, 'E-Verify: employee decision on a mismatch', c.name, 'E-Verify', 'admin-us-hiring-compliance.html'); if (c.status === 'referred' && c.tnc) add(c.tnc.referralDue, 'E-Verify: referral to resolve', c.name, 'E-Verify', 'admin-us-hiring-compliance.html'); }); }],
+  ['New-hire reporting', async () => { const r = await get('/hiring/newhire/pending?sinceDays=120'); r.data.forEach((p) => add(p.dueDate, `Report new hire to ${p.state || 'the state'}`, p.name, 'New-hire reporting', 'admin-us-hiring-compliance.html')); }],
+  ['Background checks', async () => { const r = await get('/hiring/background'); r.data.filter((b) => b.status === 'waiting_period').forEach((b) => add(b.waitingUntil, 'Background check: waiting period ends, final notice can be sent', '', 'Background checks', 'admin-us-hiring-compliance.html')); }],
+  ['Privacy requests', async () => { const r = await get('/privacy/requests'); r.data.filter((q) => ['received', 'in_progress'].includes(q.status)).forEach((q) => add(q.dueAt, `Privacy request to answer: ${(q.typeLabel && q.typeLabel.en) || q.type}`, q.subjectName, 'Privacy requests', 'admin-us-privacy.html')); }],
+  ['COBRA', async () => { const r = await get('/benefits/cobra'); r.data.forEach((c) => { const d = c.deadlines || {}; if (c.status === 'pending_notice') { if (!c.employerNoticeSentOn) add(d.employerNoticeDue, 'COBRA: tell the plan administrator', c.name, 'COBRA', 'admin-us-benefits.html'); add(d.electionNoticeDue, 'COBRA: send the election notice', c.name, 'COBRA', 'admin-us-benefits.html'); } if (c.status === 'notice_sent') add(d.electionDeadline, 'COBRA: last day for the person to choose', c.name, 'COBRA', 'admin-us-benefits.html'); if (c.status === 'elected') add(d.firstPaymentDue, 'COBRA: first payment due', c.name, 'COBRA', 'admin-us-benefits.html'); }); }],
+  ['Benefits', async () => { const c = (await get('/benefits/config')).data; const oe = c.openEnrollment || {}; if (oe.start && oe.start >= localToday()) add(oe.start, 'Open enrollment starts', '', 'Benefits', 'admin-us-benefits.html'); // a start date that has passed is not something overdue if (oe.end) add(oe.end, 'Open enrollment ends', '', 'Benefits', 'admin-us-benefits.html'); const e = await get('/benefits/events?status=pending'); e.data.forEach((x) => add(x.windowEnd, `Life event to review: ${x.typeLabel}`, x.name, 'Benefits', 'admin-us-benefits.html')); }],
+  ['Documents to sign', async () => { const r = await get('/esign/requests'); r.data.filter((q) => ['pending', 'viewed'].includes(q.status)).forEach((q) => add(q.expiresAt, `Signing link expires: ${q.templateName}`, q.signerName, 'Documents to sign', 'admin-us-esign.html')); }],
+  ['Workplace notices', async () => { const r = await get('/postings'); // the tracker has a status, not a date: a notice that is not posted or is due for review counts as due now
+    (r.items || []).filter((p) => ['not_posted', 'review_due'].includes(p.status)).forEach((p) => add(r.today || today, p.status === 'not_posted' ? `Workplace notice not posted: ${p.title}` : `Workplace notice to review: ${p.title}`, '', 'Workplace notices', 'admin-us-compliance.html')); }]
+];
+function paint() {
+  const w = $('fWhen').value; const k = $('fKind').value;
+  const list = items.filter((i) => (!k || i.kind === k) && (w === 'overdue' ? i.date < today : daysTo(i.date, today) <= Number(w))).sort((a, b) => a.date.localeCompare(b.date));
+  const overdue = items.filter((i) => i.date < today).length; const week = items.filter((i) => i.date >= today && daysTo(i.date, today) <= 7).length; const month = items.filter((i) => i.date >= today && daysTo(i.date, today) <= 30).length;
+  $('stats').innerHTML = `<div><b style="color:${overdue ? '#b91c1c' : 'inherit'}">${overdue}</b>overdue</div><div><b>${week}</b>due in 7 days</div><div><b>${month}</b>due in 30 days</div>`;
+  $('rows').innerHTML = list.map((i) => { const n = daysTo(i.date, today); const tag = n < 0 ? `<span class="tag badTag">${-n} day${n === -1 ? '' : 's'} late</span>` : n === 0 ? '<span class="tag warnTag">today</span>' : n <= 7 ? `<span class="tag warnTag">in ${n} day${n === 1 ? '' : 's'}</span>` : `<span class="hint">in ${n} days</span>`; return `<tr><td>${esc(dayText(i.date))}<br>${tag}</td><td><b>${esc(i.what)}</b></td><td>${esc(i.who)}</td><td><span class="tag grey">${esc(i.kind)}</span></td><td><a class="go" href="${esc(i.page)}">Open</a></td></tr>`; }).join('') || '<tr><td colspan="5" class="hint">Nothing due in this range.</td></tr>';
+  $('skipped').textContent = skipped.length ? `Not shown because your role cannot see them or they could not be read: ${skipped.join(', ')}.` : '';
+}
+$('fWhen').addEventListener('change', paint); $('fKind').addEventListener('change', paint);
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  $('rows').innerHTML = '<tr><td colspan="5" class="hint">Reading...</td></tr>';
+  await Promise.all(SOURCES.map(async ([name, fn]) => { try { await fn(); } catch (_) { skipped.push(name); } }));
+  $('fKind').innerHTML = '<option value="">All kinds</option>' + [...new Set(items.map((i) => i.kind))].sort().map((k) => `<option>${esc(k)}</option>`).join('');
+  paint();
+});
+</script>
+</body>
+</html>

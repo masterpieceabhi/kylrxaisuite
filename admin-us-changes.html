@@ -139,7 +139,7 @@ async function loadPerson() {
     if (f.type === 'select') input = `<select name="${esc(name)}"${dis}><option value="">Not set</option>${f.options.map((o) => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     else if (f.type === 'boolean') input = `<select name="${esc(name)}"${dis}><option value="">Not set</option><option value="true"${v === true ? ' selected' : ''}>Yes</option><option value="false"${v === false ? ' selected' : ''}>No</option></select>`;
     else input = `<input name="${esc(name)}"${dis} type="${f.type === 'date' ? 'date' : f.type === 'number' && !f.sensitive ? 'number' : 'text'}" ${f.sensitive ? `placeholder="${esc(v || 'not set')}" autocomplete="off"` : `value="${esc(v)}"`}>`;
-    return `<label>${esc(f.label)}${f.required ? ' *' : ''}${input}${f.sensitive ? '<span class="hint">Shown masked. Type a new value to replace it.</span>' : ''}</label>`;
+    return `<label>${esc(f.label)}${f.required ? ' *' : ''}${input}${f.sensitive ? `<span class="hint">Shown masked. Type a new value to replace it.${f.hasValue ? ` <button type="button" class="ghost" data-reveal="${esc(f.key)}" data-label="${esc(f.label)}" style="padding:2px 8px">Show</button> <b data-shown="${esc(f.key)}"></b>` : ''}</span>` : ''}</label>`;
   }).join('') || '<p class="hint">No custom fields yet. Add them on the Custom fields tab.</p>';
 }
 
@@ -184,7 +184,14 @@ document.addEventListener('click', async (e) => {
   const hit = (k) => { const el = e.target.closest(`[data-${k}]`); return el ? el.dataset[k] : null; };
   let v;
   try {
-    if ((v = hit('ok'))) {
+    if ((v = hit('reveal'))) {
+      const btn = e.target.closest('[data-reveal]');
+      const reason = window.prompt(`Why do you need to see "${btn.dataset.label}"? The reason is recorded in the activity log.`);
+      if (!reason) return;
+      const r = await req('POST', `/employees/${$('pPick').value}/custom-fields/${encodeURIComponent(v)}/reveal`, { reason });
+      const out = document.querySelector(`[data-shown="${CSS.escape(v)}"]`); out.textContent = String(r.value); say('Shown for 30 seconds. This was recorded in the activity log.');
+      setTimeout(() => { out.textContent = ''; }, 30000); // not left on screen
+    } else if ((v = hit('ok'))) {
       const r = queue.find((x) => x.id === v);
       const ask = r.field === 'bankDetails' ? `Approve the new bank account for ${r.userName}? Their next pay goes to the account ending ${r.after.accountLast4}. Have you confirmed this with them directly?` : `Approve this ${KIND[r.field].toLowerCase()} change for ${r.userName}?`;
       if (window.confirm(ask)) { await req('POST', `/change-requests/${v}/approve`, {}); say('Approved and saved to the record.'); await loadQueue(); }

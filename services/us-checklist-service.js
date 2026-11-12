@@ -22,6 +22,11 @@ function factsFor(data) {
     };
 }
 
+/** The company's changes to the built-in lists (empty when it has made none) */
+async function templateSettings(orgId) {
+    try { const s = await rawCollection('checklist_templates').doc(orgId).get(); return exists(s) ? (s.data().settings || {}) : {}; } catch (_) { return {}; }
+}
+
 /** Creates the checklist unless it already exists. Returns the stored document. */
 async function createChecklist(orgId, emp, kind, anchorDate, options = {}) {
     const id = docIdFor(emp.id, kind, anchorDate);
@@ -30,7 +35,7 @@ async function createChecklist(orgId, emp, kind, anchorDate, options = {}) {
     if (exists(snap)) return { id, ...snap.data() };
     const doc = {
         orgId, userId: emp.id, employeeId: emp.data.employeeId || null, name: emp.data.name || null, kind, anchorDate,
-        tasks: rules.buildChecklist(kind, anchorDate, options), createdAt: new Date().toISOString(), cancelled: false
+        tasks: rules.buildChecklist(kind, anchorDate, { ...options, custom: await templateSettings(orgId) }), createdAt: new Date().toISOString(), cancelled: false
     };
     await ref.set(doc);
     return { id, ...doc };
@@ -42,4 +47,4 @@ async function listForUser(orgId, userId) {
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
-module.exports = { exists, docIdFor, factsFor, createChecklist, listForUser };
+module.exports = { exists, docIdFor, factsFor, createChecklist, listForUser, templateSettings };

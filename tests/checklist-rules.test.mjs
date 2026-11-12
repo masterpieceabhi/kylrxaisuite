@@ -78,3 +78,33 @@ test('who can tick a task', () => {
     assert.equal(C.canComplete(mgr, 'employee', false), false);
     assert.equal(C.canComplete(emp, 'super_admin', false), true);
 });
+
+test('company template changes: optional tasks can be switched off, form and required tasks cannot', () => {
+    const ok = C.validateTemplateSettings({ onboarding: { off: ['equipment', 'emergency_contact'], extra: [{ title: 'Food handler card', assignee: 'employee', offset: 14, required: true }] } });
+    assert.deepEqual(ok.errors, []);
+    assert.deepEqual(ok.value.onboarding.off, ['equipment', 'emergency_contact']);
+    assert.match(ok.value.onboarding.extra[0].key, /^x_[a-z0-9]+$/);
+    assert.deepEqual(ok.value.offboarding, { off: [], extra: [] });
+
+    const bad = C.validateTemplateSettings({ onboarding: { off: ['w4', 'manager_told', 'nope'], extra: [{ title: 'x', assignee: 'hr', offset: 1 }, { title: 'Uniform', assignee: 'robot', offset: 1 }, { title: 'Badge', assignee: 'hr', offset: 9999 }] } });
+    assert.equal(bad.value, null);
+    assert.equal(bad.errors.length, 6);
+    assert.ok(bad.errors.some((e) => /W-4.*cannot be switched off/.test(e)), 'a form task stays');
+    assert.ok(bad.errors.some((e) => /manager is.*cannot be switched off/.test(e)), 'a required task stays');
+});
+
+test('a new checklist uses the company template: off tasks are gone, added tasks are dated from the first day', () => {
+    const { value } = C.validateTemplateSettings({ onboarding: { off: ['equipment'], extra: [{ title: 'Food handler card', assignee: 'employee', offset: 14, required: true, help: 'Bring the card to HR' }] } });
+    const tasks = C.buildChecklist('onboarding', '2026-11-09', { custom: value });
+    assert.ok(!tasks.some((t) => t.id === 'equipment'));
+    assert.ok(tasks.some((t) => t.id === 'w4'));
+    const added = tasks[tasks.length - 1];
+    assert.equal(added.title, 'Food handler card'); assert.equal(added.dueDate, '2026-11-23'); assert.equal(added.required, true); assert.equal(added.assignee, 'employee'); assert.equal(added.status, 'open');
+    assert.equal(C.buildChecklist('onboarding', '2026-11-09').length, C.TEMPLATES.onboarding.length, 'no changes means the built-in list');
+    // a stored setting that tries to switch off a form task (for example written before a rule change) is ignored
+    assert.ok(C.buildChecklist('onboarding', '2026-11-09', { custom: { onboarding: { off: ['w4'] } } }).some((t) => t.id === 'w4'));
+    const d = C.describeTemplates(value);
+    assert.equal(d.onboarding.builtIn.find((t) => t.key === 'equipment').on, false);
+    assert.equal(d.onboarding.builtIn.find((t) => t.key === 'w4').canSwitchOff, false);
+    assert.equal(d.onboarding.extra.length, 1);
+});

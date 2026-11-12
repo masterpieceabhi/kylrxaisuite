@@ -89,6 +89,19 @@ router.post('/checklists/person/:userId/:listId/tasks', authorize(ADMIN_HR_ROLES
     res.status(201).json({ success: true, task: value });
 });
 
+/** The task lists new checklists are built from: built-in tasks plus the company's own changes */
+router.get('/checklists/templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    res.json({ success: true, kinds: rules.KINDS, assignees: rules.ASSIGNEES, templates: rules.describeTemplates(await store.templateSettings(req.orgId)), note: 'Changes apply to checklists created from now on. Lists that already exist are not changed.' });
+});
+
+router.put('/checklists/templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+    const { errors, value } = rules.validateTemplateSettings(req.body && req.body.settings);
+    if (errors.length) return res.status(400).json({ success: false, errors });
+    await rawCollection('checklist_templates').doc(req.orgId).set({ orgId: req.orgId, settings: value, updatedAt: new Date().toISOString(), updatedBy: req.user.id || null });
+    audit(req.orgId, req, 'checklist_templates_updated', req.orgId, Object.fromEntries(rules.KINDS.map((k) => [k, { off: value[k].off.length, extra: value[k].extra.length }])));
+    res.json({ success: true, templates: rules.describeTemplates(value) });
+});
+
 /** HR to-do list across everyone: open tasks, overdue first */
 router.get('/checklists/overview', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
