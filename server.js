@@ -301,6 +301,7 @@ app.use("/api/us", require("./routes/us-clock-policy"));
 app.use("/api/us", require("./routes/us-schedule"));
 app.use("/api/us", require("./routes/us-performance")); // goals and reviews
 app.use("/api/us", require("./routes/us-surveys")); // pulse surveys and eNPS
+app.use("/api/us", require("./routes/us-assets")); // company equipment
 app.use("/api/sso", require("./routes/sso"));
 app.use("/api/support", require("./routes/support-access"));
 app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors

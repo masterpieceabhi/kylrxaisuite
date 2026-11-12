@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Equipment | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:60px}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.acts{white-space:normal;min-width:230px}td.acts button{margin:0 4px 4px 0}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}.tile b{display:block;font-size:22px}.tile span{color:var(--muted);font-size:12px}
+.pre{white-space:pre-wrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Equipment</h1><div><a href="my-assets.html">My own equipment</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note" hidden></div>
+  <div class="tiles" id="tiles" hidden></div>
+
+  <section class="card" id="leftCard" hidden>
+    <h2>Still with people who have left</h2>
+    <table><thead><tr><th>Item</th><th>Person</th><th>Given on</th><th>Cost</th><th></th></tr></thead><tbody id="left"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2 id="listTitle">All items</h2>
+    <div class="row" id="filters" style="margin:0 0 12px" hidden>
+      <label>Show<select id="fStatus"><option value="">Everything</option><option value="available">Available</option><option value="assigned">With someone</option><option value="repair">Out for repair</option><option value="lost">Lost</option><option value="retired">Retired</option><option value="attention">Needs attention</option></select></label>
+      <label>Find<input id="fText" placeholder="Name, tag, serial or person"></label>
+      <button class="ghost" id="csv" type="button">Download as CSV</button>
+      <button id="addBtn" type="button" hidden>Add an item</button>
+    </div>
+    <table><thead id="head"></thead><tbody id="list"></tbody></table>
+  </section>
+
+  <section class="card" id="itemCard" hidden>
+    <h2 id="iTitle">Add an item</h2>
+    <form id="itemForm">
+      <div class="grid">
+        <label>What it is<input name="name" required minlength="2" maxlength="120" placeholder="Dell Latitude 5440"></label>
+        <label>Kind<select name="category" id="iCategory" required></select></label>
+        <label>Your tag or number (optional)<input name="tag" maxlength="40" placeholder="KX-0012"></label>
+        <label>Serial number (optional)<input name="serial" maxlength="60"></label>
+        <label>Condition<select name="condition" id="iCondition"></select></label>
+        <label>Bought on (optional)<input name="purchaseDate" type="date"></label>
+        <label>Cost in dollars (optional)<input name="cost" type="number" min="0" max="1000000" step="0.01"></label>
+      </div>
+      <label style="margin-top:12px">Notes for HR only (optional)<textarea name="notes" maxlength="1000"></textarea></label>
+      <div class="row"><button type="submit">Save</button><button type="button" class="ghost" data-hide="itemCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="giveCard" hidden>
+    <h2 id="gTitle">Give to someone</h2>
+    <form id="giveForm">
+      <div class="grid">
+        <label>Who gets it<select name="userId" id="gPerson" required></select></label>
+        <label>Due back on (optional)<input name="dueBack" type="date"></label>
+        <label>Condition now<select name="condition" id="gCondition"></select></label>
+        <label>Note (optional)<input name="note" maxlength="300" placeholder="With charger and bag"></label>
+      </div>
+      <p class="hint">The person sees the item on their "My equipment" page and is asked to confirm they have it.</p>
+      <div class="row"><button type="submit">Give it</button><button type="button" class="ghost" data-hide="giveCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="backCard" hidden>
+    <h2 id="bTitle">Take back</h2>
+    <form id="backForm">
+      <div class="grid">
+        <label>Condition on return<select name="condition" id="bCondition"></select></label>
+        <label>Note (optional)<input name="note" maxlength="300" placeholder="Charger missing"></label>
+      </div>
+      <div class="row"><button type="submit">It is back</button><button type="button" class="ghost" data-hide="backCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="histCard" hidden>
+    <h2 id="hTitle">History</h2>
+    <table><thead><tr><th>When</th><th>What happened</th><th>Person</th><th>Done by</th><th>Note</th></tr></thead><tbody id="hist"></tbody></table>
+    <div class="row"><button type="button" class="ghost" data-hide="histCard">Close</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const money = (n) => (n === null || n === undefined ? '' : Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD' }));
+const ST = { available: ['available', 'good'], assigned: ['with someone', 'blueTag'], repair: ['out for repair', 'warnTag'], lost: ['lost', 'badTag'], retired: ['retired', 'grey'] };
+const HIST = { created: 'Added', assigned: 'Given to', returned: 'Taken back from', confirmed: 'Confirmed by', problem: 'Problem reported by', repair: 'Sent for repair', lost: 'Marked lost', retired: 'Retired', restored: 'Made available again' };
+let options = null; let items = []; let scope = 'all'; let canManage = false; let current = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/assets${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const hideCards = () => ['itemCard', 'giveCard', 'backCard', 'histCard'].forEach((id) => { $(id).hidden = true; });
+const needsAttention = (a) => a.overdue || Boolean(a.problem) || (a.status === 'assigned' && !a.acknowledgedAt);
+function shown() {
+  const st = $('fStatus').value; const q = $('fText').value.trim().toLowerCase();
+  return items.filter((a) => (!st || (st === 'attention' ? needsAttention(a) : a.status === st)) && (!q || [a.name, a.tag, a.serial, a.assignedToName, a.category].some((v) => String(v || '').toLowerCase().includes(q))));
+}
+function holderCell(a) {
+  if (a.status !== 'assigned') return '';
+  return `<b>${esc(a.assignedToName || '')}</b><br><span class="hint">since ${esc(day(a.assignedAt))}${a.dueBack ? `, due back ${esc(day(a.dueBack))}` : ''}</span>${a.overdue ? ' <span class="tag badTag">late</span>' : ''}<br>${a.acknowledgedAt ? `<span class="tag good">confirmed ${esc(day(a.acknowledgedAt))}</span>` : '<span class="tag warnTag">not confirmed yet</span>'}${a.problem ? `<br><span class="tag badTag">problem</span> <span class="hint">${esc(a.problem.text)} (${esc(day(a.problem.at))})</span>` : ''}`;
+}
+function paintList() {
+  if (scope === 'team') {
+    $('head').innerHTML = '<tr><th>Item</th><th>Person</th><th>Kind</th><th>Status</th></tr>';
+    $('list').innerHTML = items.map((a) => `<tr><td><b>${esc(a.name)}</b><br><span class="hint">${esc(a.tag)}</span></td><td>${holderCell({ ...a, status: 'assigned' })}</td><td>${esc(a.category)}</td><td><span class="tag blueTag">with them</span></td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nobody on your team has company equipment recorded.</td></tr>';
+    return;
+  }
+  $('head').innerHTML = '<tr><th>Item</th><th>Kind</th><th>Status</th><th>With</th><th>Condition</th><th></th></tr>';
+  $('list').innerHTML = shown().map((a) => {
+    const acts = [];
+    if (canManage) {
+      if (a.status === 'available') acts.push(['give', 'Give to someone', ''], ['repair', 'Repair', 'ghost'], ['lost', 'Lost', 'ghost'], ['retired', 'Retire', 'ghost']);
+      if (a.status === 'assigned') acts.push(['back', 'Take back', ''], ['lost', 'Lost', 'ghost']);
+      if (a.status === 'repair') acts.push(['available', 'Back from repair', ''], ['lost', 'Lost', 'ghost'], ['retired', 'Retire', 'ghost']);
+      if (a.status === 'lost') acts.push(['available', 'Found it', ''], ['retired', 'Retire', 'ghost']);
+      if (a.status === 'retired') acts.push(['available', 'Use it again', 'ghost']);
+      acts.push(['edit', 'Edit', 'ghost']);
+    }
+    acts.push(['hist', 'History', 'ghost']);
+    return `<tr><td><b>${esc(a.name)}</b><br><span class="hint">${esc([a.tag, a.serial && `serial ${a.serial}`, a.cost !== null && money(a.cost)].filter(Boolean).join(' · '))}</span></td><td>${esc(a.category)}</td><td><span class="tag ${ST[a.status][1]}">${esc(ST[a.status][0])}</span></td><td>${holderCell(a)}</td><td>${esc(a.condition || '')}</td><td class="acts">${acts.map(([k, label, cls]) => `<button class="${cls}" data-act="${k}" data-id="${esc(a.id)}">${esc(label)}</button>`).join('')}</td></tr>`;
+  }).join('') || `<tr><td colspan="6" class="hint">${items.length ? 'Nothing matches.' : 'No equipment recorded yet.'}</td></tr>`;
+}
+async function load() {
+  const r = await req('GET', ''); items = r.data; scope = r.scope; canManage = Boolean(r.canManage);
+  $('filters').hidden = scope !== 'all'; $('addBtn').hidden = !canManage; $('note').hidden = scope !== 'all';
+  $('listTitle').textContent = scope === 'team' ? 'Equipment with my team' : 'All items';
+  if (scope === 'all') {
+    const s = r.summary;
+    $('tiles').hidden = false;
+    $('tiles').innerHTML = [[s.available, 'available'], [s.assigned, 'with people'], [s.notConfirmed, 'not confirmed yet'], [s.overdue, 'late coming back'], [s.problems, 'problems reported'], [s.repair, 'out for repair'], [s.lost, 'lost'], [money(s.valueWithPeople), 'cost of items with people']].map(([n, label]) => `<div class="tile"><b>${esc(n)}</b><span>${esc(label)}</span></div>`).join('');
+    $('leftCard').hidden = !r.unreturned.length;
+    $('left').innerHTML = r.unreturned.map((a) => `<tr><td><b>${esc(a.name)}</b><br><span class="hint">${esc(a.tag)} ${esc(a.category)}</span></td><td>${esc(a.assignedToName || 'Unknown person')}</td><td>${esc(day(a.assignedAt))}</td><td>${esc(money(a.cost))}</td><td class="acts">${canManage ? `<button data-act="back" data-id="${esc(a.id)}">Take back</button><button class="ghost" data-act="lost" data-id="${esc(a.id)}">Lost</button>` : ''}</td></tr>`).join('');
+  }
+  paintList();
+}
+const fill = (id, list, blank) => { $(id).innerHTML = (blank ? `<option value="">${esc(blank)}</option>` : '') + list.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join(''); };
+function openItem(a) {
+  hideCards(); current = a || null; $('itemCard').hidden = false; $('iTitle').textContent = a ? `Edit: ${a.name}` : 'Add an item';
+  const f = $('itemForm').elements; f.name.value = a ? a.name : ''; f.category.value = a ? a.category : options.categories[0]; f.tag.value = a ? a.tag : ''; f.serial.value = a ? a.serial : ''; f.condition.value = a ? a.condition || '' : 'new'; f.purchaseDate.value = a ? a.purchaseDate || '' : ''; f.cost.value = a && a.cost !== null ? a.cost : ''; f.notes.value = a ? a.notes : '';
+  $('itemCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function openHistory(a) {
+  const r = await req('GET', `/${a.id}`); hideCards(); $('histCard').hidden = false; $('hTitle').textContent = `History: ${a.name}${a.tag ? ` (${a.tag})` : ''}`;
+  $('hist').innerHTML = [...r.item.history].reverse().map((h) => `<tr><td>${esc(new Date(h.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))}</td><td>${esc(HIST[h.type] || h.type)}${h.condition ? ` <span class="hint">(${esc(h.condition)})</span>` : ''}</td><td>${esc(h.name || '')}</td><td>${esc(h.by || '')}</td><td class="pre">${esc(h.note || '')}</td></tr>`).join('');
+  $('histCard').scrollIntoView({ behavior: 'smooth' });
+}
+const WORDS = { repair: ['Send "{n}" for repair?', 'Marked as out for repair.'], lost: ['Mark "{n}" as lost?{w}', 'Marked as lost.'], retired: ['Retire "{n}"? It stays in the list with its history.', 'Retired.'], available: ['Make "{n}" available again?', 'It is available again.'] };
+$('itemForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  const body = { name: f.name.value, category: f.category.value, tag: f.tag.value, serial: f.serial.value, condition: f.condition.value, purchaseDate: f.purchaseDate.value, cost: f.cost.value, notes: f.notes.value };
+  try { if (current) await req('PUT', `/${current.id}`, body); else await req('POST', '', body); hideCards(); await load(); say('Saved.'); } catch (err) { say(err.message, false); }
+});
+$('giveForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { const r = await req('POST', `/${current.id}/assign`, { userId: f.userId.value, dueBack: f.dueBack.value, condition: f.condition.value, note: f.note.value }); hideCards(); await load(); say(`Given to ${r.item.assignedToName}. They will be asked to confirm they have it.`); } catch (err) { say(err.message, false); }
+});
+$('backForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', `/${current.id}/return`, { condition: f.condition.value, note: f.note.value }); hideCards(); await load(); say('It is back and available.'); } catch (err) { say(err.message, false); }
+});
+$('addBtn').addEventListener('click', () => openItem(null));
+$('fStatus').addEventListener('change', paintList); $('fText').addEventListener('input', paintList);
+$('csv').addEventListener('click', () => {
+  const cell = (v) => { let s = String(v ?? ''); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
+  const rows = [['Item', 'Kind', 'Tag', 'Serial', 'Status', 'With', 'Given on', 'Due back', 'Confirmed on', 'Condition', 'Cost', 'Bought on', 'Problem']].concat(shown().map((a) => [a.name, a.category, a.tag, a.serial, ST[a.status][0], a.assignedToName || '', (a.assignedAt || '').slice(0, 10), a.dueBack || '', (a.acknowledgedAt || '').slice(0, 10), a.condition || '', a.cost ?? '', a.purchaseDate || '', a.problem ? a.problem.text : '']));
+  const url = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = 'equipment.csv'; link.click(); URL.revokeObjectURL(url);
+});
+document.addEventListener('click', async (e) => {
+  const h = e.target.closest('[data-hide]'); if (h) { $(h.dataset.hide).hidden = true; return; }
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = items.find((x) => x.id === t.dataset.id); if (!a) return;
+  const act = t.dataset.act;
+  try {
+    if (act === 'edit') openItem(a);
+    else if (act === 'hist') await openHistory(a);
+    else if (act === 'give') { hideCards(); current = a; $('giveCard').hidden = false; $('gTitle').textContent = `Give "${a.name}" to someone`; $('giveForm').reset(); $('gCondition').value = a.condition || ''; $('giveCard').scrollIntoView({ behavior: 'smooth' }); }
+    else if (act === 'back') { hideCards(); current = a; $('backCard').hidden = false; $('bTitle').textContent = `Take "${a.name}" back from ${a.assignedToName || 'the person'}`; $('backForm').reset(); $('bCondition').value = a.condition || ''; $('backCard').scrollIntoView({ behavior: 'smooth' }); }
+    else if (WORDS[act]) {
+      const [ask, done] = WORDS[act];
+      if (!window.confirm(ask.replace('{n}', a.name).replace('{w}', a.status === 'assigned' ? ` It will no longer show as being with ${a.assignedToName}; the history keeps their name.` : ''))) return;
+      await req('POST', `/${a.id}/status`, { status: act }); hideCards(); await load(); say(done);
+    }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/options'); $('note').textContent = options.note;
+    fill('iCategory', options.categories); fill('iCondition', options.conditions, 'Not recorded'); fill('gCondition', options.conditions, 'Not recorded'); fill('bCondition', options.conditions, 'Not recorded');
+    if (options.people) $('gPerson').innerHTML = '<option value="">Choose a person</option>' + options.people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employeeId ? ` (${esc(p.employeeId)})` : ''}</option>`).join('');
+    await load();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>
