@@ -10,9 +10,9 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
-| Done | 57 | 22 |
+| Done | 58 | 22 |
 | Partial | 43 | 24 |
-| Existing, not adapted | 1 | 8 |
+| Existing, not adapted | 0 | 8 |
 | Not started | 10 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
 | **All** | **111** | **111** |
@@ -32,7 +32,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | G Benefits | 4 | 2 | 0 | 0 |
 | H Documents and compliance | 7 | 1 | 0 | 0 |
 | I Performance and engagement | 3 | 1 | 0 | 2 |
-| J Analytics and reporting | 5 | 0 | 1 | 0 |
+| J Analytics and reporting | 6 | 0 | 0 | 0 |
 | K Connectors | 3 | 11 | 0 | 0 |
 | L Security, privacy, operations | 2 | 5 | 0 | 2 |
 
@@ -174,7 +174,7 @@ Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefi
 | Id | Status | What is missing |
 |---|---|---|
 | US-J01 to US-J04 | Done (4) | |
-| US-J05 | Existing, not adapted | US data in the report builder; scheduled exports |
+| US-J05 | Done | Report builder `admin-us-report-builder.html` over four data sets (people, equipment, goals, policy confirmations): choose columns, conditions, sort and a count-by column; CSV download; saved reports; a weekly or monthly schedule that keeps dated CSV copies on the page (newest 12). Pay columns only for roles that may see pay; no taxpayer numbers in any data set. Rules, routes, tests; 31 live route checks and the page. Missing: copies are kept on the page, not emailed or sent to a folder; no data sets yet for hours, time off or payroll (the standard reports cover those); no charts beyond the count bars |
 | US-J06 | Done | Payroll cost by department and pay date from stored pay results, on the payroll page | Mock Gusto only |
 
 ## K. Connectors and API

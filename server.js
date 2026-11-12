@@ -303,6 +303,7 @@ app.use("/api/us", require("./routes/us-performance")); // goals and reviews
 app.use("/api/us", require("./routes/us-surveys")); // pulse surveys and eNPS
 app.use("/api/us", require("./routes/us-assets")); // company equipment
 app.use("/api/us", require("./routes/us-policies")); // policy library with versions
+app.use("/api/us", require("./routes/us-report-builder")); // custom reports and scheduled copies
 app.use("/api/sso", require("./routes/sso"));
 app.use("/api/support", require("./routes/support-access"));
 app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors
@@ -467,6 +468,7 @@ async function startServer() {
       require('./services/webhooks').start();
       require('./services/connectors/runtime').startScheduler();
       if (require('./routes/us-gusto').startJobs()) logger.info('[Gusto] Event poll job started');
+      if (require('./routes/us-report-builder').startJobs()) logger.info('[ReportBuilder] Scheduled report copies job started');
       logger.info('[Integrations] Webhook delivery worker and connector scheduler started');
     } catch (intErr) {
       logger.error(`[Integrations] Could not start background workers: ${intErr.message}`);

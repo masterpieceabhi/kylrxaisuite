@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report builder | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);font-weight:400}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted);white-space:nowrap}td.num{text-align:right}
+td.acts button{margin:0 4px 4px 0}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px 12px}
+.filter{display:grid;grid-template-columns:200px 170px 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+@media(max-width:700px){.filter{grid-template-columns:1fr}}
+.bars{display:grid;grid-template-columns:minmax(120px,max-content) 1fr 50px;gap:6px 10px;align-items:center;max-width:620px}
+.bar{height:12px;background:#e2e8f0;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Report builder</h1><div><a href="admin-us-reports.html">Standard reports</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Saved reports</h2>
+    <table><thead><tr><th>Report</th><th>About</th><th>Kept copies</th><th></th></tr></thead><tbody id="saved"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2 id="bTitle">Build a report</h2>
+    <form id="form">
+      <div class="grid">
+        <label>What the report is about<select id="dataset"></select></label>
+        <label>Sort by<select id="sortBy"></select></label>
+        <label>Order<select id="sortDir"><option value="asc">A to Z, low to high, oldest first</option><option value="desc">Z to A, high to low, newest first</option></select></label>
+        <label>Also count by<select id="groupBy"></select></label>
+      </div>
+      <h3>Columns <span class="hint">(<a href="#" id="allCols">all</a> / <a href="#" id="noCols">none</a>)</span></h3>
+      <div class="cols" id="columns"></div>
+      <h3>Only include rows where</h3>
+      <div id="filters"></div>
+      <div class="row" style="margin-top:0"><button type="button" class="ghost" id="addFilter">Add a condition</button><span class="hint">Every condition must be true. Dates are typed as YYYY-MM-DD.</span></div>
+      <div class="row"><button type="submit">Run the report</button><button type="button" class="ghost" id="clear">Start over</button></div>
+      <div id="saveBox" hidden>
+        <h3>Save it</h3>
+        <div class="grid">
+          <label>Name<input id="name" maxlength="80" placeholder="Texas team by department"></label>
+          <label>Keep a dated copy<select id="schedule"><option value="none">Never</option><option value="weekly">Every week</option><option value="monthly">Every month</option></select></label>
+        </div>
+        <p class="hint">A dated copy is a CSV made by the server on that schedule and kept on this page (the newest 12). Nothing is emailed.</p>
+        <div class="row"><button type="button" id="save">Save</button><button type="button" class="ghost" id="saveNew" hidden>Save as a new report</button></div>
+      </div>
+    </form>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2 id="rTitle">Result</h2>
+    <p id="rSummary"></p>
+    <div id="groups"></div>
+    <div class="row" style="margin:0 0 12px"><button type="button" class="ghost" id="csv">Download as CSV</button></div>
+    <table><thead id="rHead"></thead><tbody id="rBody"></tbody></table>
+  </section>
+
+  <section class="card" id="copyCard" hidden>
+    <h2 id="cTitle">Dated copies</h2>
+    <table><thead><tr><th>Day</th><th>Made by</th><th>Rows</th><th></th></tr></thead><tbody id="copies"></tbody></table>
+    <div class="row"><button type="button" id="copyNow" hidden>Make a copy now</button><button type="button" class="ghost" data-hide="copyCard">Close</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const when = (d) => (d ? new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const SHOWN = 200;
+const SCHED = { none: '', weekly: 'every week', monthly: 'every month' };
+let options = null; let saved = []; let editing = null; let last = null; let copiesFor = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/report-builder${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const ds = () => options.datasets.find((d) => d.key === $('dataset').value);
+const field = (key) => ds().fields.find((f) => f.key === key);
+const fieldOptions = (blank, sel) => (blank ? `<option value="">${esc(blank)}</option>` : '') + ds().fields.map((f) => `<option value="${esc(f.key)}"${f.key === sel ? ' selected' : ''}>${esc(f.label)}</option>`).join('');
+function opOptions(type, sel) { return options.ops[type].map(([k, label]) => `<option value="${k}"${k === sel ? ' selected' : ''}>${esc(label)}</option>`).join(''); }
+function filterRow(f = {}) {
+  const d = document.createElement('div'); d.className = 'filter';
+  const key = f.field && field(f.field) ? f.field : ds().fields[0].key; const type = field(key).type;
+  d.innerHTML = `<select data-ff aria-label="Column">${fieldOptions(null, key)}</select><select data-fo aria-label="Condition">${opOptions(type, f.op)}</select><input data-fv aria-label="Value" maxlength="120" value="${esc(f.value ?? '')}"><button type="button" class="no" data-rmf>Remove</button>`;
+  syncFilter(d); return d;
+}
+function syncFilter(d) {
+  const type = field(d.querySelector('[data-ff]').value).type; const op = d.querySelector('[data-fo]').value; const v = d.querySelector('[data-fv]');
+  v.type = type === 'date' ? 'date' : type === 'number' ? 'number' : 'text'; if (type === 'number') v.step = 'any';
+  v.hidden = op === 'empty' || op === 'not_empty';
+}
+function paintDataset(def = {}) {
+  const want = new Set(def.columns || ds().fields.slice(0, 6).map((f) => f.key));
+  $('columns').innerHTML = ds().fields.map((f) => `<label class="check"><input type="checkbox" value="${esc(f.key)}"${want.has(f.key) ? ' checked' : ''}> ${esc(f.label)}</label>`).join('');
+  $('sortBy').innerHTML = fieldOptions('No sorting', def.sortBy || ''); $('groupBy').innerHTML = fieldOptions('Nothing', def.groupBy || ''); $('sortDir').value = def.sortDir || 'asc';
+  $('filters').replaceChildren(...(def.filters || []).map(filterRow));
+}
+function definition() {
+  return { dataset: $('dataset').value, columns: [...document.querySelectorAll('#columns input:checked')].map((c) => c.value),
+    filters: [...document.querySelectorAll('#filters .filter')].map((d) => ({ field: d.querySelector('[data-ff]').value, op: d.querySelector('[data-fo]').value, value: d.querySelector('[data-fv]').value })),
+    sortBy: $('sortBy').value || null, sortDir: $('sortDir').value, groupBy: $('groupBy').value || null };
+}
+function loadIntoBuilder(r) {
+  editing = r ? r.id : null; $('bTitle').textContent = r ? `Edit: ${r.name}` : 'Build a report'; $('dataset').value = r ? r.dataset : options.datasets[0].key;
+  paintDataset(r || {}); $('name').value = r ? r.name : ''; $('schedule').value = r ? r.schedule : 'none'; $('save').textContent = r ? 'Save changes' : 'Save'; $('saveNew').hidden = !r;
+}
+function showResult(title, r, asOf, removed = []) {
+  last = { title, result: r }; $('resultCard').hidden = false; $('rTitle').textContent = title;
+  $('rSummary').textContent = `${r.total.toLocaleString('en-US')} row${r.total === 1 ? '' : 's'} as of ${asOf}.${r.total > SHOWN ? ` The first ${SHOWN} are shown here; the download has ${r.truncated ? `the first ${r.rows.length.toLocaleString('en-US')}` : 'all of them'}.` : ''}${removed.length ? ' Pay columns were left out because your role cannot see pay.' : ''}`;
+  const top = r.groups ? Math.max(...r.groups.rows.map((g) => g.count), 1) : 1;
+  $('groups').innerHTML = r.groups ? `<h3>Count by ${esc(r.groups.label)}</h3><div class="bars" style="margin-bottom:16px">${r.groups.rows.slice(0, 30).map((g) => `<span>${esc(g.key)}</span><div class="bar"><i style="width:${Math.round((g.count / top) * 100)}%"></i></div><span>${g.count}</span>`).join('')}</div>` : '';
+  $('rHead').innerHTML = `<tr>${r.columns.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr>`;
+  $('rBody').innerHTML = r.rows.slice(0, SHOWN).map((row) => `<tr>${r.columns.map((c) => `<td${c.type === 'number' ? ' class="num"' : ''}>${esc(row[c.key] ?? '')}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${r.columns.length}" class="hint">No rows match.</td></tr>`;
+  $('resultCard').scrollIntoView({ behavior: 'smooth' });
+}
+function download(name, csv) { const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
+function toCsv(r) {
+  const cell = (v) => { let s = v === null || v === undefined ? '' : String(v); if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = `'${s}`; return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  return [r.columns.map((c) => cell(c.label)).join(',')].concat(r.rows.map((row) => r.columns.map((c) => cell(row[c.key])).join(','))).join('\r\n') + '\r\n';
+}
+async function loadSaved() {
+  const r = await req('GET', '/saved'); saved = r.data;
+  const label = (k) => (options.datasets.find((d) => d.key === k) || {}).label || k;
+  $('saved').innerHTML = saved.map((s) => `<tr><td><b>${esc(s.name)}</b>${s.includesPay ? ' <span class="tag warnTag">includes pay</span>' : ''}<br><span class="hint">${s.columns.length} column${s.columns.length === 1 ? '' : 's'}${s.filters.length ? `, ${s.filters.length} condition${s.filters.length === 1 ? '' : 's'}` : ''}${s.createdByName ? `, by ${esc(s.createdByName)}` : ''}</span></td><td>${esc(label(s.dataset))}</td><td>${s.schedule === 'none' ? '<span class="hint">none</span>' : `<span class="tag good">${esc(SCHED[s.schedule])}</span>${s.lastSnapshotDay ? `<br><span class="hint">last ${esc(s.lastSnapshotDay)}</span>` : ''}`}</td><td class="acts"><button data-act="run" data-id="${esc(s.id)}">Run</button><button class="ghost" data-act="copies" data-id="${esc(s.id)}">Copies</button>${options.canSave ? `<button class="ghost" data-act="edit" data-id="${esc(s.id)}">Edit</button><button class="no" data-act="del" data-id="${esc(s.id)}">Delete</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No saved reports yet. Build one below.</td></tr>';
+}
+async function openCopies(s) {
+  const r = await req('GET', `/saved/${s.id}/copies`); copiesFor = s; $('copyCard').hidden = false; $('cTitle').textContent = `Dated copies: ${s.name}`; $('copyNow').hidden = !options.canSave;
+  $('copies').innerHTML = r.data.map((c) => `<tr><td><b>${esc(c.day)}</b><br><span class="hint">${esc(when(c.createdAt))}</span></td><td>${esc(c.by === 'schedule' ? 'the schedule' : c.by)}</td><td>${c.rows}${c.cut ? ' <span class="tag warnTag">cut short</span>' : ''}</td><td><button class="ghost" data-copy="${esc(c.id)}">Download</button></td></tr>`).join('') || `<tr><td colspan="4" class="hint">No copies yet.${s.schedule === 'none' ? ' This report has no schedule.' : ' The first one is made within about an hour of saving.'}</td></tr>`;
+  $('copyCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function save(asNew) {
+  const body = { ...definition(), name: $('name').value, schedule: $('schedule').value };
+  const r = editing && !asNew ? await req('PUT', `/saved/${editing}`, body) : await req('POST', '/saved', body);
+  await loadSaved(); loadIntoBuilder(r.report); say(`Saved "${r.report.name}".${r.report.schedule !== 'none' ? ` A dated copy will be kept ${SCHED[r.report.schedule]}.` : ''}`);
+}
+$('form').addEventListener('submit', async (e) => { e.preventDefault(); try { const r = await req('POST', '/run', { definition: definition() }); showResult($('name').value || 'Result', r.result, r.asOf); } catch (err) { say(err.message, false); } });
+$('dataset').addEventListener('change', () => paintDataset());
+$('addFilter').addEventListener('click', () => { if (document.querySelectorAll('#filters .filter').length >= options.maxFilters) { say(`Use at most ${options.maxFilters} conditions.`, false); return; } $('filters').append(filterRow()); });
+$('clear').addEventListener('click', () => { loadIntoBuilder(null); $('resultCard').hidden = true; });
+$('allCols').addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('#columns input').forEach((c, i) => { c.checked = i < options.maxColumns; }); });
+$('noCols').addEventListener('click', (e) => { e.preventDefault(); document.querySelectorAll('#columns input').forEach((c) => { c.checked = false; }); });
+$('save').addEventListener('click', () => save(false).catch((err) => say(err.message, false)));
+$('saveNew').addEventListener('click', () => save(true).catch((err) => say(err.message, false)));
+$('csv').addEventListener('click', () => { if (last) download(`${String(last.title).replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-') || 'report'}.csv`, toCsv(last.result)); });
+$('copyNow').addEventListener('click', async () => { try { await req('POST', `/saved/${copiesFor.id}/copies`, {}); await loadSaved(); await openCopies(saved.find((s) => s.id === copiesFor.id)); say('A copy was made.'); } catch (err) { say(err.message, false); } });
+document.addEventListener('change', (e) => {
+  const d = e.target.closest('.filter'); if (!d) return;
+  if (e.target.matches('[data-ff]')) { d.querySelector('[data-fo]').innerHTML = opOptions(field(e.target.value).type); d.querySelector('[data-fv]').value = ''; }
+  syncFilter(d);
+});
+document.addEventListener('click', async (e) => {
+  const h = e.target.closest('[data-hide]'); if (h) { $(h.dataset.hide).hidden = true; return; }
+  if (e.target.closest('[data-rmf]')) { e.target.closest('.filter').remove(); return; }
+  try {
+    const c = e.target.closest('[data-copy]'); if (c) { const r = await req('GET', `/saved/${copiesFor.id}/copies/${c.dataset.copy}`); download(r.fileName, r.csv); return; }
+    const t = e.target.closest('[data-act]'); if (!t) return;
+    const s = saved.find((x) => x.id === t.dataset.id); if (!s) return;
+    if (t.dataset.act === 'run') { const r = await req('POST', `/saved/${s.id}/run`, {}); showResult(s.name, r.result, r.asOf, r.removedColumns); }
+    else if (t.dataset.act === 'copies') await openCopies(s);
+    else if (t.dataset.act === 'edit') { loadIntoBuilder(s); $('bTitle').scrollIntoView({ behavior: 'smooth' }); }
+    else if (t.dataset.act === 'del') { if (!window.confirm(`Delete the saved report "${s.name}" and its dated copies?`)) return; await req('DELETE', `/saved/${s.id}`); if (editing === s.id) loadIntoBuilder(null); $('copyCard').hidden = true; await loadSaved(); say('Deleted.'); }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/options');
+    if (!options.datasets.length) { say('Your role has no data to report on.', false); return; }
+    $('dataset').innerHTML = options.datasets.map((d) => `<option value="${esc(d.key)}">${esc(d.label)}</option>`).join(''); $('saveBox').hidden = !options.canSave;
+    loadIntoBuilder(null); await loadSaved();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>
