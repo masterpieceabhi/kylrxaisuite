@@ -210,7 +210,7 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 | US-L06 | Not started | | Security audit, pen test, SOC 2 |
 | US-L07 | Partial | Billing rules, service, Stripe adapter, tests, page in `admin-us-owner.html` (practice mode with test cards) | Real Stripe never exercised; no real card entry; tax is a placeholder |
 | US-L08 | Partial | Support access with consent and audit; status endpoint | Status page; support-staff screen |
-| US-L09 | Partial | CI workflow `.github/workflows/ci.yml` (install from the lock file, all tests, static-file check, library audit report). Its steps were run by hand from a fresh copy of the repository and passed | The workflow has not run on GitHub yet; nothing deploys automatically because no host is chosen; no separate test and live environments |
+| US-L09 | Partial | CI workflow `.github/workflows/ci.yml` (install from the lock file, all tests, static-file check, library audit report). Its steps were run by hand from a fresh copy of the repository and passed, and the workflow passed on GitHub on 2026-11-12 (both jobs) | Nothing deploys automatically because no host is chosen; no separate test and live environments |
 
 ## Next, in order of value (no outside accounts needed)
 

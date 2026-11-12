@@ -148,5 +148,5 @@ Backups, restore and alerting are not set up by anything in this repository.
 
 - `npm run check:production` was run on the developer PC, where it correctly reports the missing production settings. Its rules have tests.
 - The static-file guard was tested over HTTP on the local server: 18 addresses of server files and logs, including upper-case and encoded forms, all answered 404, and all 267 files that the 137 pages load were still served.
-- The CI steps were run by hand from a fresh copy of the repository with no local settings file (see `docs/USA_PROGRESS.md` for the result). The workflow itself has not run on GitHub yet.
+- The CI steps were run by hand from a fresh copy of the repository with no local settings file (see `docs/USA_PROGRESS.md` for the result). The workflow first ran on GitHub on 2026-11-12 for the push of `feature/usa-foundation`, and both jobs passed.
 - Not checked: any real host, HTTPS, real email delivery, real Firebase (only the emulators), backups and restore.
