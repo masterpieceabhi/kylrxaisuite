@@ -1,8 +1,8 @@
 # USA build progress
 
-As of 2026-11-11 (evening) on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
+As of 2026-11-12 on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
 
-**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (491 tests). The payroll (Gusto), integration, company structure and profile-change routes were also exercised live against the local emulators and the mock Gusto server. Everything else is a code read, not a live run.
+**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (527 tests), also from a fresh copy of the repository with no local settings file. Run live against the local emulators: payroll through the mock Gusto server (all 15 setup steps and one submitted payroll, through the page), integrations, company structure, profile changes, and everything built on 2026-11-12 (goals and reviews, surveys, equipment, policies, report builder, holiday pay and rest breaks). Everything else is a code read, not a live run.
 
 Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = core works, the named pieces are missing; **Existing, not adapted** = old India-app code only; **Not started** = nothing.
 
@@ -11,9 +11,9 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | Status | Count | Was (morning of 2026-11-11) |
 |---|---|---|
 | Done | 59 | 22 |
-| Partial | 42 | 24 |
+| Partial | 43 | 24 |
 | Existing, not adapted | 0 | 8 |
-| Not started | 10 | 29 |
+| Not started | 9 | 29 |
 | Later (Gusto/connectors) | 0 | 28 |
 | **All** | **111** | **111** |
 
@@ -34,7 +34,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | I Performance and engagement | 3 | 1 | 0 | 2 |
 | J Analytics and reporting | 6 | 0 | 0 | 0 |
 | K Connectors | 3 | 11 | 0 | 0 |
-| L Security, privacy, operations | 2 | 5 | 0 | 2 |
+| L Security, privacy, operations | 2 | 6 | 0 | 1 |
 
 ## A. Platform and country
 
@@ -116,7 +116,7 @@ All of F runs against the mock Gusto server only. A real run needs Gusto demo cr
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-F01 | Partial | 14-step company setup with a page | Real Gusto credentials; state-tax fields are the mock's, to verify against Gusto |
+| US-F01 | Partial | 14-step company setup with a page. Run again on 2026-11-12 on the mock, through the page: connect, all 15 steps to "Approved", then one weekly payroll prepared and submitted, and the register read in the browser (1 person, 26.5 hours, $490.25 gross) | Real Gusto credentials; state-tax fields are the mock's, to verify against Gusto; a person must have a W-4 on file before Gusto will mark them finished, and the page only says so after the step fails |
 | US-F02 | Partial | Pay schedule sent to Gusto from the setup page | Local pay-schedule page |
 | US-F03 | Partial | People, address, job, pay and federal W-4 sent; compare with Gusto | State tax and bank details not sent; contractors skipped |
 | US-F04 | Partial | Hours feed, prepare, preview, blockers, deadline warning, page | Real Gusto credentials |
@@ -203,21 +203,24 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
 | US-L01 | Partial | Email one-time code; SSO service, routes and settings page (now linked) | SSO depends on Firebase Identity Platform setup (not verified); no TOTP |
-| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production | Demo password still in `login.js`; `npm audit` findings; inline scripts allowed; `docs/DEPLOY.md` is referenced but missing |
+| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production; the server no longer hands out its own source, database rules, scripts, stored data files or logs as static files (`middleware/static-guard.js`, with a test that fails if a page needs a blocked file); `npm run check:production` checks a server's settings before start; `docs/DEPLOY.md` written | `npm audit`: 32 findings, 2 critical, not fixed (listed in `docs/DEPLOY.md`); personal data in tracked files under `reports/`, `data/` and `logs/`; inline scripts allowed; demo password still in `login.js` (localhost only) |
 | US-L03 | Done | Field-level encryption | |
 | US-L04 | Done | Privacy export and deletion, tests; pages `admin-us-privacy.html` and `my-privacy.html` (English and Spanish) | |
 | US-L05 | Partial | Request logs, metrics, deep health check | Alerting, backups, disaster recovery |
 | US-L06 | Not started | | Security audit, pen test, SOC 2 |
 | US-L07 | Partial | Billing rules, service, Stripe adapter, tests, page in `admin-us-owner.html` (practice mode with test cards) | Real Stripe never exercised; no real card entry; tax is a placeholder |
 | US-L08 | Partial | Support access with consent and audit; status endpoint | Status page; support-staff screen |
-| US-L09 | Not started | | CI, deployment pipeline, environments |
+| US-L09 | Partial | CI workflow `.github/workflows/ci.yml` (install from the lock file, all tests, static-file check, library audit report). Its steps were run by hand from a fresh copy of the repository and passed | The workflow has not run on GitHub yet; nothing deploys automatically because no host is chosen; no separate test and live environments |
 
 ## Next, in order of value (no outside accounts needed)
 
 1. Done on 2026-11-12: holiday pay hours, rest breaks and missed-break pay (D04, E06), as company settings.
 2. Done on 2026-11-12: US versions of the old India modules: goals and reviews (I01), surveys (I03), equipment (I05), policy library (H08), report builder (J05).
-3. `docs/DEPLOY.md` and a deployment pipeline (L02, L09).
-4. Run the 14 Gusto setup steps again on the local mock and submit one payroll through the page, to see the register filled in the browser.
-5. Email: checklist reminders and sending signing links (needs a mail service decision).
+3. Done on 2026-11-12: `docs/DEPLOY.md`, the static-file guard, the production settings check and the CI workflow (L02, L09). Choosing a host and deploying is still open.
+4. Done on 2026-11-12: the Gusto setup and one payroll were run on the local mock through the page (F01).
+5. Email: checklist reminders, signing links, and notices for new surveys, policies and equipment (needs a mail service decision).
+6. Fix the library findings from `npm audit` (run `npm audit fix`, then the full tests and a look through the app; `xlsx` needs the vendor's build).
+7. Take the personal data out of the tracked files under `reports/`, `data/` and `logs/`, and serve attendance reports through a signed-in route.
+8. Choose a host, then follow `docs/DEPLOY.md`. Only one copy of the server can run until the background jobs share a lock.
 
 Needs an outside account before it can move: Gusto demo credentials (all of F), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10).

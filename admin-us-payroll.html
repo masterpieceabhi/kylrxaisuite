@@ -237,7 +237,7 @@ $('loadFeed').addEventListener('click', guard(async () => {
   const f = await req('GET', `/payroll/feed?start=${p.start}&end=${p.end}`);
   $('feedCard').hidden = false; $('previewCard').hidden = true; prepared = null;
   $('feedIssues').innerHTML = issueList(f.issues);
-  $('feedRows').innerHTML = f.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.regularHours}</td><td>${r.overtimeHours}</td><td>${r.doubleTimeHours}</td><td>${r.ptoHours || 0}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No approved hours in this period.</td></tr>';
+  $('feedRows').innerHTML = f.rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.regularHours}${r.holidayHours || r.premiumHours ? ` <span class="hint">plus ${r.holidayHours || 0} holiday and ${r.premiumHours || 0} missed-break, sent as regular</span>` : ''}</td><td>${r.overtimeHours}</td><td>${r.doubleTimeHours}</td><td>${r.ptoHours || 0}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No approved hours in this period.</td></tr>';
   $('prepare').disabled = !(f.ready && f.rows.length && status.can.run);
 }));
 function showPreview(p) {
@@ -280,7 +280,7 @@ async function showRegister(id) {
   $('registerCard').hidden = false; $('registerTitle').textContent = `Payroll register: ${day(r.periodStart)} to ${day(r.periodEnd)}, paid ${day(r.checkDate)}`;
   $('registerNote').textContent = !r.rows.length ? 'No pay details are stored for this payroll. Press Update on the payroll to fetch them from Gusto.' : r.allocated ? 'Gusto did not give tax amounts for each person on this payroll, so the company tax totals were shared out by gross pay. Treat the per-person tax columns as estimates.' : 'Amounts are the ones Gusto calculated.';
   $('registerRows').innerHTML = r.rows.map((x) => `<tr><td><b>${esc(x.name || '')}</b> <span class="hint">${esc(x.employeeId || '')}</span></td><td>${esc(x.department || '')}</td><td>${esc(x.hours)}</td><td>${money(x.gross)}</td><td>${money(x.employeeTaxes)}</td><td>${money(x.deductions)}</td><td><b>${money(x.net)}</b></td><td>${money(x.employerTaxes)}</td></tr>`).join('');
-  const t = r.totals; $('registerFoot').innerHTML = r.rows.length ? `<tr><th>${esc(t.people)} people</th><th></th><th>${esc(t.hours)}</th><th>${money(t.gross)}</th><th>${money(t.employeeTaxes)}</th><th>${money(t.deductions)}</th><th>${money(t.net)}</th><th>${money(t.employerTaxes)}</th></tr>` : '';
+  const t = r.totals; $('registerFoot').innerHTML = r.rows.length ? `<tr><th>${esc(t.people)} ${t.people === 1 ? 'person' : 'people'}</th><th></th><th>${esc(t.hours)}</th><th>${money(t.gross)}</th><th>${money(t.employeeTaxes)}</th><th>${money(t.deductions)}</th><th>${money(t.net)}</th><th>${money(t.employerTaxes)}</th></tr>` : '';
   $('registerCard').scrollIntoView({ behavior: 'smooth' });
 }
 $('registerCsv').addEventListener('click', () => {
