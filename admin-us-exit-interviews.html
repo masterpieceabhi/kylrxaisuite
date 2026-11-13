@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Exit interviews | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--amber:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap}nav.tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}nav.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:14px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button.act{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}td.n,th.n{text-align:right}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.ok{background:#dcfce7;color:var(--ok)}.warn{background:#fef3c7;color:var(--amber)}.grey{background:#f1f5f9;color:var(--muted)}
+.note{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:8px;padding:10px 12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:flex-end;margin:10px 0;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}.tile{border:1px solid var(--line);border-radius:10px;padding:10px}.tile b{display:block;font-size:22px}.tile span{color:var(--muted);font-size:12px}
+.bar{height:10px;border-radius:999px;background:var(--blue);min-width:2px}
+.q{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;display:grid;gap:8px}.q .grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.ans{padding:8px 0;border-bottom:1px solid var(--line)}.ans:last-child{border-bottom:0}.ans b{display:block}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Exit interviews</h1><div><a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="note">Only HR and the company owner can open this page. Managers never see exit-interview answers. People who are leaving fill the form themselves on their own page (<b>my-exit-interview.html</b>) until their last day; you can also record a conversation here.</div>
+  <div class="card"><div class="row" style="margin:0"><label>Last day from<input type="date" id="from"></label><label>to<input type="date" id="to"></label><button class="act ghost" type="button" id="apply">Show</button></div></div>
+  <nav class="tabs" id="tabs"><button type="button" data-t="people" class="on">People</button><button type="button" data-t="summary">Reasons for leaving</button><button type="button" data-t="questions">Questions</button></nav>
+  <div id="view"></div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; if (ok) setTimeout(() => { if (m.textContent === t) m.className = ''; }, 5000); else window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const TYPE = { resignation: 'Resigned', termination_for_cause: 'Let go for cause', layoff: 'Laid off', end_of_contract: 'Contract ended', retirement: 'Retired', other: 'Other', unknown: 'Not recorded' };
+const QTYPE = { reason: 'Reason for leaving (pick one)', rating: 'Rating 1 to 5', yesno: 'Yes or no', text: 'Written answer', choice: 'Pick one from a list' };
+const SOURCE = { self: 'Answered by the person', hr: 'Recorded by HR', self_and_hr: 'Answered by the person, edited by HR' };
+let tab = 'people'; let openId = null; let questions = [];
+
+async function authed(path, opts = {}) { const token = await auth.currentUser.getIdToken(); return fetch(`/api/us${path}`, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } }); }
+async function api(method, path, body) {
+  const res = await authed(path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+const range = () => { const p = new URLSearchParams(); if ($('from').value) p.set('from', $('from').value); if ($('to').value) p.set('to', $('to').value); const s = p.toString(); return s ? `?${s}` : ''; };
+const showAnswer = (q, v) => (v === undefined || v === null || v === '' ? '<span class="hint">No answer</span>' : q.type === 'yesno' ? (v ? 'Yes' : 'No') : q.type === 'rating' ? `${esc(v)} out of 5` : (q.type === 'choice' || q.type === 'reason') ? esc(((q.options || []).find((o) => o.value === v) || { label: { en: v } }).label.en) : esc(v).replace(/\n/g, '<br>'));
+
+function answerInput(q, v) {
+  if (q.type === 'rating') return `<select data-a="${esc(q.id)}" data-type="rating"><option value="">No answer</option>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${v === n ? ' selected' : ''}>${n}</option>`).join('')}</select>`;
+  if (q.type === 'yesno') return `<select data-a="${esc(q.id)}" data-type="yesno"><option value="">No answer</option><option value="true"${v === true ? ' selected' : ''}>Yes</option><option value="false"${v === false ? ' selected' : ''}>No</option></select>`;
+  if (q.type === 'text') return `<textarea data-a="${esc(q.id)}" data-type="text" rows="2" maxlength="2000">${esc(v || '')}</textarea>`;
+  return `<select data-a="${esc(q.id)}" data-type="choice"><option value="">No answer</option>${(q.options || []).map((o) => `<option value="${esc(o.value)}"${v === o.value ? ' selected' : ''}>${esc(o.label.en)}</option>`).join('')}</select>`;
+}
+
+function questionEditor(q, i) {
+  const hasOptions = q.type === 'choice' || q.type === 'reason';
+  return `<div class="q" data-i="${i}" data-id="${esc(q.id || '')}"><div class="grid"><label>Question (English)<input data-f="en" maxlength="300" value="${esc(q.text.en || '')}"></label><label>Question (Spanish, optional)<input data-f="es" maxlength="300" value="${esc(q.text.es || '')}"></label><label>Kind of answer<select data-f="type"${q.type === 'reason' ? ' disabled' : ''}>${Object.entries(QTYPE).filter(([k]) => k !== 'reason' || q.type === 'reason').map(([k, l]) => `<option value="${k}"${q.type === k ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label></div>
+  <label data-opts${hasOptions ? '' : ' hidden'}>Choices, one per line. For Spanish add it after a | (for example: Better pay | Mejor pago)<textarea data-f="options" rows="${hasOptions ? Math.min(14, (q.options || []).length + 1) : 3}">${esc((q.options || []).map((o) => `${o.label.en}${o.label.es ? ` | ${o.label.es}` : ''}`).join('\n'))}</textarea></label>
+  <div class="row" style="margin:0"><label style="display:flex;gap:6px;align-items:center;color:var(--ink);font-size:13px"><input type="checkbox" data-f="required"${q.required ? ' checked' : ''}${q.type === 'reason' ? ' disabled' : ''}> Must be answered</label><button class="ghost act" type="button" data-up="${i}">Move up</button><button class="ghost act" type="button" data-down="${i}">Move down</button>${q.type === 'reason' ? '<span class="hint">This question stays: the reasons summary is built from it.</span>' : `<button class="no act" type="button" data-rm="${i}">Remove</button>`}</div></div>`;
+}
+
+/** Reads the question editor back into the list the server expects. Choice values are kept when the English label is unchanged. */
+function readQuestions() {
+  return [...document.querySelectorAll('#qList .q')].map((el) => {
+    const old = questions.find((x) => x.id && x.id === el.dataset.id) || {};
+    const f = (n) => el.querySelector(`[data-f="${n}"]`);
+    const type = f('type').value;
+    const q = { ...(el.dataset.id ? { id: el.dataset.id } : {}), type, required: f('required').checked, text: { en: f('en').value.trim(), ...(f('es').value.trim() ? { es: f('es').value.trim() } : {}) } };
+    if (type === 'choice' || type === 'reason') {
+      q.options = f('options').value.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+        const [en, es] = line.split('|').map((s) => s.trim());
+        const prev = (old.options || []).find((o) => o.label.en === en);
+        return { ...(prev ? { value: prev.value } : {}), label: { en, ...(es ? { es } : {}) } };
+      });
+    }
+    return q;
+  });
+}
+
+const views = {
+  async people() {
+    const r = await api('GET', `/exit-interviews${range()}`);
+    let detail = '';
+    if (openId) {
+      const d = (await api('GET', `/exit-interviews/${encodeURIComponent(openId)}`)).interview;
+      detail = `<div class="card" id="detail"><h2>${esc(d.name || '')} <span class="hint">last day ${esc(d.lastDay)} · ${esc(TYPE[d.type] || d.type || '')}</span></h2>
+      <p class="hint">${d.answered ? `${esc(SOURCE[d.source] || '')}${d.submittedAt ? `, first saved ${esc(String(d.submittedAt).slice(0, 10))}` : ''}.` : 'No answers yet.'} Opening this page is written to the audit log.</p>
+      ${d.questions.map((q) => `<div class="ans"><b>${esc(q.text.en)}</b>${showAnswer(q, d.answers[q.id])}</div>`).join('')}
+      <h3>Record a conversation</h3><p class="hint">Use this when you spoke with the person. What you save here replaces the answers above; leave a question on "No answer" to clear it.</p>
+      <form id="hrForm"><input type="hidden" name="id" value="${esc(d.userId)}">${d.questions.map((q) => `<label style="margin-bottom:8px">${esc(q.text.en)}${answerInput(q, d.answers[q.id])}</label>`).join('')}
+      <label>HR notes (only HR sees these)<textarea name="hrNotes" rows="3" maxlength="4000">${esc(d.hrNotes || '')}</textarea></label>
+      <div class="row"><button class="act" type="submit" name="what" value="all">Save answers and notes</button><button class="ghost act" type="button" id="notesOnly">Save notes only</button><button class="ghost act" type="button" id="closeDetail">Close</button></div></form></div>`;
+    }
+    return `<div class="card"><h2>People leaving, last day ${esc(r.from)} to ${esc(r.to)} (${r.count})</h2><table><thead><tr><th>Person</th><th>Last day</th><th>How they left</th><th>Exit interview</th><th>Main reason</th><th></th></tr></thead><tbody>${r.data.map((p) => `<tr><td><b>${esc(p.name || '')}</b> <span class="hint">${esc(p.employeeId || '')}</span></td><td>${esc(p.lastDay)}</td><td>${esc(TYPE[p.type] || p.type || '')}</td><td>${p.answered ? `<span class="tag ok">Answered</span> <span class="hint">${esc(SOURCE[p.source] || '')}</span>` : '<span class="tag warn">Not yet</span>'}${p.hasNotes ? ' <span class="tag grey">notes</span>' : ''}</td><td>${esc(p.reason || '-')}</td><td><button class="ghost act" type="button" data-open="${esc(p.userId)}">Open</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nobody has a last day in this period.</td></tr>'}</tbody></table></div>${detail}`;
+  },
+  async summary() {
+    const s = await api('GET', `/exit-interviews/summary${range()}`);
+    const max = Math.max(1, ...s.reasons.map((r) => r.count));
+    return `<div class="tiles"><div class="tile"><b>${s.leavers}</b><span>People who left in this period</span></div><div class="tile"><b>${s.responses}</b><span>Exit interviews answered</span></div><div class="tile"><b>${s.responseRate === null ? '-' : `${s.responseRate}%`}</b><span>Share who answered</span></div><div class="tile"><b>${s.withoutAnswer}</b><span>Left without answering</span></div></div>
+    <div class="card"><h2>Main reason for leaving, ${esc(s.from)} to ${esc(s.to)} <button class="act ghost" type="button" id="csv" style="margin-left:10px">Download CSV</button></h2><table><thead><tr><th>Reason</th><th class="n">People</th><th class="n">Share</th><th style="width:40%"></th></tr></thead><tbody>${s.reasons.map((r) => `<tr><td>${esc(r.label)}</td><td class="n">${r.count}</td><td class="n">${r.percent}%</td><td><div class="bar" style="width:${Math.round((r.count / max) * 100)}%"></div></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No answers in this period.</td></tr>'}</tbody></table>
+    <p class="hint">With only a few answers, a reason can point to one person. Share this summary with care.</p></div>
+    <div class="card"><h2>Ratings and yes/no questions</h2><table><tbody>${s.ratings.map((r) => `<tr><td>${esc(r.text)}</td><td class="n"><b>${r.average === null ? '-' : r.average}</b> average</td><td class="n">${r.answers} answers</td></tr>`).join('')}${s.yesNo.map((y) => `<tr><td>${esc(y.text)}</td><td class="n"><b>${y.yes}</b> yes</td><td class="n">${y.no} no</td></tr>`).join('') || ''}</tbody></table></div>
+    <div class="card"><h2>How people left</h2><table><tbody>${Object.entries(s.byType).map(([k, n]) => `<tr><td>${esc(TYPE[k] || k)}</td><td class="n">${n}</td></tr>`).join('') || '<tr><td class="hint">Nobody left in this period.</td></tr>'}</tbody></table></div>`;
+  },
+  async questions() {
+    const r = await api('GET', '/exit-interviews/questions');
+    questions = r.questions;
+    return `<div class="card"><h2>Questions ${r.customised ? '<span class="tag ok">Your own list</span>' : '<span class="tag grey">Standard list</span>'}</h2><p class="hint">People answer on their phone in English or Spanish. Keep it short: up to ${r.limits.questions} questions. Changing a question does not change answers already given.</p>
+    <div id="qList">${questions.map(questionEditor).join('')}</div>
+    <div class="row"><button class="ghost act" type="button" id="qAdd">Add a question</button><button class="act" type="button" id="qSave">Save questions</button><button class="no act" type="button" id="qReset">Back to the standard list</button></div></div>`;
+  }
+};
+
+async function show(name) {
+  tab = name; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === name));
+  $('view').innerHTML = '<p class="hint">Loading...</p>';
+  try { $('view').innerHTML = await views[name](); }
+  catch (e) { $('view').innerHTML = ''; say(e.status === 403 ? 'Only HR and the company owner can see exit interviews.' : e.status === 409 && name !== 'people' ? 'Exit interviews are for US companies.' : e.message, false); }
+}
+const redrawQuestions = () => { $('qList').innerHTML = questions.map(questionEditor).join(''); };
+
+document.addEventListener('click', async (e) => {
+  const t = e.target;
+  try {
+    const open = t.closest('[data-open]'); const up = t.closest('[data-up]'); const down = t.closest('[data-down]'); const rm = t.closest('[data-rm]');
+    if (open) { openId = open.dataset.open; await show('people'); const d = $('detail'); if (d) d.scrollIntoView({ behavior: 'smooth' }); }
+    if (t.id === 'closeDetail') { openId = null; await show('people'); }
+    if (t.id === 'notesOnly') { const f = $('hrForm'); await api('PUT', `/exit-interviews/${encodeURIComponent(f.id.value)}`, { hrNotes: f.hrNotes.value }); say('Notes saved.'); await show('people'); }
+    if (t.id === 'csv') { const r = await authed(`/exit-interviews/summary${range()}${range() ? '&' : '?'}format=csv`); if (!r.ok) throw new Error('Could not download'); const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = 'reasons-for-leaving.csv'; a.click(); }
+    if (up || down || rm || t.id === 'qAdd') {
+      questions = readQuestions().map((q, i) => ({ ...q, id: q.id || '', text: q.text, options: (q.options || []).map((o) => ({ value: o.value || '', label: o.label })), _n: i }));
+      if (t.id === 'qAdd') questions.push({ id: '', type: 'text', required: false, text: { en: '' } });
+      if (rm) questions.splice(Number(rm.dataset.rm), 1);
+      const i = up ? Number(up.dataset.up) : down ? Number(down.dataset.down) : -1; const j = up ? i - 1 : i + 1;
+      if ((up || down) && j >= 0 && j < questions.length) [questions[i], questions[j]] = [questions[j], questions[i]];
+      redrawQuestions();
+    }
+    if (t.id === 'qSave') { await api('PUT', '/exit-interviews/questions', { questions: readQuestions() }); say('Questions saved.'); await show('questions'); }
+    if (t.id === 'qReset' && window.confirm('Go back to the standard questions? Your own list is removed. Answers already given are kept.')) { await api('POST', '/exit-interviews/questions/reset', {}); say('Back to the standard list.'); await show('questions'); }
+    if (t.id === 'apply') await show(tab);
+  } catch (err) { say(err.message, false); }
+});
+document.addEventListener('change', (e) => { const sel = e.target.closest('#qList [data-f="type"]'); if (sel) sel.closest('.q').querySelector('[data-opts]').hidden = sel.value !== 'choice'; });
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'hrForm') return;
+  e.preventDefault(); const f = e.target; const answers = {};
+  f.querySelectorAll('[data-a]').forEach((el) => { const v = el.value; if (v === '') return; answers[el.dataset.a] = el.dataset.type === 'rating' ? Number(v) : el.dataset.type === 'yesno' ? v === 'true' : v; });
+  try { await api('PUT', `/exit-interviews/${encodeURIComponent(f.id.value)}`, { answers, hrNotes: f.hrNotes.value }); say('Saved.'); await show('people'); } catch (err) { say(err.message, false); }
+});
+$('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) show(b.dataset.t); });
+onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } show(tab); });
+</script>
+</body>
+</html>

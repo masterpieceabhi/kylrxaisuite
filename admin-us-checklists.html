@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Checklists | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+tr.offrow td{color:#94a3b8}
+</style>
+</head>
+<body>
+<header><h1>Checklists</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs"><button data-tab="todo" class="on">To do <span id="todoCount"></span></button><button data-tab="lists">What is on each checklist</button></div>
+
+  <div id="tab-todo" class="pane on">
+    <section class="card">
+      <h2>Open tasks for everyone</h2>
+      <div class="row" style="margin-top:0"><label>Whose tasks<select id="tWho"><option value="">Everyone's</option><option value="hr">HR</option><option value="manager">Managers</option><option value="employee">Employees</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Due</th><th>Task</th><th>For</th><th>Done by</th><th>List</th></tr></thead><tbody id="tRows"></tbody></table>
+      <p class="hint">Tick tasks off on the person's record under People.</p>
+    </section>
+  </div>
+
+  <div id="tab-lists" class="pane">
+    <section class="card">
+      <h2>What is on each checklist</h2>
+      <p class="hint" id="note"></p>
+      <div class="row" style="margin-top:0"><label>Checklist<select id="kind"><option value="onboarding">New hire</option><option value="offboarding">Leaving</option><option value="rehire">Rehire</option></select></label></div>
+      <h3>Built-in tasks</h3>
+      <table><thead><tr><th>On</th><th>Task</th><th>Done by</th><th>Due after the first or last day</th><th></th></tr></thead><tbody id="builtIn"></tbody></table>
+      <p class="hint">Tasks tied to a tax or work-eligibility form, and required tasks, cannot be switched off.</p>
+      <h3>Your own tasks</h3>
+      <table><thead><tr><th>Task</th><th>Done by</th><th>Due (days)</th><th>Required</th><th></th></tr></thead><tbody id="extra"></tbody></table>
+      <form id="addForm"><div class="grid" style="margin-top:10px">
+        <label>Task<input name="title" required minlength="3" maxlength="120" placeholder="Bring your food handler card"></label>
+        <label>Done by<select name="assignee"><option value="employee">The employee</option><option value="hr">HR</option><option value="manager">Their manager</option></select></label>
+        <label>Due this many days after the first (or last) day<input name="offset" type="number" min="-60" max="365" value="7" required></label>
+        <label>Help text (optional)<input name="help" maxlength="200"></label>
+        <label class="chk"><input type="checkbox" name="required"> Required</label>
+      </div><div class="row"><button type="submit" class="ghost">Add task</button><span class="hint">Use a minus number for days before the day, for example -2.</span></div></form>
+      <div class="row"><button id="save">Save checklists</button><span class="hint" id="dirty"></span></div>
+    </section>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const WHO = { employee: 'Employee', hr: 'HR', manager: 'Manager' }; const KIND = { onboarding: 'New hire', offboarding: 'Leaving', rehire: 'Rehire' };
+let tpl = null; let changed = false;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/checklists${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function loadTodo() {
+  const r = await req('GET', `/overview${$('tWho').value ? `?assignee=${$('tWho').value}` : ''}`);
+  if (!$('tWho').value) $('todoCount').textContent = r.counts.open ? `(${r.counts.open}${r.counts.overdue ? `, ${r.counts.overdue} late` : ''})` : '';
+  $('tRows').innerHTML = r.data.map((t) => `<tr><td>${esc(day(t.dueDate))}<br>${t.overdue ? '<span class="tag badTag">late</span>' : t.dueSoon ? '<span class="tag warnTag">soon</span>' : ''}</td><td><b>${esc(t.title)}</b>${t.required ? '' : ' <span class="hint">(optional)</span>'}${t.help ? `<br><span class="hint">${esc(t.help)}</span>` : ''}</td><td>${esc(t.name || '')} <span class="hint">${esc(t.employeeId || '')}</span></td><td>${esc(WHO[t.assignee] || t.assignee)}</td><td><span class="tag grey">${esc(KIND[t.kind] || t.kind)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing open.</td></tr>';
+}
+$('tWho').addEventListener('change', () => loadTodo().catch((e) => say(e.message, false)));
+const mark = () => { changed = true; $('dirty').textContent = 'You have changes that are not saved yet.'; };
+function paint() {
+  const k = tpl[$('kind').value];
+  $('builtIn').innerHTML = k.builtIn.map((t) => `<tr class="${t.on ? '' : 'offrow'}"><td>${t.canSwitchOff ? `<input type="checkbox" data-on="${esc(t.key)}" ${t.on ? 'checked' : ''} aria-label="Use: ${esc(t.title)}">` : '<span class="tag grey">always</span>'}</td><td><b>${esc(t.title)}</b>${t.help ? `<br><span class="hint">${esc(t.help)}</span>` : ''}</td><td>${esc(WHO[t.assignee])}</td><td>${esc(t.due)}</td><td>${t.required ? '<span class="hint">required</span>' : '<span class="hint">optional</span>'}</td></tr>`).join('');
+  $('extra').innerHTML = k.extra.map((t, i) => `<tr><td><b>${esc(t.title)}</b>${t.help ? `<br><span class="hint">${esc(t.help)}</span>` : ''}</td><td>${esc(WHO[t.assignee])}</td><td>${esc(t.offset)}</td><td>${t.required ? 'Yes' : 'No'}</td><td><button class="no" data-rm="${i}">Remove</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">None yet.</td></tr>';
+}
+$('kind').addEventListener('change', paint);
+$('addForm').addEventListener('submit', (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  tpl[$('kind').value].extra.push({ title: f.title.value.trim(), assignee: f.assignee.value, offset: Number(f.offset.value), required: f.required.checked, help: f.help.value.trim() || null });
+  e.target.reset(); mark(); paint();
+});
+document.addEventListener('change', (e) => { const c = e.target.closest('[data-on]'); if (!c) return; tpl[$('kind').value].builtIn.find((t) => t.key === c.dataset.on).on = c.checked; mark(); paint(); });
+document.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; tpl[$('kind').value].extra.splice(Number(b.dataset.rm), 1); mark(); paint(); });
+$('save').addEventListener('click', async () => {
+  const settings = Object.fromEntries(Object.entries(tpl).map(([kind, k]) => [kind, { off: k.builtIn.filter((t) => !t.on).map((t) => t.key), extra: k.extra }]));
+  try { tpl = (await req('PUT', '/templates', { settings })).templates; changed = false; $('dirty').textContent = ''; paint(); say('Saved. New checklists use these tasks. Lists that already exist are not changed.'); } catch (e) { say(e.message, false); }
+});
+window.addEventListener('beforeunload', (e) => { if (changed) { e.preventDefault(); e.returnValue = ''; } });
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { await loadTodo(); } catch (e) { say(e.message, false); }
+  try { const r = await req('GET', '/templates'); tpl = r.templates; $('note').textContent = r.note; paint(); } catch (e) { say(e.message, false); }
+});
+</script>
+</body>
+</html>

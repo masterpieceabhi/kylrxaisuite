@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hiring | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:80px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}.stat{border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}.stat b{display:block;font-size:22px}
+.secret{background:#0f172a;color:#fff;border-radius:10px;padding:14px;font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+a.link{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:none}
+</style>
+</head>
+<body>
+<header><h1>Hiring</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+  <div class="tabs">
+    <button data-tab="jobs" class="on">Job openings</button>
+    <button data-tab="people">Candidates</button>
+    <button data-tab="one" id="oneTab" hidden>Candidate</button>
+    <button data-tab="numbers">Numbers</button>
+  </div>
+
+  <div id="tab-jobs" class="pane on">
+    <section class="card">
+      <h2>Job openings</h2>
+      <table><thead><tr><th>Job</th><th>Where</th><th>Pay</th><th>Hiring manager</th><th>Filled</th><th>Candidates</th><th>Status</th><th></th></tr></thead><tbody id="jobRows"></tbody></table>
+    </section>
+    <section class="card" id="jobFormCard">
+      <h2 id="jobTitle">New job opening</h2>
+      <form id="jobForm"><div class="grid">
+        <label>Job title<input name="title" required maxlength="120"></label>
+        <label>Department<input name="department" required maxlength="120"></label>
+        <label>Location (shown to applicants)<input name="location" required maxlength="120" placeholder="Dallas, TX"></label>
+        <label>Work state (2 letters)<input name="state" maxlength="2" placeholder="TX"></label>
+        <label>Type<select name="employmentType" id="jobType"></select></label>
+        <label>How many people<input name="headcount" type="number" min="1" max="500" value="1"></label>
+        <label>Pay from ($)<input name="payMin" type="number" min="0" step="0.01"></label>
+        <label>Pay to ($)<input name="payMax" type="number" min="0" step="0.01"></label>
+        <label>Pay is per<select name="payUnit"><option value="hour">Hour</option><option value="year">Year</option></select></label>
+        <label>Hiring manager<select name="hiringManagerId" id="jobManager"></select></label>
+        <label>Target start date<input name="targetStartDate" type="date"></label>
+        <label>Must approve before opening<select name="approverIds" id="jobApprovers" multiple size="3"></select></label>
+      </div>
+      <label style="margin-top:12px">Description (shown on the careers page)<textarea name="description" maxlength="5000" rows="5"></textarea></label>
+      <label style="margin-top:12px">What interviewers rate (one per line)<textarea name="competencies" rows="4"></textarea></label>
+      <p class="hint">Several states and cities require the pay range in a job posting. Fill it in and confirm the rule for your location with an advisor.</p>
+      <div class="row"><button type="submit">Save</button><button type="button" class="ghost" id="jobCancel" hidden>Cancel edit</button></div></form>
+    </section>
+    <section class="card" id="careersCard" hidden>
+      <h2>Public careers page</h2>
+      <p class="hint">Open jobs are listed on this page. Anyone with the link can apply; no login is needed.</p>
+      <div class="row"><a class="link" id="careersLink" target="_blank" rel="noopener"></a><button class="ghost" id="careersCopy">Copy link</button><label class="chk"><input type="checkbox" id="careersOn"> Careers page is on</label></div>
+    </section>
+  </div>
+
+  <div id="tab-people" class="pane">
+    <section class="card">
+      <h2>Candidates</h2>
+      <div class="row" style="margin-top:0">
+        <label>Job<select id="fJob"></select></label>
+        <label>Stage<select id="fStage"></select></label>
+        <label>Search<input id="fQ" placeholder="Name or email"></label>
+        <button class="ghost" id="fGo">Show</button>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>Name</th><th>Job</th><th>Stage</th><th>Applied</th><th>Came from</th><th></th></tr></thead><tbody id="candRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-one" class="pane">
+    <section class="card">
+      <div class="row" style="margin-top:0;justify-content:space-between"><h2 id="cName" style="margin:0"></h2><span id="cStage"></span></div>
+      <p id="cInfo"></p>
+      <div class="row" id="cDup"></div>
+      <div class="row"><label>Move to<select id="cMoveTo"></select></label><label>Note (needed to reject)<input id="cMoveNote" maxlength="300"></label><button id="cMove">Move</button><button class="ghost" id="cResume">Download resume</button></div>
+    </section>
+    <section class="card">
+      <h2>Notes</h2>
+      <div id="cNotes"></div>
+      <div class="row"><input id="cNoteText" style="flex:1;min-width:220px" maxlength="2000" placeholder="Write job-related notes only"><button class="ghost" id="cNoteAdd">Add note</button></div>
+    </section>
+    <section class="card">
+      <h2>Interviews</h2>
+      <table><tbody id="cInterviews"></tbody></table>
+      <form id="intForm"><div class="grid" style="margin-top:10px">
+        <label>When<input name="when" type="datetime-local" required></label>
+        <label>Interviewers (comma separated)<input name="interviewers" required></label>
+        <label>Where or video link<input name="location" maxlength="160"></label>
+        <label>Kind<input name="kind" value="interview" maxlength="40"></label>
+      </div><div class="row"><button type="submit" class="ghost">Add interview</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Scorecards <span class="hint" id="cAvg"></span></h2>
+      <table><tbody id="cScores"></tbody></table>
+      <h3>Add your scorecard</h3>
+      <form id="scoreForm"><div class="grid" id="scoreFields"></div>
+        <div class="grid" style="margin-top:10px">
+          <label>Round<input name="round" value="interview" maxlength="40"></label>
+          <label>Your recommendation<select name="recommendation"><option value="strong_yes">Strong yes</option><option value="yes" selected>Yes</option><option value="no">No</option><option value="strong_no">Strong no</option></select></label>
+          <label>Notes<input name="notes" maxlength="2000"></label>
+        </div>
+        <div class="row"><button type="submit" class="ghost">Save scorecard</button></div></form>
+    </section>
+    <section class="card" id="offerCard">
+      <h2>Offer and hire</h2>
+      <p id="cOffer" class="hint"></p>
+      <form id="offerForm"><div class="grid">
+        <label>Job title<input name="jobTitle" required maxlength="120"></label>
+        <label>Pay ($)<input name="payRate" type="number" min="0.01" step="0.01" required></label>
+        <label>Per<select name="payUnit"><option value="hour">Hour</option><option value="year">Year</option></select></label>
+        <label>Start date<input name="startDate" type="date" required></label>
+        <label>Notes<input name="notes" maxlength="500"></label>
+      </div><div class="row"><button type="submit" class="ghost">Save offer</button><a class="link" href="admin-us-esign.html">Send the offer letter for signature</a></div></form>
+      <h3>Turn into an employee</h3>
+      <p class="hint">Creates the employee record and login, and starts onboarding. The candidate must be in the Offer stage.</p>
+      <div class="row"><label class="chk"><input type="checkbox" id="hireOffline"> The candidate accepted the offer outside this system</label><button id="hireGo">Hire</button></div>
+      <div id="hireOut" style="margin-top:12px"></div>
+    </section>
+    <section class="card">
+      <h2>History</h2>
+      <table><tbody id="cHistory"></tbody></table>
+      <h3>Privacy</h3>
+      <div class="row"><button class="no" id="cErase">Erase this candidate's personal data</button><span class="hint">Use when a candidate asks to be deleted. Cannot be undone.</span></div>
+    </section>
+  </div>
+
+  <div id="tab-numbers" class="pane">
+    <section class="card">
+      <h2>Pipeline</h2>
+      <div class="row" style="margin-top:0"><label>Job<select id="nJob"></select></label><button class="ghost" id="nGo">Show</button></div>
+      <h3>Where candidates are now</h3><div class="stats" id="nNow"></div>
+      <h3>How far candidates got</h3>
+      <table><thead><tr><th>Step</th><th>Moved on</th><th>Average days in the first stage</th></tr></thead><tbody id="nConv"></tbody></table>
+      <h3>Where candidates came from</h3>
+      <table><thead><tr><th>Source</th><th>Applied</th><th>Hired</th><th>Rejected</th></tr></thead><tbody id="nSource"></tbody></table>
+    </section>
+    <section class="card" id="eeoCard" hidden>
+      <h2>Applicant equal-opportunity answers (totals only)</h2>
+      <p class="hint" id="eeoNote"></p>
+      <div class="row"><button class="ghost" id="eeoGo">Show totals</button><span class="hint">Opening this is recorded in the audit log.</span></div>
+      <pre id="eeoOut" style="white-space:pre-wrap;font:inherit"></pre>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const money = (n) => `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(Number(n)) ? 0 : 2, maximumFractionDigits: 2 })}`;
+const payText = (r) => (r.payMin === null && r.payMax === null ? '' : `${[r.payMin, r.payMax].filter((x) => x !== null).map(money).join(' to ')} per ${r.payUnit}`);
+const when = (iso, time) => (iso ? new Date(iso).toLocaleString('en-US', time ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }) : '');
+const STAGE_TAG = { applied: 'grey', screen: 'blueTag', interview: 'blueTag', assessment: 'blueTag', offer: 'warnTag', hired: 'good', rejected: 'badTag', withdrawn: 'grey' };
+const STATUS_TAG = { draft: 'grey', open: 'good', on_hold: 'warnTag', filled: 'blueTag', closed: 'grey' };
+let options = null; let jobs = []; let staff = []; let jobEdit = null; let cand = null; let canManage = true;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+function showTab(name) {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x.dataset.tab === name));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${name}`));
+}
+
+// -------------------------------------------------------------- job openings
+async function loadJobs() {
+  jobs = (await req('GET', '/hiring/requisitions')).data;
+  $('jobRows').innerHTML = jobs.map((r) => {
+    const waiting = (r.approvals || []).filter((a) => a.decision !== 'approved');
+    const next = { draft: [['open', 'Open']], open: [['on_hold', 'Pause'], ['closed', 'Close']], on_hold: [['open', 'Reopen'], ['closed', 'Close']], filled: [['open', 'Reopen']], closed: [['open', 'Reopen']] }[r.status] || [];
+    return `<tr><td><b>${esc(r.title)}</b><br><span class="hint">${esc(r.department)} · ${esc(words(r.employmentType))}</span></td><td>${esc(r.location)}${r.state ? ` <span class="hint">(${esc(r.state)})</span>` : ''}</td><td>${esc(payText(r)) || '<span class="tag warnTag">no pay range</span>'}</td><td>${esc(r.hiringManagerName || '')}</td><td>${esc(r.filledCount)} of ${esc(r.headcount)}</td><td>${esc(r.activeCandidates)}</td><td><span class="tag ${STATUS_TAG[r.status] || 'grey'}">${esc(words(r.status))}</span>${waiting.length ? `<br><span class="hint">Waiting for ${esc(waiting.map((a) => a.name).join(', '))}</span>` : ''}</td><td>${canManage ? `<button class="ghost" data-jobedit="${esc(r.id)}">Edit</button> ${next.map(([s, l]) => `<button class="ghost" data-jobstatus="${esc(r.id)}" data-to="${s}">${l}</button>`).join(' ')}` : ''} ${(r.approvals || []).length ? `<button class="ghost" data-jobapprove="${esc(r.id)}">Approve</button>` : ''} <button class="ghost" data-jobcands="${esc(r.id)}">Candidates</button></td></tr>`;
+  }).join('') || '<tr><td colspan="8" class="hint">No job openings yet.</td></tr>';
+  const o = '<option value="">All jobs</option>' + jobs.map((r) => `<option value="${esc(r.id)}">${esc(r.title)}</option>`).join('');
+  const keep = $('fJob').value; $('fJob').innerHTML = o; $('fJob').value = keep; $('nJob').innerHTML = o;
+}
+function resetJobForm() { jobEdit = null; $('jobForm').reset(); $('jobForm').elements.competencies.value = options.defaultCompetencies.join('\n'); $('jobTitle').textContent = 'New job opening'; $('jobCancel').hidden = true; }
+$('jobCancel').addEventListener('click', resetJobForm);
+$('jobForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  const body = { title: el.title.value, department: el.department.value, location: el.location.value, state: el.state.value, employmentType: el.employmentType.value, headcount: Number(el.headcount.value), payMin: el.payMin.value, payMax: el.payMax.value, payUnit: el.payUnit.value, hiringManagerId: el.hiringManagerId.value, targetStartDate: el.targetStartDate.value, description: el.description.value, approverIds: [...el.approverIds.selectedOptions].map((o) => o.value), competencies: el.competencies.value.split('\n').map((s) => s.trim()).filter(Boolean) };
+  try {
+    if (jobEdit) await req('PUT', `/hiring/requisitions/${jobEdit}`, body); else await req('POST', '/hiring/requisitions', body);
+    say(jobEdit ? 'Job opening updated.' : 'Job opening saved as a draft. Press Open to list it on the careers page.'); resetJobForm(); await loadJobs();
+  } catch (err) { say(err.message, false); }
+});
+
+// ---------------------------------------------------------------- candidates
+async function loadCandidates() {
+  const q = new URLSearchParams(); if ($('fJob').value) q.set('requisitionId', $('fJob').value); if ($('fStage').value) q.set('stage', $('fStage').value); if ($('fQ').value.trim()) q.set('q', $('fQ').value.trim());
+  const rows = (await req('GET', `/hiring/candidates?${q}`)).data;
+  $('candRows').innerHTML = rows.map((c) => `<tr><td><a class="link" data-cand="${esc(c.id)}">${esc(c.name)}</a>${c.possibleDuplicates ? ' <span class="tag warnTag">applied before</span>' : ''}<br><span class="hint">${esc(c.email)} · ${esc(c.phone)}</span></td><td>${esc(c.requisitionTitle)}</td><td><span class="tag ${STAGE_TAG[c.stage] || 'grey'}">${esc(words(c.stage))}</span></td><td>${esc(when(c.appliedAt))}</td><td>${esc(words(c.source))}</td><td><button class="ghost" data-cand="${esc(c.id)}">Open</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No candidates match.</td></tr>';
+}
+async function openCandidate(id) {
+  cand = (await req('GET', `/hiring/candidates/${id}`)).candidate;
+  $('oneTab').hidden = false; $('oneTab').textContent = cand.name; showTab('one');
+  $('cName').textContent = cand.name; $('cStage').innerHTML = `<span class="tag ${STAGE_TAG[cand.stage] || 'grey'}">${esc(words(cand.stage))}</span>`;
+  $('cInfo').innerHTML = `${esc(cand.requisitionTitle)} · ${esc(cand.email)} · ${esc(cand.phone)}<br><span class="hint">Applied ${esc(when(cand.appliedAt))} through ${esc(words(cand.source))}${cand.employeeId ? ` · now employee ${esc(cand.employeeId)}` : ''}</span>`;
+  $('cDup').innerHTML = cand.duplicates.length ? `<span class="tag warnTag">Also applied:</span> ${cand.duplicates.map((d) => `<a class="link" data-cand="${esc(d.id)}">${esc(d.requisitionTitle)} (${esc(words(d.stage))})</a>`).join(', ')}` : '';
+  $('cMoveTo').innerHTML = options.stages.filter((s) => s !== cand.stage && s !== 'hired').map((s) => `<option value="${s}">${esc(words(s))}</option>`).join('');
+  $('cResume').hidden = !cand.hasResume; $('cMoveNote').value = '';
+  $('cNotes').innerHTML = cand.notes.map((n) => `<p><b>${esc(n.by)}</b> <span class="hint">${esc(when(n.at, true))}</span><br>${esc(n.text)}</p>`).join('') || '<p class="hint">No notes yet.</p>';
+  $('cInterviews').innerHTML = cand.interviews.map((i) => `<tr><td>${esc(when(i.when, true))}</td><td>${esc(words(i.kind))}</td><td>${esc(i.interviewers.join(', '))}</td><td>${esc(i.location || '')}</td></tr>`).join('') || '<tr><td class="hint">No interviews planned.</td></tr>';
+  $('cAvg').textContent = cand.scorecardAverage === null ? '' : `average ${cand.scorecardAverage} out of 5`;
+  $('cScores').innerHTML = cand.scorecards.map((s) => `<tr><td><b>${esc(s.byName)}</b><br><span class="hint">${esc(s.round)} · ${esc(when(s.at))}</span></td><td>${s.ratings.map((r) => `${esc(r.competency)}: ${esc(r.rating)}`).join('<br>')}</td><td><span class="tag ${s.recommendation.includes('yes') ? 'good' : 'badTag'}">${esc(words(s.recommendation))}</span> ${esc(s.average)}<br>${esc(s.notes || '')}</td></tr>`).join('') || '<tr><td class="hint">No scorecards yet.</td></tr>';
+  $('scoreFields').innerHTML = cand.competencies.map((c, i) => `<label>${esc(c)}<select data-comp="${i}"><option value="">Rate 1 to 5</option>${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join('')}</select></label>`).join('');
+  const o = cand.offer; const f = $('offerForm').elements;
+  $('cOffer').textContent = o ? `Offer: ${o.jobTitle}, ${money(o.payRate)} per ${o.payUnit}, starting ${o.startDate}. Status: ${words(cand.offerStatus || 'drafted')}.` : 'No offer yet.';
+  f.jobTitle.value = o ? o.jobTitle : cand.requisitionTitle; f.payRate.value = o ? o.payRate : ''; f.payUnit.value = o ? o.payUnit : 'hour'; f.startDate.value = o ? o.startDate : ''; f.notes.value = o ? o.notes || '' : '';
+  $('offerCard').hidden = !canManage; $('hireOut').innerHTML = ''; $('hireOffline').checked = false; $('cErase').parentElement.hidden = !canManage || Boolean(cand.personId);
+  $('cHistory').innerHTML = cand.stageHistory.map((h) => `<tr><td>${esc(words(h.stage))}</td><td>${esc(when(h.enteredAt, true))}</td><td>${esc(h.note || '')}</td></tr>`).join('');
+}
+$('fGo').addEventListener('click', () => loadCandidates().catch((err) => say(err.message, false)));
+$('cMove').addEventListener('click', async () => {
+  try { await req('PUT', `/hiring/candidates/${cand.id}/stage`, { stage: $('cMoveTo').value, note: $('cMoveNote').value }); say('Moved.'); await openCandidate(cand.id); await loadJobs(); } catch (err) { say(err.message, false); }
+});
+$('cResume').addEventListener('click', async () => {
+  try { const res = await req('GET', `/hiring/candidates/${cand.id}/resume`, null, true); const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = cand.resumeName || 'resume'; document.body.appendChild(a); a.click(); a.remove(); } catch (err) { say(err.message, false); }
+});
+$('cNoteAdd').addEventListener('click', async () => {
+  try { await req('POST', `/hiring/candidates/${cand.id}/notes`, { text: $('cNoteText').value }); $('cNoteText').value = ''; await openCandidate(cand.id); } catch (err) { say(err.message, false); }
+});
+$('intForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try { await req('POST', `/hiring/candidates/${cand.id}/interviews`, { when: new Date(el.when.value).toISOString(), interviewers: el.interviewers.value.split(',').map((s) => s.trim()).filter(Boolean), location: el.location.value, kind: el.kind.value }); e.target.reset(); say('Interview added.'); await openCandidate(cand.id); } catch (err) { say(err.message, false); }
+});
+$('scoreForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements; const ratings = {};
+  cand.competencies.forEach((c, i) => { ratings[c] = Number(document.querySelector(`[data-comp="${i}"]`).value); });
+  try { const r = await req('POST', `/hiring/candidates/${cand.id}/scorecards`, { ratings, round: el.round.value, recommendation: el.recommendation.value, notes: el.notes.value }); say(`Scorecard saved. Your average: ${r.average}.`); await openCandidate(cand.id); } catch (err) { say(err.message, false); }
+});
+$('offerForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements;
+  try { await req('PUT', `/hiring/candidates/${cand.id}/offer`, { jobTitle: el.jobTitle.value, payRate: Number(el.payRate.value), payUnit: el.payUnit.value, startDate: el.startDate.value, notes: el.notes.value }); say('Offer saved. The candidate is now in the Offer stage.'); await openCandidate(cand.id); } catch (err) { say(err.message, false); }
+});
+$('hireGo').addEventListener('click', async () => {
+  if (!window.confirm(`Create an employee record and login for ${cand.name}?`)) return;
+  try {
+    const r = await req('POST', `/hiring/candidates/${cand.id}/hire`, { acceptedOffline: $('hireOffline').checked });
+    const emp = r.employee; await openCandidate(cand.id); await loadJobs();
+    $('hireOut').innerHTML = `<div class="secret">Employee ${esc(emp.employeeId || '')} created for ${esc(emp.email || cand.email)}.${emp.temporaryPassword ? `<br>Temporary password: ${esc(emp.temporaryPassword)}` : ''}</div><p class="hint">${esc(r.note)}</p>`;
+    say('Hired. The new employee can now start onboarding.');
+  } catch (err) { say(/accepted offline/.test(err.message) ? 'The offer has not been accepted yet. If the candidate accepted it outside this system, tick the box next to the Hire button.' : err.message, false); }
+});
+$('cErase').addEventListener('click', async () => {
+  if (window.prompt(`This deletes the resume and personal details of ${cand.name} for good. Type ERASE to continue.`) !== 'ERASE') return;
+  try { await req('POST', `/hiring/candidates/${cand.id}/erase`, {}); say('Personal data erased.'); $('oneTab').hidden = true; showTab('people'); await loadCandidates(); } catch (err) { say(err.message, false); }
+});
+
+// -------------------------------------------------------------------- numbers
+async function loadNumbers() {
+  const r = await req('GET', `/hiring/funnel${$('nJob').value ? `?requisitionId=${$('nJob').value}` : ''}`);
+  $('nNow').innerHTML = options.stages.map((s) => `<div class="stat"><b>${esc(r.current[s])}</b>${esc(words(s))}</div>`).join('');
+  $('nConv').innerHTML = Object.entries(r.conversionPercent).map(([k, v]) => { const [a, b] = k.split('_to_'); const d = r.timeInStageDays[a]; return `<tr><td>${esc(words(a))} to ${esc(b)}</td><td>${v === null ? '<span class="hint">no data</span>' : `${esc(v)}%`}</td><td>${d === null || d === undefined ? '' : esc(d)}</td></tr>`; }).join('');
+  $('nSource').innerHTML = Object.entries(r.bySource).map(([k, v]) => `<tr><td>${esc(words(k))}</td><td>${esc(v.applied)}</td><td>${esc(v.hired)}</td><td>${esc(v.rejected)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No candidates yet.</td></tr>';
+}
+$('nGo').addEventListener('click', () => loadNumbers().catch((err) => say(err.message, false)));
+$('eeoGo').addEventListener('click', async () => {
+  try {
+    const r = await req('GET', '/hiring/eeo-summary'); $('eeoNote').textContent = r.note;
+    const { success, note, eeoCategories, ...rest } = r;
+    const lines = []; const walk = (o, pad) => Object.entries(o).forEach(([k, v]) => { if (v && typeof v === 'object') { lines.push(`${pad}${words(k)}`); walk(v, `${pad}    `); } else lines.push(`${pad}${words(k)}: ${v === null ? 'hidden (fewer than 5)' : v}`); });
+    walk(rest, ''); $('eeoOut').textContent = lines.join('\n');
+  } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('careersCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('careersLink').href); say('Link copied.'); } catch (_) { say('Could not copy. Select the link and copy it yourself.', false); } });
+$('careersOn').addEventListener('change', async () => { try { await req('PUT', '/hiring/settings', { careersEnabled: $('careersOn').checked }); say($('careersOn').checked ? 'Careers page is on.' : 'Careers page is off. The link now shows "not found".'); } catch (err) { say(err.message, false); } });
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('jobedit'))) {
+      const r = jobs.find((x) => x.id === t.dataset.jobedit); const f = $('jobForm').elements; jobEdit = r.id;
+      ['title', 'department', 'location', 'employmentType', 'headcount', 'payUnit', 'description'].forEach((k) => { f[k].value = r[k] ?? ''; });
+      f.state.value = r.state || ''; f.payMin.value = r.payMin ?? ''; f.payMax.value = r.payMax ?? ''; f.hiringManagerId.value = r.hiringManagerId || ''; f.targetStartDate.value = r.targetStartDate || ''; f.competencies.value = r.competencies.join('\n');
+      const ids = new Set((r.approvals || []).map((a) => a.userId)); [...f.approverIds.options].forEach((o) => { o.selected = ids.has(o.value); });
+      $('jobTitle').textContent = `Edit ${r.title}`; $('jobCancel').hidden = false; $('jobFormCard').scrollIntoView({ behavior: 'smooth' });
+    } else if ((t = el('jobstatus'))) { await req('POST', `/hiring/requisitions/${t.dataset.jobstatus}/status`, { status: t.dataset.to }); say(t.dataset.to === 'open' ? 'Open. It is now listed on the careers page.' : 'Status changed.'); await loadJobs(); } else if ((t = el('jobapprove'))) {
+      if (window.confirm('Approve opening this job?')) { await req('POST', `/hiring/requisitions/${t.dataset.jobapprove}/approve`, { decision: 'approved' }); say('Approved.'); await loadJobs(); }
+    } else if ((t = el('jobcands'))) { $('fJob').value = t.dataset.jobcands; $('fStage').value = ''; $('fQ').value = ''; showTab('people'); await loadCandidates(); } else if ((t = el('cand'))) await openCandidate(t.dataset.cand);
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/hiring/options'); $('note').textContent = options.note;
+    $('jobType').innerHTML = options.employmentTypes.map((t) => `<option value="${t}">${esc(words(t))}</option>`).join('');
+    $('fStage').innerHTML = '<option value="">All stages</option>' + options.stages.map((s) => `<option value="${s}">${esc(words(s))}</option>`).join('');
+  } catch (err) { say(err.message, false); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  // Settings are for HR and the owner; a hiring manager gets a read-only view of their own jobs
+  try {
+    const s = await req('GET', '/hiring/settings');
+    $('careersCard').hidden = false; $('careersLink').href = s.careersPath; $('careersLink').textContent = new URL(s.careersPath, window.location.href).href; $('careersOn').checked = s.careersEnabled;
+  } catch (_) { canManage = false; $('jobFormCard').hidden = true; }
+  if (canManage) {
+    await step(async () => {
+      staff = (await req('GET', '/employees')).data;
+      const o = staff.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+      $('jobManager').innerHTML = `<option value="">Nobody yet</option>${o}`; $('jobApprovers').innerHTML = o;
+    });
+    resetJobForm();
+  }
+  await step(loadJobs); await step(loadCandidates); await step(loadNumbers);
+  $('eeoCard').hidden = !canManage;
+});
+</script>
+</body>
+</html>

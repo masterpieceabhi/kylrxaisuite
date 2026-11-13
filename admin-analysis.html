@@ -57,6 +57,7 @@
             .chart-card { page-break-inside: avoid !important; border: 1px solid #ccc !important; box-shadow: none !important; }
         }
     </style>
+<script src="country-format.js"></script>
 </head>
 <body class="admin-dashboard">
     <div class="dashboard-container">
@@ -374,7 +375,7 @@
                 });
 
                 document.getElementById('totalWorkforce').textContent = activeCount;
-                document.getElementById('monthlyPayroll').textContent = `₹${(totalSalary / 100000).toFixed(1)}L`;
+                document.getElementById('monthlyPayroll').textContent = (window.KylrxFmt ? KylrxFmt.moneyCompact(totalSalary) : '₹' + (totalSalary / 100000).toFixed(1) + 'L');
                 const avgProd = prodCount > 0 ? (totalProductivity / prodCount).toFixed(0) : '85';
                 document.getElementById('avgProductivity').textContent = `${avgProd}%`;
 
@@ -429,11 +430,11 @@
                     
                     if (centerAmt && centerSub) {
                         if (total === 0) {
-                            centerAmt.textContent = '₹0';
+                            centerAmt.textContent = window.KylrxFmt ? KylrxFmt.money(0, { decimals: 0 }) : '₹0';
                             centerSub.textContent = 'Nil / 0 Impact';
                             if (liveBadge) liveBadge.innerHTML = '<span style="width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block;"></span> Firebase Live (0)';
                         } else {
-                            centerAmt.textContent = total >= 100000 ? `₹${(total / 100000).toFixed(1)}L` : `₹${total.toLocaleString()}`;
+                            centerAmt.textContent = window.KylrxFmt ? (total >= 100000 ? KylrxFmt.moneyCompact(total) : KylrxFmt.money(total, { decimals: 0 })) : (total >= 100000 ? `₹${(total / 100000).toFixed(1)}L` : `₹${total.toLocaleString()}`);
                             centerSub.textContent = `${docCount} Profiles`;
                             if (liveBadge) liveBadge.innerHTML = `<span style="width:6px;height:6px;background:#10b981;border-radius:50%;display:inline-block;"></span> Firebase Live (${docCount})`;
                         }
@@ -477,7 +478,7 @@
                                         callbacks: {
                                             label: function(context) {
                                                 const val = context.raw || 0;
-                                                return ` ${context.label}: ₹${Number(val).toLocaleString()}`;
+                                                return ` ${context.label}: ${window.KylrxFmt ? KylrxFmt.money(val, { decimals: 0 }) : '₹' + Number(val).toLocaleString()}`;
                                             }
                                         }
                                     }

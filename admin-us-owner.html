@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner settings | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.plan{border:1px solid var(--line);border-radius:12px;padding:14px}.plan.cur{border-color:var(--blue);box-shadow:0 0 0 2px #dbeafe}.plan b.p{font-size:22px;display:block;margin:6px 0}
+.details{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#475569;word-break:break-word}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Owner settings</h1><div><a href="admin-us-security.html">Security and sign-in</a> &nbsp;|&nbsp; <a href="admin-us-integrations.html">Integrations</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="log" class="on">Activity log</button>
+    <button data-tab="roles">Roles</button>
+    <button data-tab="bill">Plan and billing</button>
+  </div>
+
+  <div id="tab-log" class="pane on">
+    <section class="card">
+      <h2>Who did what</h2>
+      <div class="grid">
+        <label>From<input id="lFrom" type="date"></label>
+        <label>To<input id="lTo" type="date"></label>
+        <label>Action<select id="lAction"></select></label>
+        <label>Done by (name or role)<input id="lActor"></label>
+        <label>Any words<input id="lText"></label>
+      </div>
+      <div class="row"><button id="lGo">Search</button><button class="ghost" id="lCsv">Download CSV</button><button class="ghost" id="lVerify">Check the log for tampering</button><span class="hint">Looking at this log is itself recorded.</span></div>
+      <p class="hint" id="lNote"></p>
+      <table style="margin-top:8px"><thead><tr><th>When</th><th>What</th><th>Done by</th><th>On</th><th>Details</th></tr></thead><tbody id="lRows"></tbody></table>
+      <div class="row"><button class="ghost" id="lMore" hidden>Show more</button></div>
+    </section>
+  </div>
+
+  <div id="tab-roles" class="pane">
+    <section class="card">
+      <h2>What each role can do</h2>
+      <table><thead><tr><th>Role</th><th>What it is for</th><th>People</th><th></th></tr></thead><tbody id="rRoles"></tbody></table>
+      <div id="rPerms" class="hint" style="margin-top:10px"></div>
+    </section>
+    <section class="card">
+      <h2>Who has which role</h2>
+      <p class="hint">A role change reaches an open session within about 15 minutes, or at the next sign-in. You cannot change your own role, and the last owner cannot be removed.</p>
+      <table><thead><tr><th>Person</th><th>Email</th><th>Status</th><th>Role</th><th></th></tr></thead><tbody id="rUsers"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-bill" class="pane">
+    <section class="card">
+      <h2>Your plan</h2>
+      <div class="warn" id="bMode" hidden>Billing is in practice mode. No real card is charged. Use the test card button to try it.</div>
+      <div id="bNow"></div>
+      <h3>Plans</h3>
+      <div class="row" style="margin-top:0"><label>Pay<select id="bInterval"><option value="monthly">Every month</option><option value="annual">Once a year (discount)</option></select></label></div>
+      <div class="plans" id="bPlans" style="margin-top:12px"></div>
+      <p class="hint" id="bNote"></p>
+    </section>
+    <section class="card" id="bPayCard" hidden>
+      <h2>Payment method</h2>
+      <p id="bCard"></p>
+      <div class="row" id="bTestRow"><button class="ghost" data-pm="pm_card_visa">Use a test card that works</button><button class="ghost" data-pm="pm_card_chargeDeclined">Use a test card that is declined</button></div>
+      <p class="hint" id="bLive" hidden>Card entry on the payment provider's own page is not connected yet.</p>
+      <div class="row"><label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bContractors"> Count contractors in the number of people billed</label></div>
+    </section>
+    <section class="card">
+      <h2>Invoices</h2>
+      <table><thead><tr><th>Number</th><th>For</th><th>People</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody id="bInv"></tbody></table>
+    </section>
+    <section class="card" id="bCancelCard" hidden>
+      <h2>Cancel the subscription</h2>
+      <p class="hint">After cancelling, the account becomes read-only at the end of the paid period. Your data is kept.</p>
+      <div class="row"><button class="no" id="bCancel">Cancel subscription</button></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/[_.]/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const cents = (c) => `$${(Number(c || 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const when = (i, time = true) => (i ? new Date(i).toLocaleString('en-US', time ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }) : '');
+let cursor = null; let roles = []; let myId = null; let billing = null;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+async function saveFile(res, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+// ------------------------------------------------------------------------ log
+const logQuery = () => { const q = new URLSearchParams(); [['from', 'lFrom'], ['to', 'lTo'], ['action', 'lAction'], ['actor', 'lActor'], ['q', 'lText']].forEach(([k, id]) => { if ($(id).value.trim()) q.set(k, $(id).value.trim()); }); return q; };
+async function loadLog(more) {
+  const q = logQuery(); q.set('limit', '50'); if (more && cursor) q.set('cursor', cursor);
+  const r = await req('GET', `/audit?${q}`);
+  const html = r.data.map((e) => `<tr><td>${esc(when(e.at))}</td><td><b>${esc(e.actionLabel)}</b></td><td>${esc(e.actorName || e.actorId || 'system')}<br><span class="hint">${esc(words(e.actorRole || ''))} ${esc(e.ip || '')}</span></td><td class="hint">${esc(e.targetId || '')}</td><td class="details">${esc(Object.entries(e.details || {}).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(', ').slice(0, 300))}</td></tr>`).join('');
+  if (more) $('lRows').insertAdjacentHTML('beforeend', html); else $('lRows').innerHTML = html || '<tr><td colspan="5" class="hint">Nothing matches.</td></tr>';
+  cursor = r.nextCursor; $('lMore').hidden = !r.hasMore; $('lNote').textContent = r.note || '';
+}
+$('lGo').addEventListener('click', () => loadLog(false).catch((err) => say(err.message, false)));
+$('lMore').addEventListener('click', () => loadLog(true).catch((err) => say(err.message, false)));
+$('lCsv').addEventListener('click', async () => { try { await saveFile(await req('GET', `/audit/export.csv?${logQuery()}`, null, true), 'activity-log.csv'); } catch (err) { say(err.message, false); } });
+$('lVerify').addEventListener('click', async () => { try { const r = await req('GET', '/audit/verify'); say(r.summary, r.valid); } catch (err) { say(err.message, false); } });
+
+// ---------------------------------------------------------------------- roles
+async function loadRoles() {
+  const [r, u] = await Promise.all([req('GET', '/roles'), req('GET', '/roles/users')]); roles = r.roles;
+  $('rRoles').innerHTML = roles.map((x) => `<tr><td><b>${esc(x.label)}</b></td><td>${esc(x.description)}</td><td>${esc(x.userCount)}</td><td><button class="ghost" data-perms="${esc(x.role)}">What it can do (${x.permissions.length})</button></td></tr>`).join('');
+  $('rUsers').innerHTML = u.data.map((p) => `<tr><td><b>${esc(p.name)}</b> <span class="hint">${esc(p.employeeId || '')}</span></td><td>${esc(p.email || '')}</td><td>${esc(words(p.status))}</td><td>${p.id === myId ? `${esc(p.roleLabel)} <span class="hint">(you)</span>` : `<select data-role="${esc(p.id)}">${roles.map((x) => `<option value="${esc(x.role)}"${x.role === p.role ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}</select>`}</td><td>${p.id === myId ? '' : `<button class="ghost" data-setrole="${esc(p.id)}" data-name="${esc(p.name)}" data-cur="${esc(p.role)}">Save</button>`}</td></tr>`).join('');
+}
+
+// -------------------------------------------------------------------- billing
+function planPrice(p, interval) { const base = `${cents(p.baseFeeCents)} a month plus ${cents(p.perEmployeeCents)} for each person`; return interval === 'annual' ? `${base}, ${p.annualDiscountPct}% off when paid yearly` : base; }
+async function loadBilling() {
+  billing = (await req('GET', '/billing')).billing; const b = billing; const practice = !b.provider || b.provider === 'mock';
+  $('bMode').hidden = !practice; $('bTestRow').hidden = !practice; $('bLive').hidden = practice;
+  const ST = { trial: ['free trial', 'blueTag'], active: ['active', 'good'], past_due: ['payment failed', 'badTag'], suspended: ['suspended: read-only', 'badTag'], cancelled: ['cancelled', 'grey'], none: ['no plan yet', 'grey'] };
+  const [st, cls] = ST[b.state] || [b.state, 'grey'];
+  $('bNow').innerHTML = b.subscribed ? `<p><b>${esc(b.plan ? b.plan.name : '')}</b> <span class="tag ${cls}">${esc(st)}</span> ${b.readOnly ? '<span class="tag badTag">the account is read-only</span>' : ''}</p><p>${b.trialEndsAt && b.state === 'trial' ? `Free trial until ${esc(when(b.trialEndsAt, false))}. ` : ''}Paid ${b.interval === 'annual' ? 'yearly' : 'monthly'}. Current period: ${esc(when(b.currentPeriodStart, false))} to ${esc(when(b.currentPeriodEnd, false))}.${b.graceEndsAt ? ` Pay by ${esc(when(b.graceEndsAt, false))} to keep full access.` : ''}</p><p>${esc(b.usage.billable ?? '')} people billed${b.usage.estimateNextCents !== null ? `. Next bill is about <b>${cents(b.usage.estimateNextCents)}</b> before tax` : ''}.${b.creditCents ? ` Credit on account: ${cents(b.creditCents)}.` : ''}</p>` : '<p class="hint">You have not chosen a plan yet. Pick one below to start the free trial.</p>';
+  if (b.subscribed) $('bInterval').value = b.interval;
+  const interval = $('bInterval').value;
+  $('bPlans').innerHTML = b.plans.filter((p) => p.active).map((p) => { const cur = b.subscribed && b.plan && b.plan.id === p.id; return `<div class="plan ${cur ? 'cur' : ''}"><b>${esc(p.name)}</b><b class="p">${cents(p.baseFeeCents)}<span class="hint"> a month</span></b><span class="hint">${esc(planPrice(p, interval))}. ${esc(p.trialDays)}-day free trial.</span><div class="row">${cur && b.interval === interval ? '<span class="tag good">your plan</span>' : `<button data-plan="${esc(p.id)}">${b.subscribed && b.state !== 'cancelled' ? (cur ? 'Switch how I pay' : 'Change to this plan') : 'Start free trial'}</button>`}</div></div>`; }).join('');
+  $('bPayCard').hidden = !b.subscribed; $('bCancelCard').hidden = !b.subscribed || b.state === 'cancelled';
+  if (b.subscribed) { $('bCard').innerHTML = b.paymentMethod ? `<b>${esc(words(b.paymentMethod.brand || 'card'))}</b> ending ${esc(b.paymentMethod.last4 || '')}${b.paymentMethod.expMonth ? `, expires ${esc(b.paymentMethod.expMonth)}/${esc(b.paymentMethod.expYear)}` : ''}` : '<span class="tag warnTag">No payment method yet</span> Add one before the trial ends.'; $('bContractors').checked = b.includeContractors; }
+  const inv = (await req('GET', '/billing/invoices')).data;
+  const IS = { paid: 'good', open: 'warnTag', failed: 'badTag', void: 'grey', draft: 'grey' };
+  $('bInv').innerHTML = inv.map((i) => `<tr><td><b>${esc(i.number)}</b><br><span class="hint">${esc(when(i.issuedAt, false))}</span></td><td>${esc(i.planName || '')}<br><span class="hint">${i.period ? `${esc(when(i.period.start, false))} to ${esc(when(i.period.end, false))}` : ''}</span></td><td>${esc(i.headcount ?? '')}</td><td>${cents(i.totalCents)}${i.taxCents ? `<br><span class="hint">includes ${cents(i.taxCents)} tax</span>` : ''}</td><td><span class="tag ${IS[i.status] || 'grey'}">${esc(words(i.status))}</span>${i.lastFailureReason ? `<br><span class="hint">${esc(i.lastFailureReason)}</span>` : ''}</td><td><button class="ghost" data-invdl="${esc(i.id)}" data-num="${esc(i.number)}">Download</button>${i.status !== 'paid' && i.status !== 'void' && i.totalCents > 0 ? ` <button data-invpay="${esc(i.id)}">Pay now</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No invoices yet.</td></tr>';
+}
+$('bInterval').addEventListener('change', () => loadBilling().catch((err) => say(err.message, false)));
+$('bContractors').addEventListener('change', async () => { try { await req('PUT', '/billing/settings', { includeContractors: $('bContractors').checked }); await loadBilling(); say('Saved.'); } catch (err) { say(err.message, false); } });
+$('bCancel').addEventListener('click', async () => {
+  if (window.prompt('Type CANCEL to cancel the subscription.') !== 'CANCEL') return;
+  try { await req('POST', '/billing/cancel', { confirm: 'CANCEL' }); await loadBilling(); say('Subscription cancelled.'); } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('perms'))) { const r = roles.find((x) => x.role === t.dataset.perms); $('rPerms').innerHTML = `<b style="color:var(--ink)">${esc(r.label)}</b> can: ${r.permissions.length ? r.permissions.map((p) => esc(words(p))).join(', ') : 'see and change only their own information'}.`; } else if ((t = el('setrole'))) {
+      const to = document.querySelector(`[data-role="${CSS.escape(t.dataset.setrole)}"]`).value; if (to === t.dataset.cur) return;
+      const label = roles.find((x) => x.role === to).label;
+      if (!window.confirm(`Make ${t.dataset.name} a ${label}?${to === 'super_admin' ? ' An owner can do everything, including billing and security settings.' : ''} They will be signed out of open sessions.`)) return;
+      const r = await req('PUT', `/roles/users/${t.dataset.setrole}`, { role: to }); say(`${t.dataset.name} is now ${label}. ${r.note || ''}`); await loadRoles();
+    } else if ((t = el('plan'))) {
+      const interval = $('bInterval').value; const p = billing.plans.find((x) => x.id === t.dataset.plan);
+      if (billing.subscribed && billing.state !== 'cancelled') { if (!window.confirm(`Change to ${p.name}, paid ${interval === 'annual' ? 'yearly' : 'monthly'}? Any difference for the rest of this period is charged or credited.`)) return; const r = await req('PUT', '/billing/plan', { planId: p.id, interval }); say(`Plan changed to ${p.name}.${r.result && r.result.proration ? ` Adjustment: ${cents(r.result.proration.netCents)}.` : ''}`); } else { await req('POST', '/billing/subscribe', { planId: p.id, interval }); say(`${p.name} started with a ${p.trialDays}-day free trial.`); }
+      await loadBilling();
+    } else if ((t = el('pm'))) { const r = await req('POST', '/billing/payment-method', { token: t.dataset.pm }); say(`Payment method saved: ${words(r.paymentMethod.brand || 'card')} ending ${r.paymentMethod.last4 || ''}.`); await loadBilling(); } else if ((t = el('invdl'))) await saveFile(await req('GET', `/billing/invoices/${t.dataset.invdl}/download`, null, true), `${t.dataset.num}.html`);
+    else if ((t = el('invpay'))) { try { await req('POST', `/billing/invoices/${t.dataset.invpay}/pay`, {}); say('Paid. Thank you.'); } catch (err) { if (err.status !== 402) throw err; say(err.message, false); } await loadBilling(); }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  myId = user.uid;
+  const step = async (fn, tab) => { try { await fn(); } catch (err) { if (err.status === 403 && tab) { document.querySelector(`[data-tab=${tab}]`).hidden = true; $(`tab-${tab}`).innerHTML = ''; } else say(err.message, false); } };
+  await step(async () => { const a = (await req('GET', '/audit/actions')).data; $('lAction').innerHTML = '<option value="">Any action</option>' + a.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join(''); await loadLog(false); }, 'log');
+  await step(loadRoles, 'roles'); await step(loadBilling, 'bill');
+  const first = [...document.querySelectorAll('[data-tab]')].find((b) => !b.hidden); if (first && document.querySelector('[data-tab].on').hidden) first.click();
+});
+</script>
+</body>
+</html>

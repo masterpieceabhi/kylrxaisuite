@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company news | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 8px;font-size:19px}
+.lang{white-space:nowrap}.lang button{padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tabs button{padding:14px 8px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-weight:700;color:var(--ink);cursor:pointer}.tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}
+.card.unread{border-color:var(--blue);border-width:2px}
+.stack{display:grid;gap:10px}
+.hint{color:var(--muted);font-size:15px}.text{white-space:pre-wrap;font-size:17px;line-height:1.55;margin:10px 0 0;overflow-wrap:anywhere}
+label{display:grid;gap:6px;font-size:15px;color:var(--muted);font-weight:700;margin-top:12px}
+select,textarea{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;color:var(--ink);background:#fff}
+textarea{min-height:110px}
+button.go{width:100%;padding:14px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}
+button.go:disabled{opacity:.5;cursor:default}
+button.soft{padding:10px 14px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-size:16px;font-weight:700;cursor:pointer;margin-top:10px}
+.tag{padding:2px 10px;border-radius:999px;font-size:14px;font-weight:700;white-space:nowrap}.new{background:#dbeafe;color:#1e40af}.pin{background:#fef3c7;color:#92400e}.val{background:#dcfce7;color:var(--ok);white-space:normal}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding:14px;text-decoration:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs"><button data-tab="news" id="tabNews"></button><button data-tab="thanks" id="tabThanks"></button></div>
+
+  <div id="newsView" class="stack"></div>
+
+  <div id="thanksView" class="stack" hidden>
+    <section class="card">
+      <h2 data-t="giveTitle"></h2>
+      <p class="hint" id="left" style="margin:0"></p>
+      <form id="giveForm">
+        <label><span data-t="whoLabel"></span><select name="toUserId" required></select></label>
+        <label><span data-t="valueLabel"></span><select name="valueId" required></select></label>
+        <label><span data-t="msgLabel"></span><textarea name="message" required minlength="3"></textarea></label>
+        <p class="hint" id="count" style="margin:4px 0 0"></p>
+        <button class="go" type="submit" id="sendBtn" data-t="send"></button>
+      </form>
+    </section>
+    <section class="card"><h2 data-t="mineTitle"></h2><div id="mineList" class="stack"></div></section>
+    <section class="card"><h2 data-t="feedTitle"></h2><div id="feedList" class="stack"></div></section>
+  </div>
+  <a class="back" href="punch.html" data-t="back"></a>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: { title: 'Company news', back: 'Back to the clock', tabNews: 'News', tabThanks: 'Thanks', newCount: '{n} new', none: 'There is no company news right now.', isNew: 'New', pinned: 'Important', posted: 'Posted {d}', forWho: 'For: {a}', everyone: 'Everyone', location: 'Your location', department: 'Your department', gotIt: 'I have read this', readOn: 'You read this on {d}.',
+        giveTitle: 'Thank a coworker', whoLabel: 'Who do you want to thank?', valueLabel: 'What for?', msgLabel: 'Your message', choose: 'Choose…', send: 'Send thanks', sent: 'Your thanks was sent.', left: 'You can send {n} more today.', leftNone: 'You have sent all your thanks for today. You can send more tomorrow.', chars: '{n} of {max} characters', noPeople: 'There is nobody else to thank yet.',
+        mineTitle: 'Thanks for you', mineNone: 'Nobody has sent you a thanks yet.', feedTitle: 'Thanks around the company', feedNone: 'Nobody has sent a thanks yet. Be the first.', fromTo: '{a} thanked {b}', fromYou: '{a} thanked you', fail: 'Could not load. Try again.',
+        v: {} },
+  es: { title: 'Noticias de la empresa', back: 'Volver al reloj', tabNews: 'Noticias', tabThanks: 'Agradecimientos', newCount: '{n} nuevas', none: 'No hay noticias de la empresa por ahora.', isNew: 'Nueva', pinned: 'Importante', posted: 'Publicada el {d}', forWho: 'Para: {a}', everyone: 'Todos', location: 'Su lugar de trabajo', department: 'Su departamento', gotIt: 'Ya leí esto', readOn: 'Usted leyó esto el {d}.',
+        giveTitle: 'Agradecer a un compañero', whoLabel: '¿A quién quiere agradecer?', valueLabel: '¿Por qué?', msgLabel: 'Su mensaje', choose: 'Elija…', send: 'Enviar agradecimiento', sent: 'Su agradecimiento fue enviado.', left: 'Puede enviar {n} más hoy.', leftNone: 'Ya envió todos sus agradecimientos de hoy. Mañana puede enviar más.', chars: '{n} de {max} caracteres', noPeople: 'Todavía no hay nadie más a quien agradecer.',
+        mineTitle: 'Agradecimientos para usted', mineNone: 'Todavía nadie le ha enviado un agradecimiento.', feedTitle: 'Agradecimientos en la empresa', feedNone: 'Todavía nadie ha enviado un agradecimiento. Sea el primero.', fromTo: '{a} agradeció a {b}', fromYou: '{a} le agradeció a usted', fail: 'No se pudo cargar. Intente de nuevo.',
+        // the company's own values are shown as HR wrote them; only the built-in ones are translated
+        v: { teamwork: 'Trabajo en equipo', customer_care: 'Atención al cliente', going_the_extra_mile: 'Esfuerzo adicional', safety: 'Seguridad', great_idea: 'Gran idea' } }
+};
+const DEFAULT_NAMES = { teamwork: 'Teamwork', customer_care: 'Customer care', going_the_extra_mile: 'Going the extra mile', safety: 'Safety', great_idea: 'Great idea' };
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k, v = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
+// a built-in value is translated only while HR has left its English name alone
+const valName = (id, name) => (T[lang].v[id] && DEFAULT_NAMES[id] === name ? T[lang].v[id] : name);
+let tab = 'news'; let news = null; let options = null; let mine = null; let feed = null; let meId = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`);
+  return json;
+}
+const thanksCard = (t, forMe) => `<div><b>${esc(forMe ? tr('fromYou', { a: t.fromName }) : tr('fromTo', { a: t.fromName, b: t.toName }))}</b> <span class="tag val">${esc(valName(t.valueId, t.valueName))}</span><div class="text" style="margin-top:4px">${esc(t.message)}</div><div class="hint">${esc(day(t.at))}</div></div>`;
+function paintForm() {
+  const f = $('giveForm').elements; const keep = { to: f.toUserId.value, val: f.valueId.value };
+  f.toUserId.innerHTML = `<option value="">${esc(tr(options.people.length ? 'choose' : 'noPeople'))}</option>${options.people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.jobTitle ? ` (${esc(p.jobTitle)})` : ''}</option>`).join('')}`;
+  f.valueId.innerHTML = `<option value="">${esc(tr('choose'))}</option>${options.values.map((v) => `<option value="${esc(v.id)}">${esc(valName(v.id, v.name))}</option>`).join('')}`;
+  f.toUserId.value = keep.to; f.valueId.value = keep.val; f.message.maxLength = options.messageMax;
+  $('left').textContent = options.leftToday > 0 ? tr('left', { n: options.leftToday }) : tr('leftNone');
+  $('sendBtn').disabled = options.leftToday <= 0 || !options.people.length;
+  $('count').textContent = tr('chars', { n: f.message.value.length, max: options.messageMax });
+}
+function paint() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  const unread = news ? news.filter((a) => !a.read).length : 0;
+  $('tabNews').textContent = unread ? `${tr('tabNews')} (${tr('newCount', { n: unread })})` : tr('tabNews'); $('tabThanks').textContent = tr('tabThanks');
+  $('tabNews').classList.toggle('on', tab === 'news'); $('tabThanks').classList.toggle('on', tab === 'thanks');
+  $('newsView').hidden = tab !== 'news'; $('thanksView').hidden = tab !== 'thanks';
+  if (news) {
+    $('newsView').innerHTML = news.map((a) => `<section class="card${a.read ? '' : ' unread'}"><h2>${esc(a.title)} ${a.pinned ? `<span class="tag pin">${esc(tr('pinned'))}</span>` : ''} ${a.read ? '' : `<span class="tag new">${esc(tr('isNew'))}</span>`}</h2>
+      <p class="hint" style="margin:0">${esc(tr('posted', { d: day(a.publishedAt) }))} · ${esc(tr('forWho', { a: tr(a.audience.type) }))}</p><div class="text">${esc(a.body)}</div>
+      ${a.read ? `<p class="hint" style="margin:10px 0 0">${esc(tr('readOn', { d: day(a.readAt) }))}</p>` : `<button class="soft" data-read="${esc(a.id)}">${esc(tr('gotIt'))}</button>`}</section>`).join('') || `<section class="card"><p class="hint" style="margin:0">${esc(tr('none'))}</p></section>`;
+  }
+  if (options) paintForm();
+  if (mine) $('mineList').innerHTML = mine.map((t) => thanksCard(t, true)).join('') || `<p class="hint" style="margin:0">${esc(tr('mineNone'))}</p>`;
+  if (feed) $('feedList').innerHTML = feed.map((t) => thanksCard(t, t.toId === meId)).join('') || `<p class="hint" style="margin:0">${esc(tr('feedNone'))}</p>`;
+}
+async function loadNews() { news = (await req('GET', '/announcements/mine')).data; }
+async function loadThanks() { const [o, m, f] = await Promise.all([req('GET', '/recognition/options'), req('GET', '/recognition/mine'), req('GET', '/recognition/feed')]); options = o; mine = m.received; feed = f.data; }
+$('giveForm').elements.message.addEventListener('input', () => { if (options) $('count').textContent = tr('chars', { n: $('giveForm').elements.message.value.length, max: options.messageMax }); });
+$('giveForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = $('giveForm').elements; $('sendBtn').disabled = true;
+  try {
+    await req('POST', '/recognition/thanks', { toUserId: f.toUserId.value, valueId: f.valueId.value, message: f.message.value });
+    f.message.value = ''; f.toUserId.value = ''; f.valueId.value = ''; await loadThanks(); paint(); say(tr('sent'));
+  } catch (err) { await loadThanks().catch(() => {}); paint(); say(err.message, false); }
+});
+document.addEventListener('click', async (e) => {
+  let t;
+  try {
+    if ((t = e.target.closest('[data-l]'))) { lang = t.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }
+    else if ((t = e.target.closest('[data-tab]'))) { tab = t.dataset.tab; $('msg').className = ''; paint(); }
+    else if ((t = e.target.closest('[data-read]'))) { t.disabled = true; await req('POST', `/announcements/${encodeURIComponent(t.dataset.read)}/read`, {}); await loadNews(); paint(); }
+  } catch (err) { say(err.message, false); }
+});
+paint();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  meId = user.uid;
+  try { await Promise.all([loadNews(), loadThanks()]); paint(); } catch (_) { say(tr('fail'), false); }
+});
+</script>
+</body>
+</html>

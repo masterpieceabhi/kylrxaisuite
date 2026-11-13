@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Benefits | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.box{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Benefits</h1><div><a href="admin-us-payroll.html">Payroll</a> &nbsp;|&nbsp; <a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+  <div class="tabs">
+    <button data-tab="plans" class="on">Plans</button>
+    <button data-tab="enroll">Enrollment</button>
+    <button data-tab="events">Life events <span id="evCount"></span></button>
+    <button data-tab="feed">Paycheck amounts</button>
+    <button data-tab="aca">Health-law hours (ACA)</button>
+    <button data-tab="cobra">COBRA <span id="cbCount"></span></button>
+  </div>
+
+  <div id="tab-plans" class="pane on">
+    <section class="card">
+      <h2>Plans</h2>
+      <table><thead><tr><th>Plan</th><th>Kind</th><th>Cost per pay period (employee / company)</th><th>Who can join</th><th>Enrolled</th><th>Declined</th><th></th></tr></thead><tbody id="planRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="planTitle">Add a plan</h2>
+      <form id="planForm"><div class="grid">
+        <label>Name<input name="name" required minlength="2"></label>
+        <label>Kind<select name="type" id="pType"></select></label>
+        <label>Insurance company or provider<input name="carrier" maxlength="80"></label>
+        <label>Plan year<input name="planYear" required pattern="\d{4}" maxlength="4"></label>
+        <label>Costs below are per<select name="payPeriodsPerYear"><option value="12">Month</option><option value="24">Twice a month</option><option value="26" selected>Two weeks</option><option value="52">Week</option></select></label>
+        <label class="chk"><input type="checkbox" name="preTax"> Taken from pay before taxes</label>
+      </div>
+      <div id="pCosts" class="box"><b>Cost for each coverage level</b><table><thead><tr><th>Coverage</th><th>Employee pays ($)</th><th>Company pays ($)</th></tr></thead><tbody id="pCostRows"></tbody></table><p class="hint">Leave a row empty if the plan does not offer that level.</p></div>
+      <div id="p401" class="box" hidden><div class="grid">
+        <label>Most an employee can put in (% of pay)<input name="maxPercent" type="number" min="1" max="100" value="75"></label>
+        <label class="chk"><input type="checkbox" name="allowRoth"> Roth (after-tax) is offered</label>
+        <label>Company match: 100% of the first (% of pay)<input name="match1" type="number" min="0" max="100" step="0.5"></label>
+        <label>Then 50% up to (% of pay)<input name="match2" type="number" min="0" max="100" step="0.5"></label>
+      </div><p class="hint">Leave the match boxes empty if there is no match.</p></div>
+      <div id="pAcct" class="box" hidden><div class="grid">
+        <label>Company puts in each year ($)<input name="employerContributionAnnual" type="number" min="0" step="0.01"></label>
+        <label id="pLimitL">Yearly limit to use<select name="limitKey"><option value="hsa_self_only">Self-only coverage</option><option value="hsa_family">Family coverage</option></select></label>
+      </div></div>
+      <h3>Who can join</h3>
+      <div class="grid">
+        <label>Days to wait after the start date<input name="waitingDays" type="number" min="0" max="365" value="0"></label>
+        <label>Least hours a week<input name="minWeeklyHours" type="number" min="0" max="60" value="0"></label>
+        <label class="chk"><input type="checkbox" name="firstOfMonth"> Starts on the first of the month after the wait</label>
+        <label>Notes<input name="notes" maxlength="300"></label>
+      </div>
+      <div class="row" id="pTypesRow"><span class="hint">Open to:</span></div>
+      <div class="row"><button type="submit">Save plan</button><button type="button" class="ghost" id="planCancel" hidden>Cancel edit</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-enroll" class="pane">
+    <section class="card">
+      <h2>When people can enroll</h2>
+      <form id="winForm"><div class="grid">
+        <label>Open enrollment starts<input name="start" type="date"></label>
+        <label>Open enrollment ends<input name="end" type="date"></label>
+        <label>Choices take effect on<input name="effectiveDate" type="date"></label>
+        <label>For plan year<input name="planYear" pattern="\d{4}" maxlength="4"></label>
+        <label>Days a new hire has to enroll<input name="newHireWindowDays" type="number" min="1" max="365"></label>
+      </div><div class="row"><button type="submit">Save</button><span class="hint">Outside these times an employee can change coverage only after an approved life event.</span></div></form>
+    </section>
+    <section class="card">
+      <h2>Yearly limits</h2>
+      <p class="hint">Enter the amounts from the current IRS notice. No limit is applied to a row until you fill it in.</p>
+      <table><thead><tr><th>Limit</th><th>Year</th><th>Amount ($)</th></tr></thead><tbody id="limRows"></tbody></table>
+      <div class="row"><button class="ghost" id="limSave">Save limits</button></div>
+    </section>
+    <section class="card">
+      <h2>Who is enrolled</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="enStatus"><option value="active">Current</option><option value="terminated">Ended</option><option value="">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Choices</th><th>From</th><th>How</th><th></th></tr></thead><tbody id="enRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Enroll someone yourself</h2>
+      <p class="hint">Use this for a correction or a paper form. The reason is kept in the record.</p>
+      <div class="grid">
+        <label>Person<select id="hrUser"></select></label>
+        <label>Takes effect on<input id="hrDate" type="date"></label>
+        <label>Reason<input id="hrReason" maxlength="200" placeholder="Paper form received"></label>
+      </div>
+      <div id="hrPlans"></div>
+      <div class="row"><button id="hrSave">Save enrollment</button></div>
+    </section>
+  </div>
+
+  <div id="tab-events" class="pane">
+    <section class="card">
+      <h2>Life events from employees</h2>
+      <p class="hint">Approving an event lets the employee change their coverage until the window ends. The proof document is sensitive: opening it is recorded.</p>
+      <div class="row" style="margin-top:0"><label>Show<select id="evStatus"><option value="pending">Waiting for review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Event</th><th>Date</th><th>Can change until</th><th>Proof</th><th>Note</th><th></th></tr></thead><tbody id="evRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-feed" class="pane">
+    <section class="card">
+      <h2>Amounts to take from each paycheck</h2>
+      <div class="warn">These amounts are not sent to payroll for you. Download the file and enter the deductions in your payroll system. Insurance companies are not told about enrollments either.</div>
+      <div class="row" style="margin-top:0"><label>For the pay period ending<input id="fdDate" type="date"></label><button class="ghost" id="fdGo">Show</button><button class="ghost" id="fdCsv">Download CSV</button></div>
+      <p class="hint" id="fdNote"></p>
+      <table style="margin-top:8px"><thead><tr><th>Person</th><th>Paid</th><th>Plan</th><th>Coverage</th><th>Tax</th><th>Employee</th><th>Company</th></tr></thead><tbody id="fdRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-aca" class="pane">
+    <section class="card">
+      <h2>Who counts as full time for the health-coverage law</h2>
+      <div class="warn">This helps you track hours and offers of coverage. It does not file Forms 1094-C or 1095-C. The offer codes are yours to enter; get them from your tax advisor or filing service.</div>
+      <form id="acaForm"><div class="grid">
+        <label>How to measure<select name="method"><option value="lookback">Average over a past period</option><option value="monthly">Month by month</option></select></label>
+        <label>Measure hours from<input name="measurementStart" type="date"></label>
+        <label>Measure hours to<input name="measurementEnd" type="date"></label>
+        <label>Full time is this many hours a week<input name="fullTimeHoursPerWeek" type="number" min="1" max="60"></label>
+        <label>Or this many hours a month<input name="monthlyHoursThreshold" type="number" min="1" max="300"></label>
+        <label>Result applies from<input name="stabilityStart" type="date"></label>
+        <label>Result applies to<input name="stabilityEnd" type="date"></label>
+      </div><div class="row"><button type="submit">Save and recount</button></div></form>
+      <p id="acaSum" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Person</th><th>Average hours a week</th><th>Weeks counted</th><th>Full time</th><th>Coverage offered</th></tr></thead><tbody id="acaRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Offers of coverage</h2>
+      <table><thead><tr><th>Person</th><th>From</th><th>To</th><th>Offered</th><th>Codes (line 14 / 16)</th><th>Employee pays a month</th><th></th></tr></thead><tbody id="offRows"></tbody></table>
+      <form id="offForm" style="margin-top:12px"><div class="grid">
+        <label>Person<select name="userId" id="offUser"></select></label>
+        <label>From<input name="fromDate" type="date" required></label>
+        <label>To (empty = still open)<input name="toDate" type="date"></label>
+        <label>Was coverage offered?<select name="offered"><option value="yes">Yes</option><option value="no">No</option></select></label>
+        <label>Offer code (line 14)<input name="offerCode" maxlength="4" placeholder="1E"></label>
+        <label>Safe harbor code (line 16)<input name="safeHarborCode" maxlength="4" placeholder="2C"></label>
+        <label>Employee share a month, lowest-cost plan ($)<input name="employeeShareMonthly" type="number" min="0" step="0.01"></label>
+        <label>Note<input name="note" maxlength="200"></label>
+        <label class="chk"><input type="checkbox" name="coversSpouse"> Spouse could be covered</label>
+        <label class="chk"><input type="checkbox" name="coversDependents"> Children could be covered</label>
+      </div><div class="row"><button type="submit" class="ghost">Record offer</button></div></form>
+      <h3>Year-end data for your filing service</h3>
+      <div class="row"><label>Year<input id="acaYear" type="number" min="2014" max="2100" style="width:110px"></label><button class="ghost" id="acaCsv">Download month-by-month CSV</button></div>
+    </section>
+  </div>
+
+  <div id="tab-cobra" class="pane">
+    <section class="card">
+      <h2>COBRA: continuing health coverage after a job ends or hours are cut</h2>
+      <div class="warn" id="cbNote"></div>
+      <p class="hint">A record opens by itself when someone with health coverage is offboarded. This page tracks the notices and dates. It does not send the notices or collect premiums.</p>
+      <table><thead><tr><th>Person</th><th>What happened</th><th>Where it stands</th><th>Dates to watch</th><th></th></tr></thead><tbody id="cbRows"></tbody></table>
+      <form id="cbForm" style="margin-top:12px"><h3>Open a record yourself</h3><div class="grid">
+        <label>Person<select name="userId" id="cbUser"></select></label>
+        <label>What happened<select name="eventType" id="cbType"></select></label>
+        <label>Date it happened<input name="eventDate" type="date" required></label>
+        <label>Date coverage ends (empty = same day)<input name="lossOfCoverageDate" type="date"></label>
+      </div><div class="row"><button type="submit" class="ghost">Open record</button></div></form>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const KIND = { medical: 'Medical', dental: 'Dental', vision: 'Vision', life: 'Life insurance', disability: 'Disability', '401k': '401(k)', hsa: 'Health savings account (HSA)', fsa: 'Flexible spending account (FSA)' };
+const TIER = { employee_only: 'Employee only', employee_spouse: 'Employee and spouse', employee_children: 'Employee and children', family: 'Family' };
+const PER = { 12: 'month', 24: 'half month', 26: 'two weeks', 52: 'week' };
+const WORK = { full_time: 'Full time', part_time: 'Part time', seasonal: 'Seasonal', temporary: 'Temporary' };
+const HEALTH = ['medical', 'dental', 'vision']; const FLAT = ['life', 'disability'];
+let plans = []; let cfg = null; let planEdit = null; let canManage = true; let summary = {};
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/benefits${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function save(res, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+const electionText = (e) => (e.waived ? `${e.planName}: declined` : `${e.planName}: ${e.tier ? TIER[e.tier] : e.deferralPercent !== null ? `${e.deferralPercent}% of pay${e.contributionType === 'roth' ? ' (Roth)' : ''}` : e.annualAmount !== null ? `${money(e.annualAmount)} a year` : 'enrolled'}${e.dependents.length ? ` (${e.dependents.map((d) => `${d.firstName} ${d.lastName}`).join(', ')})` : ''}`);
+
+// ---------------------------------------------------------------------- plans
+function costText(p) {
+  if (p.costs) return Object.entries(p.costs).map(([t, c]) => `${FLAT.includes(p.type) ? '' : `${TIER[t]}: `}${money(c.employee)} / ${money(c.employer)}`).join('<br>') + `<br><span class="hint">per ${PER[p.payPeriodsPerYear]}</span>`;
+  if (p.type === '401k') return `Up to ${esc(p.maxPercent)}% of pay${p.allowRoth ? ', Roth offered' : ''}${p.match && p.match.tiers && p.match.tiers.length ? `<br><span class="hint">match: ${p.match.tiers.map((t) => `${esc(t.rate)}% up to ${esc(t.upToPercent)}% of pay`).join(', then ')}</span>` : ''}`;
+  return `Company adds ${money(p.employerContributionAnnual)} a year`;
+}
+async function loadPlans() {
+  const [p, s] = await Promise.all([req('GET', '/plans?all=true'), req('GET', '/summary')]);
+  plans = p.data; $('note').textContent = p.note; summary = Object.fromEntries(s.data.map((r) => [r.planId, r])); $('evCount').textContent = s.pendingEvents ? `(${s.pendingEvents})` : '';
+  $('planRows').innerHTML = plans.map((x) => { const e = x.eligibility; const sm = summary[x.id] || {}; return `<tr><td><b>${esc(x.name)}</b><br><span class="hint">${esc(x.carrier)} ${esc(x.planYear)}</span>${x.active ? '' : ' <span class="tag grey">archived</span>'}</td><td>${esc(KIND[x.type])}<br><span class="hint">${x.preTax ? 'before tax' : 'after tax'}</span></td><td>${costText(x)}</td><td>${e.waitingDays ? `After ${esc(e.waitingDays)} days` : 'From day one'}${e.minWeeklyHours ? `, ${esc(e.minWeeklyHours)}+ hours a week` : ''}<br><span class="hint">${esc(e.employmentTypes.map((t) => WORK[t]).join(', '))}</span></td><td>${esc(sm.enrolled ?? '')}</td><td>${esc(sm.waived ?? '')}</td><td>${canManage ? `<button class="ghost" data-pedit="${esc(x.id)}">Edit</button> ${x.active ? `<button class="no" data-poff="${esc(x.id)}">Archive</button>` : `<button class="ghost" data-pon="${esc(x.id)}">Offer again</button>`}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="hint">No plans yet. Add the first one below.</td></tr>';
+  paintHrPlans();
+}
+function paintPlanForm() {
+  const t = $('pType').value; const health = HEALTH.includes(t); const flat = FLAT.includes(t);
+  $('pCosts').hidden = !(health || flat); $('p401').hidden = t !== '401k'; $('pAcct').hidden = !(t === 'hsa' || t === 'fsa'); $('pLimitL').hidden = t !== 'hsa';
+  document.querySelectorAll('[data-tierrow]').forEach((r) => { r.hidden = flat && r.dataset.tierrow !== 'employee_only'; });
+}
+function resetPlanForm() {
+  planEdit = null; const f = $('planForm'); f.reset(); f.elements.planYear.value = new Date().getFullYear(); f.elements.type.disabled = false; f.elements.preTax.checked = true;
+  document.querySelectorAll('[data-wt]').forEach((c) => { c.checked = c.dataset.wt === 'full_time'; });
+  $('planTitle').textContent = 'Add a plan'; $('planCancel').hidden = true; paintPlanForm();
+}
+$('pType').addEventListener('change', () => { $('planForm').elements.preTax.checked = !FLAT.includes($('pType').value); paintPlanForm(); });
+$('planCancel').addEventListener('click', resetPlanForm);
+$('planForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const t = f.type.value;
+  const body = { name: f.name.value, type: t, carrier: f.carrier.value, planYear: f.planYear.value, payPeriodsPerYear: Number(f.payPeriodsPerYear.value), preTax: f.preTax.checked, notes: f.notes.value,
+    eligibility: { waitingDays: Number(f.waitingDays.value || 0), minWeeklyHours: Number(f.minWeeklyHours.value || 0), firstOfMonthAfterWaiting: f.firstOfMonth.checked, employmentTypes: [...document.querySelectorAll('[data-wt]:checked')].map((c) => c.dataset.wt) } };
+  if (HEALTH.includes(t) || FLAT.includes(t)) { body.costs = {}; document.querySelectorAll('[data-tierrow]').forEach((r) => { const emp = r.querySelector('[data-emp]').value; if (emp !== '' && !r.hidden) body.costs[r.dataset.tierrow] = { employee: Number(emp), employer: Number(r.querySelector('[data-er]').value || 0) }; }); }
+  if (t === '401k') { body.maxPercent = Number(f.maxPercent.value); body.allowRoth = f.allowRoth.checked; const tiers = []; if (f.match1.value) tiers.push({ upToPercent: Number(f.match1.value), rate: 100 }); if (f.match2.value) tiers.push({ upToPercent: Number(f.match2.value), rate: 50 }); body.match = { tiers }; }
+  if (t === 'hsa' || t === 'fsa') { body.employerContributionAnnual = Number(f.employerContributionAnnual.value || 0); body.limitKey = f.limitKey.value; }
+  try { if (planEdit) await req('PUT', `/plans/${planEdit}`, body); else await req('POST', '/plans', body); say(planEdit ? 'Plan updated.' : 'Plan added.'); resetPlanForm(); await loadPlans(); } catch (err) { say(err.message, false); }
+});
+
+// ----------------------------------------------------------------- enrollment
+async function loadConfig() {
+  cfg = (await req('GET', '/config')).data; const f = $('winForm').elements; const oe = cfg.openEnrollment || {};
+  f.start.value = oe.start || ''; f.end.value = oe.end || ''; f.effectiveDate.value = oe.effectiveDate || ''; f.planYear.value = oe.planYear || ''; f.newHireWindowDays.value = cfg.newHireWindowDays;
+  $('limRows').innerHTML = cfg.limits.map((l, i) => `<tr><td>${esc(l.label)}</td><td><input data-ly="${i}" maxlength="4" style="width:80px" value="${esc(l.year || '')}"></td><td><input data-la="${i}" type="number" min="0" step="1" style="width:130px" value="${esc(l.amount ?? '')}"></td></tr>`).join('');
+}
+$('winForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('PUT', '/config', { newHireWindowDays: Number(f.newHireWindowDays.value), openEnrollment: { start: f.start.value, end: f.end.value, effectiveDate: f.effectiveDate.value, planYear: f.planYear.value } }); say('Saved.'); } catch (err) { say(err.message, false); }
+});
+$('limSave').addEventListener('click', async () => {
+  const limits = cfg.limits.map((l, i) => { const a = document.querySelector(`[data-la="${i}"]`).value; return { key: l.key, label: l.label, year: document.querySelector(`[data-ly="${i}"]`).value || null, amount: a === '' ? null : Number(a) }; });
+  try { await req('PUT', '/config', { limits }); say('Limits saved.'); await loadConfig(); } catch (err) { say(err.message, false); }
+});
+async function loadEnrollments() {
+  const s = $('enStatus').value; const rows = (await req('GET', `/enrollments${s ? `?status=${s}` : ''}`)).data;
+  const HOW = { open_enrollment: 'Open enrollment', new_hire: 'New hire', life_event: 'Life event', hr_entered: 'Entered by HR' };
+  $('enRows').innerHTML = rows.map((e) => `<tr><td><b>${esc(e.name)}</b></td><td>${e.elections.map((x) => esc(electionText(x))).join('<br>')}</td><td>${esc(day(e.effectiveDate))}${e.endDate ? `<br><span class="hint">ended ${esc(day(e.endDate))}</span>` : ''}</td><td>${esc(HOW[e.windowType] || e.windowType)}</td><td>${canManage && e.status === 'active' ? `<button class="no" data-enend="${esc(e.id)}" data-name="${esc(e.name)}">End coverage</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody here.</td></tr>';
+}
+$('enStatus').addEventListener('change', () => loadEnrollments().catch((err) => say(err.message, false)));
+function paintHrPlans() {
+  $('hrPlans').innerHTML = plans.filter((p) => p.active).map((p) => {
+    let detail = '';
+    if (HEALTH.includes(p.type)) detail = `<label>Coverage<select data-f="tier">${Object.keys(p.costs || {}).map((t) => `<option value="${t}">${esc(TIER[t])}</option>`).join('')}</select></label><label>Family members covered (one per line: first name, last name, spouse or child, birth date YYYY-MM-DD)<textarea data-f="deps" rows="2" placeholder="Ana, Lopez, child, 2015-04-02"></textarea></label>`;
+    if (p.type === '401k') detail = `<label>Percent of pay<input data-f="pct" type="number" min="0" max="${esc(p.maxPercent)}" step="0.5"></label>${p.allowRoth ? '<label>Kind<select data-f="kind"><option value="pre_tax">Before tax</option><option value="roth">Roth</option></select></label>' : ''}`;
+    if (p.type === 'hsa' || p.type === 'fsa') detail = '<label>Amount for the year ($)<input data-f="amt" type="number" min="0" step="1"></label>';
+    return `<div class="box" data-hrplan="${esc(p.id)}"><div class="grid"><label><b style="color:var(--ink);font-size:14px">${esc(p.name)}</b><select data-f="choice"><option value="">No change</option><option value="in">Enroll</option><option value="out">Decline</option></select></label>${detail}<label>Reason for declining<input data-f="why" maxlength="200"></label></div></div>`;
+  }).join('') || '<p class="hint">Add a plan first.</p>';
+}
+function readElections(rootSel) {
+  const out = [];
+  document.querySelectorAll(rootSel).forEach((box) => {
+    const g = (k) => { const el = box.querySelector(`[data-f="${k}"]`); return el ? el.value : ''; };
+    if (!g('choice')) return;
+    const e = { planId: box.dataset.hrplan };
+    if (g('choice') === 'out') { e.waived = true; e.waiveReason = g('why'); } else {
+      if (box.querySelector('[data-f="tier"]')) { e.tier = g('tier'); e.dependents = g('deps').split('\n').map((l) => l.split(',').map((s) => s.trim())).filter((a) => a[0]).map((a) => ({ firstName: a[0], lastName: a[1] || '', relationship: (a[2] || '').toLowerCase().replace(/partner/, 'domestic_partner'), dateOfBirth: a[3] || '' })); }
+      if (box.querySelector('[data-f="pct"]')) { e.deferralPercent = Number(g('pct')); e.contributionType = g('kind') || 'pre_tax'; }
+      if (box.querySelector('[data-f="amt"]')) e.annualAmount = Number(g('amt'));
+    }
+    out.push(e);
+  });
+  return out;
+}
+$('hrSave').addEventListener('click', async () => {
+  try { await req('POST', '/enrollments', { userId: $('hrUser').value, effectiveDate: $('hrDate').value, reason: $('hrReason').value, elections: readElections('[data-hrplan]') }); say('Enrollment saved.'); $('hrReason').value = ''; paintHrPlans(); await loadEnrollments(); await loadPlans(); } catch (err) { say(err.message, false); }
+});
+
+// ---------------------------------------------------------------- life events
+async function loadEvents() {
+  const s = $('evStatus').value; const rows = (await req('GET', `/events${s ? `?status=${s}` : ''}`)).data;
+  $('evRows').innerHTML = rows.map((e) => `<tr><td><b>${esc(e.name)}</b></td><td>${esc(e.typeLabel)}</td><td>${esc(day(e.eventDate))}</td><td>${esc(day(e.windowEnd))}</td><td>${e.proof ? `<button class="ghost" data-proof="${esc(e.id)}" data-file="${esc(e.proof.fileName)}">Open</button>` : e.proofRequired ? '<span class="tag warnTag">needed, missing</span>' : '<span class="hint">not needed</span>'}</td><td>${esc(e.note)}${e.decisionNote ? `<br><span class="hint">HR: ${esc(e.decisionNote)}</span>` : ''}</td><td>${e.status === 'pending' && canManage ? `<button data-evok="${esc(e.id)}" data-noproof="${e.proofRequired && !e.proof ? '1' : ''}">Approve</button> <button class="no" data-evno="${esc(e.id)}">Reject</button>` : `<span class="tag ${e.status === 'approved' ? 'good' : e.status === 'rejected' ? 'badTag' : 'grey'}">${esc(e.status)}</span>`}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Nothing here.</td></tr>';
+}
+$('evStatus').addEventListener('change', () => loadEvents().catch((err) => say(err.message, false)));
+
+// ----------------------------------------------------------------------- feed
+async function loadFeed() {
+  const r = await req('GET', `/payroll-feed?periodEnd=${$('fdDate').value}`); $('fdNote').textContent = r.note;
+  $('fdRows').innerHTML = r.rows.map((x) => `<tr><td><b>${esc(x.name)}</b> <span class="hint">${esc(x.employeeId || '')}</span></td><td>${esc(words(x.payFrequency))}</td><td>${esc(x.planName)}</td><td>${esc(TIER[x.tier] || '')}</td><td>${esc(words(x.taxTreatment))}</td><td>${money(x.employeeDeduction)}</td><td>${money(x.employerCost)}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No deductions for this pay period.</td></tr>';
+}
+$('fdGo').addEventListener('click', () => loadFeed().catch((err) => say(err.message, false)));
+$('fdCsv').addEventListener('click', async () => { try { await save(await req('GET', `/payroll-feed?format=csv&periodEnd=${$('fdDate').value}`, null, true), `benefit_deductions_${$('fdDate').value}.csv`); } catch (err) { say(err.message, false); } });
+
+// ------------------------------------------------------------------------ ACA
+async function loadAca() {
+  const a = cfg.aca || {}; const f = $('acaForm').elements;
+  ['method', 'measurementStart', 'measurementEnd', 'fullTimeHoursPerWeek', 'monthlyHoursThreshold', 'stabilityStart', 'stabilityEnd'].forEach((k) => { f[k].value = a[k] ?? ''; });
+  const off = (await req('GET', '/aca/offers')).data;
+  $('offRows').innerHTML = off.map((o) => `<tr><td><b>${esc(o.name || '')}</b></td><td>${esc(day(o.fromDate))}</td><td>${esc(o.toDate ? day(o.toDate) : 'open')}</td><td>${o.offered ? '<span class="tag good">yes</span>' : '<span class="tag grey">no</span>'}</td><td>${esc(o.offerCode || '-')} / ${esc(o.safeHarborCode || '-')}</td><td>${o.employeeShareMonthly === null ? '' : money(o.employeeShareMonthly)}</td><td>${canManage ? `<button class="no" data-offdel="${esc(o.id)}">Remove</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No offers recorded.</td></tr>';
+  if (!a.measurementStart || !a.measurementEnd) { $('acaSum').textContent = 'Set the dates to measure hours over, then save.'; $('acaRows').innerHTML = ''; return; }
+  const r = await req('GET', '/aca/summary');
+  $('acaSum').textContent = `Hours from ${day(r.measurement.start)} to ${day(r.measurement.end)}; full time is ${r.measurement.threshold} or more a week. ${r.fullTimeNotOffered} full-time ${r.fullTimeNotOffered === 1 ? 'person has' : 'people have'} no offer of coverage on record.`;
+  $('acaRows').innerHTML = r.data.map((p) => `<tr><td><b>${esc(p.name)}</b> <span class="hint">${esc(p.employeeId || '')}</span></td><td>${p.weeksCounted ? esc(p.averageWeeklyHours) : '<span class="hint">no hours on record</span>'}</td><td>${esc(p.weeksCounted)}</td><td>${p.fullTime ? '<span class="tag blueTag">full time</span>' : 'no'}</td><td>${p.offered ? '<span class="tag good">yes</span>' : p.fullTime ? '<span class="tag badTag">no offer on record</span>' : '<span class="hint">no</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No employees.</td></tr>';
+}
+$('acaForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const aca = {};
+  ['method', 'measurementStart', 'measurementEnd', 'stabilityStart', 'stabilityEnd'].forEach((k) => { aca[k] = f[k].value; });
+  ['fullTimeHoursPerWeek', 'monthlyHoursThreshold'].forEach((k) => { if (f[k].value) aca[k] = Number(f[k].value); });
+  try { cfg = (await req('PUT', '/config', { aca })).data; say('Saved.'); await loadAca(); } catch (err) { say(err.message, false); }
+});
+$('offForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', '/aca/offers', { userId: f.userId.value, fromDate: f.fromDate.value, toDate: f.toDate.value || undefined, offered: f.offered.value === 'yes', offerCode: f.offerCode.value, safeHarborCode: f.safeHarborCode.value, employeeShareMonthly: f.employeeShareMonthly.value, note: f.note.value, coversSpouse: f.coversSpouse.checked, coversDependents: f.coversDependents.checked }); e.target.reset(); say('Offer recorded.'); await loadAca(); } catch (err) { say(err.message, false); }
+});
+$('acaCsv').addEventListener('click', async () => { try { await save(await req('GET', `/aca/1095c?format=csv&year=${$('acaYear').value}`, null, true), `aca_1095c_${$('acaYear').value}.csv`); } catch (err) { say(err.message, false); } });
+
+// ---------------------------------------------------------------------- COBRA
+const CB_ST = { pending_notice: ['notice not sent yet', 'warnTag'], notice_sent: ['notice sent, waiting for their choice', 'blueTag'], elected: ['chose to continue, waiting for first payment', 'blueTag'], paid: ['continuing coverage', 'good'], waived: ['declined', 'grey'], terminated: ['closed', 'grey'] };
+const CB_ACT = { notice_to_administrator: 'Record that you told the plan administrator', send_election_notice: 'Record that the election notice was sent', record_election: 'They chose to continue coverage', waive: 'They declined', record_payment: 'First payment received', terminate: 'Close the record' };
+const CB_FROM = { notice_to_administrator: ['pending_notice'], send_election_notice: ['pending_notice'], record_election: ['notice_sent'], waive: ['notice_sent'], record_payment: ['elected'], terminate: ['pending_notice', 'notice_sent', 'elected', 'paid'] };
+async function loadCobra() {
+  const r = await req('GET', '/cobra'); $('cbNote').textContent = r.note || 'Confirm the notice periods with your benefits advisor or plan administrator.'; $('cbCount').textContent = r.alerts ? `(${r.alerts})` : '';
+  $('cbType').innerHTML = r.events.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join('');
+  const evName = Object.fromEntries(r.events.map((x) => [x.key, x.label]));
+  $('cbRows').innerHTML = r.data.map((c) => { const d = c.deadlines; const [st, cls] = CB_ST[c.status] || [c.status, 'grey']; const open = !['waived', 'terminated'].includes(c.status);
+    const dates = open ? [c.employerNoticeSentOn ? '' : `Tell the administrator by ${day(d.employerNoticeDue)}`, c.electionNoticeSentOn ? `Notice sent ${day(c.electionNoticeSentOn)}` : `Election notice due ${day(d.electionNoticeDue)}`, c.electedOn ? `Chose to continue ${day(c.electedOn)}` : `They must choose by ${day(d.electionDeadline)}`, d.firstPaymentDue && !c.firstPaymentOn ? `First payment due ${day(d.firstPaymentDue)}` : '', `Coverage can run to ${day(d.maxCoverageEnd)}`].filter(Boolean) : [];
+    const acts = canManage ? Object.keys(CB_ACT).filter((a) => CB_FROM[a].includes(c.status) && !(a === 'notice_to_administrator' && c.employerNoticeSentOn)) : [];
+    return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(evName[c.eventType] || c.eventType)}<br><span class="hint">${esc(day(c.eventDate))}; coverage ends ${esc(day(c.lossOfCoverageDate))}</span></td><td><span class="tag ${cls}">${esc(st)}</span>${c.alerts.map((a) => `<br><span class="tag badTag">${esc(typeof a === 'string' ? words(a) : a.message || words(a.code || ''))}</span>`).join('')}</td><td>${dates.map(esc).join('<br>')}</td><td>${acts.length ? `<select data-cbact="${esc(c.id)}">${acts.map((a) => `<option value="${a}">${esc(CB_ACT[a])}</option>`).join('')}</select> <input type="date" data-cbdate="${esc(c.id)}" aria-label="Date it happened"> <button class="ghost" data-cbgo="${esc(c.id)}">Record</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="5" class="hint">No COBRA records.</td></tr>';
+}
+$('cbForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', '/cobra', { userId: f.userId.value, eventType: f.eventType.value, eventDate: f.eventDate.value, lossOfCoverageDate: f.lossOfCoverageDate.value || undefined }); say('COBRA record opened.'); await loadCobra(); } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('pedit'))) {
+      const p = plans.find((x) => x.id === t.dataset.pedit); const f = $('planForm').elements; resetPlanForm(); planEdit = p.id;
+      f.name.value = p.name; f.type.value = p.type; f.type.disabled = true; f.carrier.value = p.carrier; f.planYear.value = p.planYear; f.payPeriodsPerYear.value = p.payPeriodsPerYear; f.preTax.checked = p.preTax; f.notes.value = p.notes;
+      f.waitingDays.value = p.eligibility.waitingDays; f.minWeeklyHours.value = p.eligibility.minWeeklyHours; f.firstOfMonth.checked = p.eligibility.firstOfMonthAfterWaiting;
+      document.querySelectorAll('[data-wt]').forEach((c) => { c.checked = p.eligibility.employmentTypes.includes(c.dataset.wt); });
+      document.querySelectorAll('[data-tierrow]').forEach((r) => { const c = (p.costs || {})[r.dataset.tierrow]; r.querySelector('[data-emp]').value = c ? c.employee : ''; r.querySelector('[data-er]').value = c ? c.employer : ''; });
+      if (p.type === '401k') { f.maxPercent.value = p.maxPercent; f.allowRoth.checked = p.allowRoth; const mt = (p.match && p.match.tiers) || []; f.match1.value = mt[0] ? mt[0].upToPercent ?? mt[0].upTo ?? '' : ''; f.match2.value = mt[1] ? mt[1].upToPercent ?? mt[1].upTo ?? '' : ''; }
+      if (p.type === 'hsa' || p.type === 'fsa') { f.employerContributionAnnual.value = p.employerContributionAnnual; f.limitKey.value = p.limitKey === 'hsa_family' ? 'hsa_family' : 'hsa_self_only'; }
+      paintPlanForm(); $('planTitle').textContent = `Edit ${p.name}`; $('planCancel').hidden = false; $('planForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((t = el('poff'))) { if (window.confirm('Archive this plan? People already enrolled keep it; nobody new can choose it.')) { await req('DELETE', `/plans/${t.dataset.poff}`); await loadPlans(); } } else if ((t = el('pon'))) { await req('PUT', `/plans/${t.dataset.pon}`, { active: true }); await loadPlans(); } else if ((t = el('enend'))) {
+      const endDate = window.prompt(`Last day of coverage for ${t.dataset.name} (YYYY-MM-DD):`, new Date().toISOString().slice(0, 10)); if (!endDate) return;
+      const reason = window.prompt('Reason:'); if (!reason) return;
+      await req('POST', `/enrollments/${t.dataset.enend}/terminate`, { endDate, reason }); say('Coverage ended.'); await loadEnrollments(); await loadPlans();
+    } else if ((t = el('offdel'))) { if (window.confirm('Remove this offer record?')) { await req('DELETE', `/aca/offers/${t.dataset.offdel}`); await loadAca(); } } else if ((t = el('cbgo'))) {
+      const id = t.dataset.cbgo; const action = document.querySelector(`[data-cbact="${CSS.escape(id)}"]`).value; const body = { action, date: document.querySelector(`[data-cbdate="${CSS.escape(id)}"]`).value || undefined };
+      if (action === 'terminate') { const note = window.prompt('Why is this record being closed?'); if (!note) return; body.note = note; }
+      await req('POST', `/cobra/${id}/action`, body); say('Recorded.'); await loadCobra();
+    } else if ((t = el('proof'))) await save(await req('GET', `/events/${t.dataset.proof}/proof`, null, true), t.dataset.file);
+    else if ((t = el('evok'))) {
+      const body = { decision: 'approve' };
+      if (t.dataset.noproof) { const note = window.prompt('This event needs proof and none is attached. To approve anyway, say why (at least 5 characters):'); if (!note) return; body.override = true; body.note = note; }
+      await req('POST', `/events/${t.dataset.evok}/decision`, body); say('Approved. The employee can now change their coverage.'); await loadEvents(); await loadPlans();
+    } else if ((t = el('evno'))) { const note = window.prompt('Tell the employee why:'); if (!note) return; await req('POST', `/events/${t.dataset.evno}/decision`, { decision: 'reject', note }); say('Rejected.'); await loadEvents(); await loadPlans(); }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  $('pType').innerHTML = Object.entries(KIND).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+  $('pCostRows').innerHTML = Object.entries(TIER).map(([k, v]) => `<tr data-tierrow="${k}"><td>${esc(v)}</td><td><input data-emp type="number" min="0" step="0.01" style="width:120px"></td><td><input data-er type="number" min="0" step="0.01" style="width:120px"></td></tr>`).join('');
+  $('pTypesRow').insertAdjacentHTML('beforeend', Object.entries(WORK).map(([k, v]) => `<label class="chk"><input type="checkbox" data-wt="${k}"> ${esc(v)}</label>`).join(''));
+  const now = new Date(); const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; $('fdDate').value = today; $('hrDate').value = today; resetPlanForm();
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(loadPlans); await step(loadConfig); await step(loadEnrollments); await step(loadEvents); await step(loadFeed);
+  await step(async () => { const p = (await req('GET', '/people')).data; const o = p.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} ${esc(x.employeeId || '')}</option>`).join(''); $('hrUser').innerHTML = o; $('offUser').innerHTML = o; $('cbUser').innerHTML = o; });
+  $('acaYear').value = now.getFullYear();
+  await step(loadAca); await step(loadCobra);
+});
+</script>
+</body>
+</html>

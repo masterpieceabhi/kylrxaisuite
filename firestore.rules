@@ -202,6 +202,13 @@ service cloud.firestore {
         allow write: if canAccessAdmin() && isSameTenant(orgId);
       }
 
+      // Holidays live two levels down (holiday_calendars/{calendarCode}/holidays/{id}), which the
+      // single-level catch-all below does not reach
+      match /holiday_calendars/{calendarCode}/holidays/{holidayId} {
+        allow read: if signedIn() && isSameTenant(orgId);
+        allow write: if isStaff() && isSameTenant(orgId);
+      }
+
       // Any other org-owned configuration (business_units, cost_centers, shifts,
       // employee_types, employee_finance, sub_departments, ...): same org only
       // (Explicitly matched subcollections above are excluded so this never loosens them.)

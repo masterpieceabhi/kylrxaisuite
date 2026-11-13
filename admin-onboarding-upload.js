@@ -1936,6 +1936,31 @@ function setupFileUpload() {
 }
 
 /**
+ * Templates.xlsx sample rows carry a placeholder Organization ID (for example ORG_KYLRX_01). The master
+ * parsers reject any row whose Organization ID is not the signed-in company, so loading the template (or a
+ * copy of it) showed no preview and no ingest button. Blank or placeholder IDs are stamped with the active
+ * company; a real, different company ID is left alone so the tenant check still catches it.
+ */
+const TEMPLATE_SAMPLE_ORG_IDS = new Set(['ORG_KYLRX_01', 'ORG_KYLRX_CORP', 'ORG_KYLRX', 'ORG_SAMPLE', 'YOUR_ORG_ID']);
+function stampActiveOrgOnRows(rows, orgId) {
+    if (!Array.isArray(rows) || !orgId) return rows;
+    return rows.map((row) => {
+        const key = Object.keys(row || {}).find((k) => k.toLowerCase().replace(/[\s_-]+/g, '') === 'organizationid');
+        if (!key) return { ...row, 'Organization ID': orgId };
+        const current = String(row[key] == null ? '' : row[key]).trim();
+        if (current === '' || TEMPLATE_SAMPLE_ORG_IDS.has(current.toUpperCase())) return { ...row, [key]: orgId };
+        return row;
+    });
+}
+
+/** First sheet that matches and actually has data rows (Templates.xlsx has empty look-alike sheets such as Shift_Roster) */
+function findSheetWithData(workbook, matches) {
+    const hits = workbook.SheetNames.filter(matches);
+    const withRows = hits.find((n) => XLSX.utils.sheet_to_json(workbook.Sheets[n], { defval: "" }).length > 0);
+    return withRows || hits[0];
+}
+
+/**
  * Handles parsing of dropped / browsed Excel or CSV file using SheetJS
  * Parses 'Organization' (PRD §1), 'Business Unit' (PRD §1 & §10), and 'Cost Center' (PRD §1, §10, & §13) sheets
  */
@@ -2070,8 +2095,8 @@ function handleUploadedFile(file) {
             }
 
             // ── 5. Target the 'Shifts & Week-offs' sheet (PRD Sections 1, 13 & 16) ────
-            let shiftSheetName = workbook.SheetNames.find(s => {
-                const norm = s.trim().toLowerCase().replace(/[\s_-]+/g, '');
+            let shiftSheetName = findSheetWithData(workbook, s => {
+                const norm = s.trim().toLowerCase().replace(/&/g, 'and').replace(/[\s_-]+/g, '');
                 return norm === 'shiftsweekoffs' || norm === 'shiftsandweekoffs' || norm === 'shifts' || norm === 'shiftroster' || norm === 'shift_roster' || norm === 'shiftspolicies';
             });
             if (!shiftSheetName && workbook.SheetNames.length === 1 && !orgSheetName && !buSheetName && !ccSheetName && !subDeptSheetName) {
@@ -4180,6 +4205,7 @@ async function executeEmployeeFinanceIngest(financeDocs) {
 async function extract19EpfoMasterAttributesFromSheetRows(rows) {
     let existingEmployeeIds = null;
     const orgId = state.orgId || localStorage.getItem('orgId') || 'ORG_KYLRX_01';
+    rows = stampActiveOrgOnRows(rows, orgId);
 
     try {
         const empSnap = await getDocs(collection(db, "organizations", orgId, "employees"));
@@ -4422,6 +4448,7 @@ async function renderOnboardingEpfoMasterTable() {
 async function extract18EsicMasterAttributesFromSheetRows(rows) {
     let existingEmployeeIds = null;
     const orgId = state.orgId || localStorage.getItem('orgId') || 'ORG_KYLRX_01';
+    rows = stampActiveOrgOnRows(rows, orgId);
 
     try {
         const empSnap = await getDocs(collection(db, "organizations", orgId, "employees"));
@@ -4675,6 +4702,7 @@ async function renderOnboardingEsicMasterTable() {
 async function extract10PtMasterAttributesFromSheetRows(rows) {
     let existingEmployeeIds = null;
     const orgId = state.orgId || localStorage.getItem('orgId') || 'ORG_KYLRX_01';
+    rows = stampActiveOrgOnRows(rows, orgId);
 
     try {
         const empSnap = await getDocs(collection(db, "organizations", orgId, "employees"));
@@ -4912,6 +4940,7 @@ async function renderOnboardingPtMasterTable() {
 async function extract10LwfMasterAttributesFromSheetRows(rows) {
     let existingEmployeeIds = null;
     const orgId = state.orgId || localStorage.getItem('orgId') || 'ORG_KYLRX_01';
+    rows = stampActiveOrgOnRows(rows, orgId);
 
     try {
         const empSnap = await getDocs(collection(db, "organizations", orgId, "employees"));
@@ -5138,6 +5167,7 @@ async function renderOnboardingLwfMasterTable() {
 async function extract22NpsMasterAttributesFromSheetRows(rows) {
     let existingEmployeeIds = null;
     const orgId = state.orgId || localStorage.getItem('orgId') || 'ORG_KYLRX_01';
+    rows = stampActiveOrgOnRows(rows, orgId);
 
     try {
         const empSnap = await getDocs(collection(db, "organizations", orgId, "employees"));
@@ -6140,17 +6170,22 @@ async function executeOrganizationSetup(attributes21, sourceMethod) {
     // Writing counter document at organizations/{orgId}/counters/employees with currentSequence: 0
     // guarantees subsequent allocation begins atomically at EMP0001
     const counterDocRef = doc(db, "organizations", orgId, "counters", "employees");
-    await setDoc(counterDocRef, {
-        currentSequence: 0,
-        prefix: 'EMP',
-        padLength: 4,
-        nextIdPreview: 'EMP0001',
-        initialProvisioned: true,
-        orgId: orgId,
-        initializedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-    }, { merge: true });
-    console.log(`🔢 Step 2: Initialized continuous sequential Employee ID counter (EMP0001) for org ${orgId}`);
+    try {
+        await setDoc(counterDocRef, {
+            currentSequence: 0,
+            prefix: 'EMP',
+            padLength: 4,
+            nextIdPreview: 'EMP0001',
+            initialProvisioned: true,
+            orgId: orgId,
+            initializedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        console.log(`🔢 Step 2: Initialized continuous sequential Employee ID counter (EMP0001) for org ${orgId}`);
+    } catch (counterErr) {
+        // Firestore rules make counters server-only; the backend signup already provisions it.
+        console.warn('Step 2: employee ID counter is managed by the server, skipping client write:', counterErr.message);
+    }
 
     // Step 3: Update local storage and UI status
     localStorage.setItem('orgConfigured', 'true');

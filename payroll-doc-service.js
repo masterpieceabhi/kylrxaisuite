@@ -1,4 +1,4 @@
-import { db } from "./firebase-config.js";
+import { db, auth } from "./firebase-config.js";
 import { collection, doc, setDoc, updateDoc, serverTimestamp, getDoc, query, where, getDocs, addDoc } from "./firebase-config.js";
 import { generatePayslipPdfBlob, uploadPayslipPdf, normalizePayslipEmployee, parsePeriod } from "./payslip-pdf-service.js";
 
@@ -153,8 +153,8 @@ export async function disburseSalaries(authority) {
     const docsSnap = await getDocs(query(collection(db, 'payroll_documents'), where('status', '==', 'Generated')));
     
     let count = 0;
-    const EMAIL_API_KEY = "6f8d75dc-500b-4eb1-b0db-6e6b4e7235db";
-    const SENDER_EMAIL = "payroll@kylrxai.com";
+    const cfg = (typeof window !== 'undefined' && window.KylrxCountryConfig) || { currency: 'INR', locale: 'en-IN' };
+    const money = (n) => new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency, maximumFractionDigits: 2 }).format(Number(n) || 0);
 
     for (const d of docsSnap.docs) {
         const dData = d.data();
@@ -190,7 +190,7 @@ export async function disburseSalaries(authority) {
         // 1. System Notification
         await createNotification(
             dData.employeeId,
-            `Your monthly salary of ₹${amount} has been disbursed via ${authority}.`,
+            `Your monthly salary of ${money(amount)} has been disbursed via ${authority}.`,
             'normal',
             'Salary Disbursed'
         );
@@ -203,36 +203,22 @@ export async function disburseSalaries(authority) {
             senderName: 'HR Support Hub',
             receiverId: dData.employeeId,
             chatType: 'hr',
-            text: `Dear ${dData.employeeName || 'Employee'},\n\nWe are pleased to inform you that your monthly salary payout of ₹${amount} has been successfully disbursed via the ${authority} gateway.\n\nYour detailed payslip is now available in your My Documents Portal.`,
+            text: `Dear ${dData.employeeName || 'Employee'},\n\nWe are pleased to inform you that your monthly salary payout of ${money(amount)} has been successfully disbursed via the ${authority} gateway.\n\nYour detailed payslip is now available in your My Documents Portal.`,
             timestamp: serverTimestamp(),
             read: false
         });
 
-        // 3. Email Notification via Web3Forms
+        // 3. Email notification through the server email service (no third-party mail keys in the browser)
         try {
-            const userSnap = await getDoc(doc(db, 'users', dData.employeeId));
-            if (userSnap.exists()) {
-                const uData = userSnap.data();
-                const employeeEmail = uData.email;
-                if (employeeEmail) {
-                    const emailBody = `Dear ${uData.name || 'Employee'},\n\nWe are pleased to inform you that your monthly salary payout has been successfully disbursed via the automated ${authority} gateway.\n\nPayout Details:\n- Net Amount: ₹${amount}\n- Disbursement Method: ${authority} Gate\n- Status: Completed\n\nYour detailed payslip is now available in your Employee Documents Portal.\n\nBest regards,\nPayroll Operations Team`;
-                    
-                    console.log(`[EMAIL] Sending salary disbursement email to ${employeeEmail}...`);
-                    await fetch("https://api.web3forms.com/submit", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Accept": "application/json"
-                        },
-                        body: JSON.stringify({
-                            access_key: EMAIL_API_KEY,
-                            name: "Kylrx AI Payroll Gate",
-                            email: SENDER_EMAIL,
-                            subject: "Kylrx AI - Salary Disbursed",
-                            message: emailBody
-                        })
-                    });
-                }
+            const user = auth && auth.currentUser;
+            if (user) {
+                const token = await user.getIdToken();
+                const res = await fetch('/api/email/payroll-notice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ employeeId: dData.employeeId, amount, authority })
+                });
+                if (!res.ok) console.warn('[EMAIL] Salary notice not sent:', res.status);
             }
         } catch (emailErr) {
             console.error("Error sending salary disbursement email:", emailErr);

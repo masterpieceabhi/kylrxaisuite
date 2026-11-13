@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Service status | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--okbg:#dcfce7;--warn:#92400e;--warnbg:#fef3c7;--bad:#b91c1c;--badbg:#fee2e2}
+*{box-sizing:border-box}body{margin:0;font:17px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{padding:16px;background:#fff;border-bottom:1px solid var(--line)}header div{max-width:680px;margin:0 auto}
+h1{margin:0;font-size:22px}h2{margin:0 0 10px;font-size:18px}h3{margin:0;font-size:17px}
+main{max-width:680px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.overall{border-radius:14px;padding:18px 16px;font-size:20px;font-weight:700}
+.operational{background:var(--okbg);color:var(--ok)}.degraded,.partial_outage{background:var(--warnbg);color:var(--warn)}.outage{background:var(--badbg);color:var(--bad)}.unknown{background:#f1f5f9;color:var(--muted)}
+.comp{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}.comp:last-child{border-bottom:0;padding-bottom:0}.comp:first-child{padding-top:0}
+.tag{padding:3px 10px;border-radius:999px;font-size:14px;font-weight:700;white-space:nowrap}
+.inc{padding:12px 0;border-bottom:1px solid var(--line)}.inc:last-child{border-bottom:0;padding-bottom:0}.inc:first-child{padding-top:0}
+.upd{margin:8px 0 0;padding-left:12px;border-left:3px solid var(--line)}.upd p{margin:2px 0 0;overflow-wrap:anywhere}
+.hint{color:var(--muted);font-size:14px}
+button{padding:12px 16px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-weight:700;cursor:pointer}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><div><h1>Service status</h1></div></header>
+<main>
+  <div class="overall unknown" id="overall" role="status" aria-live="polite">Checking...</div>
+  <section class="card"><h2>Parts of the service</h2><div id="components"><p class="hint">Loading...</p></div></section>
+  <section class="card" id="activeCard" hidden><h2>What is happening now</h2><div id="active"></div></section>
+  <section class="card"><h2>Recent incidents</h2><div id="past"><p class="hint">Loading...</p></div></section>
+  <div class="foot"><span class="hint" id="updated"></span><button type="button" id="refresh">Check again</button></div>
+  <p class="hint">This page refreshes by itself every minute. If you cannot sign in or something looks wrong and nothing is listed here, tell your company's administrator.</p>
+</main>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); };
+const OVERALL = { operational: 'Everything is working', degraded: 'Some things are slow or not working', outage: 'There is an outage', unknown: 'We could not check the status' };
+const LEVEL = { operational: 'Working', degraded: 'Slow or limited', partial_outage: 'Partly down', outage: 'Down' };
+const PHASE = { investigating: 'Looking into it', identified: 'Cause found', monitoring: 'Fixed, watching', resolved: 'Resolved' };
+const IMPACT = { none: 'No impact', minor: 'Minor', major: 'Major', critical: 'Critical' };
+const cls = (level) => (LEVEL[level] ? level : 'unknown');
+
+function incidentHtml(i) {
+  const updates = [...(i.updates || [])].reverse().map((u) => `<div class="upd"><span class="hint">${esc(when(u.at))} · ${esc(PHASE[u.status] || u.status || '')}</span>${u.body ? `<p>${esc(u.body)}</p>` : ''}</div>`).join('');
+  return `<div class="inc"><h3>${esc(i.title || 'Incident')}</h3><span class="hint">${esc(PHASE[i.status] || i.status || '')} · ${esc(IMPACT[i.impact] || '')} · started ${esc(when(i.startedAt))}${i.resolvedAt ? ` · resolved ${esc(when(i.resolvedAt))}` : ''}</span>${updates}</div>`;
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/status', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    const s = await res.json();
+    const level = OVERALL[s.overall] ? s.overall : 'unknown';
+    $('overall').className = `overall ${level}`; $('overall').textContent = OVERALL[level];
+    $('components').innerHTML = (s.components || []).map((c) => `<div class="comp"><span>${esc(c.name)}</span><span class="tag ${cls(c.status)}">${esc(LEVEL[c.status] || 'Unknown')}</span></div>`).join('') || '<p class="hint">Nothing to show.</p>';
+    const incidents = s.incidents || [];
+    const active = incidents.filter((i) => i.status !== 'resolved'); const past = incidents.filter((i) => i.status === 'resolved');
+    $('activeCard').hidden = !active.length; $('active').innerHTML = active.map(incidentHtml).join('');
+    $('past').innerHTML = past.map(incidentHtml).join('') || '<p class="hint">No incidents to report.</p>';
+    $('updated').textContent = `Last checked ${when(s.generatedAt || new Date().toISOString())}`;
+  } catch (_) {
+    $('overall').className = 'overall unknown'; $('overall').textContent = OVERALL.unknown;
+    $('components').innerHTML = '<p class="hint">The status service did not answer. That can mean the service is down, or that your own connection is. Try again in a minute.</p>';
+    $('past').innerHTML = ''; $('activeCard').hidden = true;
+    $('updated').textContent = `Tried ${when(new Date().toISOString())}`;
+  }
+}
+$('refresh').addEventListener('click', load);
+load();
+setInterval(() => { if (!document.hidden) load(); }, 60000);
+</script>
+</body>
+</html>

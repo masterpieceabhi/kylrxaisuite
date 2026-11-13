@@ -1,4 +1,4 @@
-const { admin, db } = require('../config/firebase');
+const { admin, db, rawCollection } = require('../config/firebase');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
@@ -266,7 +266,7 @@ exports.login = async (req, res, next) => {
             return res.status(400).json({ success: false, error: 'Email and password required' });
         }
 
-        const usersSnapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+        const usersSnapshot = await rawCollection('users').where('email', '==', email).limit(1).get();
 
         if (usersSnapshot.empty) {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -288,7 +288,7 @@ exports.login = async (req, res, next) => {
                 });
             }
             // Lock expired — reset it automatically
-            await db.collection('users').doc(userId).update({ loginAttempts: 0, lockUntil: null });
+            await rawCollection('users').doc(userId).update({ loginAttempts: 0, lockUntil: null });
         }
 
         // 2. Verify Password (Strict bcrypt comparison only; plaintext comparisons removed)
@@ -307,12 +307,22 @@ exports.login = async (req, res, next) => {
                 logger.warn(`Account locked for email: ${email}`);
             }
             
-            await db.collection('users').doc(userId).update(updates);
+            await rawCollection('users').doc(userId).update(updates);
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
 
+        // Employment ended: the right password no longer opens a session
+        if (/^terminated$/i.test(String(user.status || ''))) {
+            return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
+
+        // Company requires single sign-on: passwords are refused (except the break-glass accounts)
+        if (await require('../services/sso').passwordLoginBlocked({ ...user, email: user.email || email })) {
+            return res.status(403).json({ success: false, code: 'sso_required', error: 'Your company requires single sign-on. Use the "Sign in with SSO" button.' });
+        }
+
         // 3. Reset failed login attempts on successful password verification
-        await db.collection('users').doc(userId).update({
+        await rawCollection('users').doc(userId).update({
             loginAttempts: 0,
             lockUntil: null
         });
@@ -408,7 +418,7 @@ exports.verifyMfa = async (req, res, next) => {
         // Fetch latest user document from Firestore to verify status and mustResetPassword
         let userData = {};
         try {
-            const userDoc = await db.collection('users').doc(decoded.id).get();
+            const userDoc = await rawCollection('users').doc(decoded.id).get();
             if (userDoc.exists) {
                 userData = userDoc.data();
             }
@@ -418,7 +428,7 @@ exports.verifyMfa = async (req, res, next) => {
 
         // Update lastLogin
         try {
-            await db.collection('users').doc(decoded.id).update({
+            await rawCollection('users').doc(decoded.id).update({
                 lastLogin: admin.firestore.FieldValue.serverTimestamp()
             });
         } catch (_) {}
@@ -528,7 +538,7 @@ exports.unlockAccount = async (req, res, next) => {
         const { email } = req.params;
         if (!email) return res.status(400).json({ success: false, error: 'Email required' });
 
-        const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+        const snap = await rawCollection('users').where('email', '==', email).limit(1).get();
         if (snap.empty) return res.status(404).json({ success: false, error: 'User not found' });
 
         await snap.docs[0].ref.update({ loginAttempts: 0, lockUntil: null });

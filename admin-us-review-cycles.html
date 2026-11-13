@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Review rounds | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:18px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);font-weight:400}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:70px}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.acts button{margin:0 4px 4px 0}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:8px;padding:10px 12px}
+.pre{white-space:pre-wrap;margin:4px 0 10px}
+.pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 12px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:10px;margin-top:8px}
+.quote{border-left:3px solid var(--line);padding:2px 10px;margin:6px 0;white-space:pre-wrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Review rounds</h1><div><a href="admin-us-performance.html">Goals and reviews</a> &nbsp;|&nbsp; <a href="my-reviews.html">My own reviews</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+
+  <section class="card">
+    <h2>All review rounds</h2>
+    <p class="hint" style="margin-top:0">A review round asks a group of people for a self review, a manager review and, if you want, feedback from coworkers, all for the same period.</p>
+    <table><thead><tr><th>Review round</th><th>Status</th><th>Finish by</th><th>How far along</th><th></th></tr></thead><tbody id="list"></tbody></table>
+    <div class="row" id="newRow" hidden><button id="newBtn" type="button">Start a new review round</button></div>
+  </section>
+
+  <section class="card" id="editCard" hidden>
+    <h2 id="eTitle">New review round</h2>
+    <form id="editForm">
+      <div class="grid">
+        <label>Name<input name="name" required minlength="3" maxlength="120" placeholder="Year-end review 2026"></label>
+        <label>Period reviewed, from<input name="periodStart" type="date" required></label>
+        <label>Period reviewed, to<input name="periodEnd" type="date" required></label>
+        <label>Everything finished by<input name="dueDate" type="date" required></label>
+      </div>
+      <h3>Who is included</h3>
+      <div class="row" style="margin-top:0"><label class="check"><input type="radio" name="audience" value="everyone" checked> Everyone in the company</label><label class="check"><input type="radio" name="audience" value="chosen"> Only the people I choose</label></div>
+      <div id="chosenBox" hidden><input id="peopleFilter" type="search" placeholder="Find a person" aria-label="Find a person" style="margin-top:8px"><div class="pick" id="peoplePick"></div><p class="hint" id="chosenCount"></p></div>
+      <h3>What it asks for</h3>
+      <div class="row" style="margin-top:0">
+        <label class="check"><input type="checkbox" name="selfReview" checked> Self review (each person writes about their own work)</label>
+        <label class="check"><input type="checkbox" name="managerReview" checked> Manager review</label>
+        <label class="check"><input type="checkbox" name="peerFeedback"> Feedback from coworkers</label>
+      </div>
+      <label style="margin-top:12px" id="selfQBox">Self review questions (one per line)<textarea name="selfQuestions" rows="4"></textarea></label>
+      <div id="peerBox" hidden>
+        <label style="margin-top:12px">Questions for coworkers (one per line). They can also give an optional 1 to 5 rating.<textarea name="peerQuestions" rows="4"></textarea></label>
+        <div class="grid" style="margin-top:12px">
+          <label>How many coworkers to ask per person<input name="peerSuggested" type="number" min="3" max="10" step="1"></label>
+          <label>Fewest answers before anyone can read them<input name="peerMinAnswers" type="number" min="3" max="10" step="1"></label>
+        </div>
+        <p class="hint">Coworker answers are stored without names and are only shown combined. With fewer than 3 answers nothing is shown, so nobody's answer can be picked out. This number cannot be set below 3.</p>
+        <div class="row"><label class="check"><input type="checkbox" name="sharePeerFeedback"> After the round is closed, also show the combined coworker feedback to the person it is about</label></div>
+      </div>
+      <p class="hint">Saving keeps a draft that only HR can see. Nobody is asked for anything until you open the round. Once it is open it can no longer be changed.</p>
+      <div class="row"><button type="submit">Save draft</button><button type="button" class="ghost" data-hide="editCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="cycleCard" hidden>
+    <h2 id="cTitle"></h2>
+    <p id="cSummary"></p>
+    <table><thead><tr><th>Person</th><th>Self review</th><th>Manager review</th><th>Coworker feedback</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+    <div class="row"><button type="button" class="ghost" id="csvBtn">Download as CSV</button><button type="button" class="ghost" data-hide="cycleCard">Close</button></div>
+  </section>
+
+  <section class="card" id="personCard" hidden></section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const ST = { draft: ['draft, not started', 'grey'], open: ['open', 'good'], closed: ['closed', 'blueTag'] };
+const SELF = { not_asked: ['not asked', 'grey'], not_started: ['not started', 'warnTag'], draft: ['started, not sent', 'warnTag'], done: ['sent', 'good'] };
+const MGR = { not_asked: ['not asked', 'grey'], not_started: ['not started', 'warnTag'], draft: ['being written', 'warnTag'], finished: ['finished', 'good'], shared: ['shared with the person', 'blueTag'] };
+const tag = (pair) => `<span class="tag ${pair[1]}">${esc(pair[0])}</span>`;
+let options = null; let cycles = []; let canManage = false; let people = null; let editing = null; let cur = null; let det = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/review-cycles${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const hideCards = () => ['editCard', 'cycleCard', 'personCard'].forEach((id) => { $(id).hidden = true; });
+const getPeople = async () => { if (!people) people = (await req('GET', '/people')).data; return people; };
+const peerText = (r) => (r.peers === 'not_asked' ? tag(['not asked', 'grey']) : r.peers === 'not_chosen' ? tag(['no coworkers chosen yet', 'warnTag']) : `${r.peersAnswered} of ${r.peersAsked} answered ${r.peers === 'enough' ? tag(['enough to read', 'good']) : tag([`${r.peersNeeded} more needed`, 'warnTag'])}`);
+function progressText(c) {
+  const p = c.progress; if (c.status === 'draft') return `<span class="hint">${c.included} ${c.included === 1 ? 'person' : 'people'} would be included</span>`;
+  const bits = [];
+  if (c.selfReview) bits.push(`Self reviews sent: ${p.selfDone} of ${p.selfAsked}`);
+  if (c.managerReview) bits.push(`Manager reviews finished: ${p.managerDone} of ${p.managerAsked}`);
+  if (c.peerFeedback) bits.push(`Coworker feedback ready for ${p.peersEnough} of ${p.peersAsked} (${p.peerAnswers} answers so far)`);
+  return bits.map(esc).join('<br>');
+}
+
+async function load() {
+  const r = await req('GET', ''); cycles = r.data; canManage = r.canManage; $('newRow').hidden = !canManage;
+  $('list').innerHTML = cycles.map((c) => {
+    const acts = [];
+    if (c.status !== 'draft') acts.push(['show', 'See people and progress', '']);
+    if (canManage && c.status === 'draft') acts.push(['edit', 'Edit', ''], ['open', 'Open it for everyone included', 'ghost'], ['delete', 'Delete', 'no']);
+    if (canManage && c.status === 'open') acts.push(['close', 'Close it', 'ghost']);
+    return `<tr><td><b>${esc(c.name)}</b><br><span class="hint">${esc(day(c.periodStart))} to ${esc(day(c.periodEnd))}${r.wholeCompany ? '' : ' · your team only'}</span></td><td>${tag(ST[c.status])}</td><td>${esc(day(c.dueDate))}${c.late ? ` ${tag(['past the date', 'badTag'])}` : ''}</td><td>${progressText(c)}</td><td class="acts">${acts.map(([k, label, cls]) => `<button class="${cls}" data-act="${k}" data-id="${esc(c.id)}">${esc(label)}</button>`).join('')}</td></tr>`;
+  }).join('') || `<tr><td colspan="5" class="hint">${canManage ? 'No review rounds yet.' : 'There is no review round for your team right now.'}</td></tr>`;
+}
+
+/* ------------------------------ writing a round (HR) ------------------------------ */
+const form = () => $('editForm').elements;
+function syncEditor() {
+  const f = form();
+  $('chosenBox').hidden = f.audience.value !== 'chosen'; $('peerBox').hidden = !f.peerFeedback.checked; $('selfQBox').hidden = !f.selfReview.checked;
+  $('chosenCount').textContent = `${document.querySelectorAll('#peoplePick input:checked').length} chosen`;
+}
+async function openEditor(c) {
+  const list = await getPeople();
+  hideCards(); editing = c ? c.id : null; $('editCard').hidden = false; $('eTitle').textContent = c ? `Edit draft: ${c.name}` : 'New review round';
+  const f = form(); const d = c || { name: '', periodStart: '', periodEnd: '', dueDate: '', audience: 'everyone', peopleIds: [], selfReview: true, managerReview: true, peerFeedback: false, sharePeerFeedback: false, peerMinAnswers: options.peerMinDefault, peerSuggested: options.peerMinDefault, selfQuestions: options.defaultSelfQuestions.map((text) => ({ text })), peerQuestions: options.defaultPeerQuestions.map((text) => ({ text })) };
+  f.name.value = d.name; f.periodStart.value = d.periodStart; f.periodEnd.value = d.periodEnd; f.dueDate.value = d.dueDate; f.audience.value = d.audience;
+  f.selfReview.checked = d.selfReview; f.managerReview.checked = d.managerReview; f.peerFeedback.checked = d.peerFeedback; f.sharePeerFeedback.checked = d.sharePeerFeedback;
+  f.peerMinAnswers.value = d.peerMinAnswers; f.peerSuggested.value = d.peerSuggested;
+  f.selfQuestions.value = d.selfQuestions.map((q) => q.text).join('\n'); f.peerQuestions.value = d.peerQuestions.map((q) => q.text).join('\n');
+  const on = new Set(d.peopleIds || []);
+  $('peopleFilter').value = '';
+  $('peoplePick').innerHTML = list.map((p) => `<label class="check" data-name="${esc(String(p.name).toLowerCase())}"><input type="checkbox" value="${esc(p.id)}"${on.has(p.id) ? ' checked' : ''}> ${esc(p.name)}${p.jobTitle ? ` <span class="hint">${esc(p.jobTitle)}</span>` : ''}</label>`).join('') || '<span class="hint">No people found.</span>';
+  syncEditor(); $('editCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('editForm').addEventListener('change', syncEditor);
+$('peopleFilter').addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#peoplePick label').forEach((l) => { l.hidden = Boolean(q) && !l.dataset.name.includes(q); }); });
+$('editForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = form();
+  const body = { name: f.name.value, periodStart: f.periodStart.value, periodEnd: f.periodEnd.value, dueDate: f.dueDate.value, audience: f.audience.value, peopleIds: [...document.querySelectorAll('#peoplePick input:checked')].map((i) => i.value),
+    selfReview: f.selfReview.checked, managerReview: f.managerReview.checked, peerFeedback: f.peerFeedback.checked, sharePeerFeedback: f.sharePeerFeedback.checked, peerMinAnswers: f.peerMinAnswers.value, peerSuggested: f.peerSuggested.value, selfQuestions: f.selfQuestions.value, peerQuestions: f.peerQuestions.value };
+  try { if (editing) await req('PUT', `/${editing}`, body); else await req('POST', '', body); hideCards(); await load(); say('Draft saved. Nobody is asked for anything until you open it.'); } catch (err) { say(err.message, false); }
+});
+$('newBtn').addEventListener('click', async () => { try { await openEditor(null); } catch (err) { say(err.message, false); } });
+
+/* ------------------------------ one round: people and progress ------------------------------ */
+async function showCycle(id, keepPerson = false) {
+  cur = await req('GET', `/${id}`); const c = cur.cycle; const p = cur.progress;
+  $('editCard').hidden = true; if (!keepPerson) $('personCard').hidden = true; $('cycleCard').hidden = false;
+  $('cTitle').textContent = `${c.name} (${ST[c.status][0]})`;
+  $('cSummary').innerHTML = `${esc(day(c.periodStart))} to ${esc(day(c.periodEnd))}, to be finished by ${esc(day(c.dueDate))}. ${p.people} ${p.people === 1 ? 'person' : 'people'}${cur.wholeCompany ? '' : ' on your team'}.<br>${progressText({ ...c, progress: p })}${c.status === 'closed' ? '<br><span class="hint">This round is closed. Finished manager reviews were shared with each person, who finds them under My goals.</span>' : ''}`;
+  $('rows').innerHTML = cur.rows.map((r) => `<tr><td><b>${esc(r.name)}</b>${r.you ? ' <span class="hint">(you)</span>' : ''}<br><span class="hint">${esc(r.jobTitle || '')}${r.managerName ? `${r.jobTitle ? ' · ' : ''}reports to ${esc(r.managerName)}` : ''}</span></td><td>${tag(SELF[r.self])}</td><td>${tag(MGR[r.manager])}</td><td>${peerText(r)}</td><td class="acts">${r.you ? '<span class="hint">See My own reviews</span>' : `<button data-person="${esc(r.userId)}">Open</button>`}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody to list.</td></tr>';
+}
+$('csvBtn').addEventListener('click', () => {
+  if (!cur) return;
+  const cell = (v) => { let s = String(v ?? ''); if (/^[=+\-@]/.test(s)) s = `'${s}`; return `"${s.replace(/"/g, '""')}"`; };
+  const rows = [['Person', 'Employee number', 'Reports to', 'Self review', 'Manager review', 'Coworkers asked', 'Coworker answers']].concat(cur.rows.map((r) => [r.name, r.employeeId || '', r.managerName || '', SELF[r.self][0], MGR[r.manager][0], r.peersAsked, r.peersAnswered]));
+  const url = URL.createObjectURL(new Blob([rows.map((r) => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = 'review-round-progress.csv'; link.click(); URL.revokeObjectURL(url);
+});
+
+/* ------------------------------ one person in a round ------------------------------ */
+function reviewForm(d) {
+  const r = d.review || { ratings: [], overall: null, strengths: '', improvements: '', nextSteps: '', privateNote: '' };
+  const given = Object.fromEntries((r.ratings || []).map((a) => [a.area, a]));
+  const opts = (v) => `<option value="">not rated</option>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${Number(v) === n ? ' selected' : ''}>${n} - ${esc(d.ratingLabels[n])}</option>`).join('')}`;
+  if (!d.canWrite || (d.review && d.review.status !== 'draft')) {
+    if (!d.review) return '<p class="hint">No manager review was written.</p>';
+    return `<p>${tag(MGR[d.progress.manager])} <span class="hint">written by ${esc(r.reviewerName || '')}</span></p>${r.overall ? `<p><b>Overall: ${esc(r.overall)} of 5</b> <span class="hint">${esc(d.ratingLabels[r.overall])}</span></p>` : ''}${(r.ratings || []).map((a) => `<div class="hint">${esc(a.area)}: ${esc(a.rating)}/5${a.comment ? `. ${esc(a.comment)}` : ''}</div>`).join('')}
+      <h3>What went well</h3><div class="pre">${esc(r.strengths)}</div><h3>What to work on</h3><div class="pre">${esc(r.improvements)}</div><h3>Next steps</h3><div class="pre">${esc(r.nextSteps)}</div>${r.privateNote ? `<h3>Private note (the person never sees this)</h3><div class="pre">${esc(r.privateNote)}</div>` : ''}${r.acknowledgedAt ? `<p class="hint">The person marked it as seen on ${esc(day(r.acknowledgedAt))}.${r.employeeComment ? ` Their comment: "${esc(r.employeeComment)}"` : ''}</p>` : ''}`;
+  }
+  return `<form id="reviewForm"><p class="hint" style="margin-top:0">Only you and HR can see this while the round is open. When HR closes the round, a review you marked as finished is shared with ${esc(d.person.name)}.${d.progress.manager === 'finished' ? ' <b>You marked this one as finished.</b> Saving it as a draft again takes that back.' : ''}</p>
+    <table><thead><tr><th>Area</th><th>Rating</th><th>Comment (optional)</th></tr></thead><tbody>${d.areas.map((a) => `<tr><td>${esc(a)}</td><td><select data-area="${esc(a)}">${opts((given[a] || {}).rating)}</select></td><td><input data-comment="${esc(a)}" maxlength="400" value="${esc((given[a] || {}).comment || '')}" style="width:100%"></td></tr>`).join('')}</tbody></table>
+    <div class="grid" style="margin-top:12px"><label>Overall<select name="overall">${opts(r.overall)}</select></label></div>
+    <label style="margin-top:12px">What went well<textarea name="strengths" maxlength="3000">${esc(r.strengths)}</textarea></label>
+    <label style="margin-top:12px">What to work on<textarea name="improvements" maxlength="3000">${esc(r.improvements)}</textarea></label>
+    <label style="margin-top:12px">Next steps<textarea name="nextSteps" maxlength="3000">${esc(r.nextSteps)}</textarea></label>
+    <label style="margin-top:12px">Private note (the person never sees this)<textarea name="privateNote" maxlength="2000">${esc(r.privateNote)}</textarea></label>
+    <div class="row"><button type="button" data-review="draft" class="ghost">Save as draft</button><button type="button" data-review="finish">Save and mark as finished</button></div></form>`;
+}
+function coworkerBox(d, list) {
+  const k = d.coworkers; const asked = new Set(k.asked.map((p) => p.id));
+  const names = k.asked.map((p) => esc(p.name)).join(', ') || 'nobody yet';
+  if (!d.canWrite || k.locked) return `<p>Asked: ${names}.</p>${k.locked && d.canWrite ? '<p class="hint">Enough coworkers have answered, so the list can no longer be changed. Adding someone now could give their answer away.</p>' : ''}`;
+  const blocked = new Set([d.person.userId, d.person.managerId, auth.currentUser.uid].filter(Boolean));
+  return `<p>Asked so far: ${names}.</p><p class="hint">Choose about ${k.suggested} people who work with ${esc(d.person.name)} (at least ${k.minAnswers}, at most ${k.max}). Each gets a short form under their own "My reviews". The person, their manager and you cannot be chosen.</p>
+    <input id="coFilter" type="search" placeholder="Find a person" aria-label="Find a person"><div class="pick" id="coPick">${list.filter((p) => !blocked.has(p.id)).map((p) => `<label class="check" data-name="${esc(String(p.name).toLowerCase())}"><input type="checkbox" value="${esc(p.id)}"${asked.has(p.id) ? ' checked' : ''}> ${esc(p.name)}${p.jobTitle ? ` <span class="hint">${esc(p.jobTitle)}</span>` : ''}</label>`).join('')}</div>
+    <div class="row"><button type="button" id="coSave">Save who is asked</button></div>`;
+}
+function feedbackBox(d) {
+  const f = d.feedback;
+  if (f.hidden) return `<div class="info">${f.answered} of ${f.asked} coworkers have answered. Their answers are shown here, combined and without names, once at least ${f.minAnswers} have answered${f.needed ? ` (${f.needed} more needed)` : ''}.</div>`;
+  return `<p class="hint">${f.answered} coworkers answered. Comments are in alphabetical order, not in the order they came in, and nobody can see who wrote which one.</p>${f.rating ? `<p><b>Average rating: ${esc(f.rating.average)} of 5</b> <span class="hint">from ${f.rating.count} ${f.rating.count === 1 ? 'rating' : 'ratings'}</span></p>` : ''}${f.questions.map((q) => `<h3>${esc(q.text)}</h3>${q.comments.map((t) => `<div class="quote">${esc(t)}</div>`).join('') || '<p class="hint">Nobody answered this one.</p>'}`).join('')}`;
+}
+async function showPerson(userId) {
+  det = await req('GET', `/${cur.cycle.id}/members/${encodeURIComponent(userId)}`); const d = det; const c = d.cycle;
+  const list = d.coworkers && d.canWrite && !d.coworkers.locked ? await getPeople() : [];
+  let html = `<h2>${esc(d.person.name)} <span class="hint">${esc(d.person.jobTitle || '')}${d.person.managerName ? ` · reports to ${esc(d.person.managerName)}` : ''}</span></h2>`;
+  if (c.selfReview) html += `<h3>Self review ${tag(SELF[d.progress.self])}</h3>${d.self ? c.selfQuestions.map((q) => `<b>${esc(q.text)}</b><div class="pre">${esc(d.self.answers[q.id] || '')}</div>`).join('') : `<p class="hint">${d.progress.self === 'draft' ? 'The person has started but not sent it yet. You see it once they send it.' : 'Nothing has been sent yet.'}</p>`}`;
+  if (c.peerFeedback) html += `<h3>Coworkers asked for feedback</h3>${coworkerBox(d, list)}<h3>What coworkers said</h3>${feedbackBox(d)}`;
+  if (c.managerReview) html += `<h3>Manager review</h3>${reviewForm(d)}`;
+  html += '<div class="row"><button type="button" class="ghost" data-hide="personCard">Close</button></div>';
+  $('personCard').innerHTML = html; $('personCard').hidden = false; $('personCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function saveReview(finish) {
+  const f = $('reviewForm'); const ratings = {}; const comments = {};
+  f.querySelectorAll('[data-area]').forEach((s) => { if (s.value) ratings[s.dataset.area] = Number(s.value); });
+  f.querySelectorAll('[data-comment]').forEach((i) => { if (i.value.trim()) comments[i.dataset.comment] = i.value; });
+  const e = f.elements;
+  const body = { ratings, comments, overall: e.overall.value || null, strengths: e.strengths.value, improvements: e.improvements.value, nextSteps: e.nextSteps.value, privateNote: e.privateNote.value, finish, baseUpdatedAt: det.review ? det.review.updatedAt : undefined };
+  await req('PUT', `/${cur.cycle.id}/members/${encodeURIComponent(det.person.userId)}/manager-review`, body);
+  const id = det.person.userId; await showCycle(cur.cycle.id, true); await showPerson(id); await load();
+  say(finish ? 'Saved and marked as finished. It is shared with the person when HR closes the round.' : 'Draft saved. Only you and HR can see it.');
+}
+
+document.addEventListener('input', (e) => { if (e.target.id === 'coFilter') { const q = e.target.value.trim().toLowerCase(); document.querySelectorAll('#coPick label').forEach((l) => { l.hidden = Boolean(q) && !l.dataset.name.includes(q); }); } });
+document.addEventListener('click', async (e) => {
+  const h = e.target.closest('[data-hide]'); if (h) { $(h.dataset.hide).hidden = true; return; }
+  try {
+    let t;
+    if ((t = e.target.closest('[data-person]'))) { await showPerson(t.dataset.person); return; }
+    if ((t = e.target.closest('[data-review]'))) { t.disabled = true; try { await saveReview(t.dataset.review === 'finish'); } finally { t.disabled = false; } return; }
+    if (e.target.closest('#coSave')) {
+      const peerIds = [...document.querySelectorAll('#coPick input:checked')].map((i) => i.value); const id = det.person.userId;
+      await req('PUT', `/${cur.cycle.id}/members/${encodeURIComponent(id)}/coworkers`, { peerIds });
+      await showCycle(cur.cycle.id, true); await showPerson(id); say(peerIds.length ? `${peerIds.length} coworkers are asked. They find the form under "My reviews".` : 'Nobody is asked now.'); return;
+    }
+    t = e.target.closest('[data-act]'); if (!t) return;
+    const c = cycles.find((x) => x.id === t.dataset.id); if (!c) return;
+    const act = t.dataset.act;
+    if (act === 'show') { await showCycle(c.id); $('cycleCard').scrollIntoView({ behavior: 'smooth' }); }
+    else if (act === 'edit') await openEditor(c);
+    else if (act === 'open') {
+      if (!window.confirm(`Open "${c.name}" for ${c.included} ${c.included === 1 ? 'person' : 'people'}? They can start right away, and the round can no longer be changed.`)) return;
+      await req('POST', `/${c.id}/open`, {}); hideCards(); await load(); await showCycle(c.id); say(`The round is open. ${c.peerFeedback ? 'Next: choose the coworkers to ask for each person (managers can do this for their own team).' : 'People find it under "My reviews".'}`);
+    } else if (act === 'close') {
+      if (!window.confirm(`Close "${c.name}"? Nobody can write or answer after this. Manager reviews that were marked as finished are shared with each person. This cannot be undone.`)) return;
+      const r = await req('POST', `/${c.id}/close`, {}); hideCards(); await load(); await showCycle(c.id);
+      say(`Closed.${c.managerReview ? ` ${r.shared} manager ${r.shared === 1 ? 'review was' : 'reviews were'} shared.${r.notShared ? ` ${r.notShared} ${r.notShared === 1 ? 'was' : 'were'} not finished and stayed private; the manager can still share a draft from Goals and reviews.` : ''}` : ''}`);
+    } else if (act === 'delete') { if (!window.confirm(`Delete the draft "${c.name}"?`)) return; await req('DELETE', `/${c.id}`); hideCards(); await load(); say('Draft deleted.'); }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { options = await req('GET', '/options'); $('note').textContent = `${options.noteHr} ${options.notePrivacy}`; await load(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

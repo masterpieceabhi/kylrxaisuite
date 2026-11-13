@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company policies | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 4px;font-size:19px}
+.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+button.item{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;font:inherit;color:var(--ink);cursor:pointer}
+.hint{color:var(--muted);font-size:15px}.text{white-space:pre-wrap;font-size:17px;line-height:1.55;margin:14px 0;overflow-wrap:anywhere}
+button.go{width:100%;padding:14px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.soft{padding:10px 14px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.tag{padding:2px 10px;border-radius:999px;font-size:14px;font-weight:700;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.wait{background:#fef3c7;color:#92400e}
+.changed{background:#eff6ff;border-radius:10px;padding:10px 12px;font-size:16px}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding:14px;text-decoration:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div id="list"></div>
+  <section class="card" id="reader" hidden></section>
+  <a class="back" href="punch.html" data-t="back"></a>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: { title: 'Company policies', back: 'Back to the clock', none: 'The company has not published any policies yet.', waiting: 'Please read and confirm', confirmed: 'Confirmed', version: 'Version {v}', published: 'published {d}', effect: 'Takes effect on {d}', changed: 'What changed: {n}', ack: 'I have read this policy', ackHint: 'This confirms you received and read the policy. If you have questions, ask your manager or HR first.', done: 'You confirmed version {v} on {d}.', thanks: 'Thank you. It is recorded that you read this policy.', all: 'Back to all policies', fail: 'Could not load. Try again.', intro: 'Tap a policy to read it.', noAck: 'You do not need to confirm this one.',
+        c: {} },
+  es: { title: 'Políticas de la empresa', back: 'Volver al reloj', none: 'La empresa todavía no ha publicado políticas.', waiting: 'Por favor lea y confirme', confirmed: 'Confirmada', version: 'Versión {v}', published: 'publicada el {d}', effect: 'Entra en vigor el {d}', changed: 'Qué cambió: {n}', ack: 'Ya leí esta política', ackHint: 'Esto confirma que usted recibió y leyó la política. Si tiene preguntas, hable primero con su supervisor o con Recursos Humanos.', done: 'Usted confirmó la versión {v} el {d}.', thanks: 'Gracias. Quedó registrado que usted leyó esta política.', all: 'Volver a todas las políticas', fail: 'No se pudo cargar. Intente de nuevo.', intro: 'Toque una política para leerla.', noAck: 'No necesita confirmar esta.',
+        c: { 'Code of conduct': 'Código de conducta', 'Attendance and time off': 'Asistencia y tiempo libre', 'Pay and timekeeping': 'Pago y registro de horas', Safety: 'Seguridad', 'Anti-harassment and equal opportunity': 'Contra el acoso e igualdad de oportunidades', 'Technology and data': 'Tecnología y datos', Benefits: 'Beneficios', Other: 'Otro' } }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k, v = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
+const cat = (c) => T[lang].c[c] || c;
+let policies = null; let open = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/policies${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`);
+  return json;
+}
+const stateTag = (p) => (p.needsAck ? `<span class="tag wait">${esc(tr('waiting'))}</span>` : p.acknowledgedAt ? `<span class="tag good">${esc(tr('confirmed'))}</span>` : '');
+function paint() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  if (!policies) return;
+  $('list').hidden = Boolean(open); $('reader').hidden = !open;
+  if (open) {
+    const p = open;
+    $('reader').innerHTML = `<button class="soft" data-all>${esc(tr('all'))}</button><h2 style="margin-top:14px">${esc(p.title)} ${stateTag(p)}</h2>
+      <p class="hint" style="margin:0">${esc(cat(p.category))} · ${esc(tr('version', { v: p.version }))}, ${esc(tr('published', { d: day(p.publishedAt) }))}${p.effectiveDate ? `<br>${esc(tr('effect', { d: day(p.effectiveDate) }))}` : ''}</p>
+      ${p.changeNote ? `<p class="changed">${esc(tr('changed', { n: p.changeNote }))}</p>` : ''}
+      <div class="text">${esc(p.body)}</div>
+      ${p.needsAck ? `<button class="go" data-ack="${esc(p.id)}">${esc(tr('ack'))}</button><p class="hint" style="margin:8px 0 0">${esc(tr('ackHint'))}</p>` : p.acknowledgedAt ? `<p class="hint" style="margin:0">${esc(tr('done', { v: p.acknowledgedVersion, d: day(p.acknowledgedAt) }))}</p>` : p.requireAck ? '' : `<p class="hint" style="margin:0">${esc(tr('noAck'))}</p>`}`;
+    return;
+  }
+  $('list').innerHTML = policies.length ? `<p class="hint" style="margin:0 0 10px">${esc(tr('intro'))}</p>${policies.map((p) => `<button class="item" data-open="${esc(p.id)}" style="margin-bottom:10px"><b>${esc(p.title)}</b> ${stateTag(p)}<br><span class="hint">${esc(cat(p.category))} · ${esc(tr('version', { v: p.version }))}${p.notYetInEffect ? ` · ${esc(tr('effect', { d: day(p.effectiveDate) }))}` : ''}</span></button>`).join('')}` : `<section class="card"><p class="hint" style="margin:0">${esc(tr('none'))}</p></section>`;
+}
+async function load() { policies = (await req('GET', '/mine')).data; paint(); }
+document.addEventListener('click', async (e) => {
+  let t;
+  try {
+    if ((t = e.target.closest('[data-l]'))) { lang = t.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }
+    else if ((t = e.target.closest('[data-open]'))) { open = (await req('GET', `/${t.dataset.open}/read`)).policy; $('msg').className = ''; paint(); window.scrollTo({ top: 0 }); }
+    else if (e.target.closest('[data-all]')) { open = null; await load(); }
+    else if ((t = e.target.closest('[data-ack]'))) {
+      t.disabled = true;
+      try { await req('POST', `/${open.id}/acknowledge`, { version: open.version }); } catch (err) { open = (await req('GET', `/${open.id}/read`)).policy; paint(); throw err; }
+      open = (await req('GET', `/${open.id}/read`)).policy; paint(); say(tr('thanks'));
+    }
+  } catch (err) { say(err.message, false); }
+});
+paint();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try { await load(); } catch (_) { say(tr('fail'), false); }
+});
+</script>
+</body>
+</html>

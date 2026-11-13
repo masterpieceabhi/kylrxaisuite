@@ -1480,7 +1480,7 @@ function renderEmployeeTableRows(employees) {
                 <i data-lucide="phone" size="12" style="vertical-align: middle; margin-right: 4px;"></i>
                 ${escapeHtml(emp.phone || '---')}
             </td>
-            <td style="color: var(--text-muted); font-size: 0.85rem;">${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '---'}</td>
+            <td style="color: var(--text-muted); font-size: 0.85rem;">${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {day:'2-digit', month:'short', year:'numeric'}) : '---'}</td>
             <td>
                 <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.75rem; color: ${statusColor};">
                     <span style="width: 8px; height: 8px; border-radius: 50%; background: ${statusColor}; display: inline-block;"></span>
@@ -1634,7 +1634,7 @@ function renderEmployeeCards(employees) {
                         </div>
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
                             <span style="color: var(--text-muted); font-size: 0.68rem; font-weight: 700; text-transform: uppercase;">Joined:</span>
-                            <span style="font-weight: 500; color: var(--text-muted);">${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '---'}</span>
+                            <span style="font-weight: 500; color: var(--text-muted);">${emp.joiningDate ? new Date(emp.joiningDate).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {day:'2-digit', month:'short', year:'numeric'}) : '---'}</span>
                         </div>
                     </div>
                 </div>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f172a">
+<title>Clock in / out</title>
+<style>
+:root{--green:#16a34a;--red:#dc2626;--amber:#d97706;--ink:#0f172a;--muted:#64748b;--bg:#f1f5f9}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;font:18px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid #e2e8f0}
+header b{font-size:20px}
+.lang{display:flex;gap:6px}.lang button{font:inherit;font-weight:700;padding:8px 14px;border-radius:999px;border:2px solid #cbd5e1;background:#fff;color:var(--ink)}
+.lang button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:22px 16px}
+#hello{font-size:24px;font-weight:700;text-align:center}
+#state{font-size:22px;text-align:center;color:var(--muted);min-height:2.6em}
+#state strong{color:var(--ink)}
+#big{width:min(74vw,320px);aspect-ratio:1;border-radius:50%;border:0;color:#fff;font:800 clamp(28px,8vw,40px)/1.1 system-ui;letter-spacing:.02em;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px;transition:transform .12s}
+#big:active{transform:scale(.96)}#big:disabled{opacity:.6}
+#big small{display:block;font-size:.42em;font-weight:600;opacity:.9;margin-top:6px}
+.in{background:var(--green)}.out{background:var(--red)}
+#breakBtn{min-width:min(74vw,320px);padding:18px 22px;border-radius:18px;border:0;font:700 22px system-ui;color:#fff;background:var(--amber);cursor:pointer;display:none}
+#breakBtn.end{background:var(--green)}
+.totals{display:flex;gap:14px;width:min(92vw,420px)}
+.totals div{flex:1;background:#fff;border-radius:16px;padding:12px 14px;text-align:center;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.totals b{display:block;font-size:26px}.totals span{color:var(--muted);font-size:14px}
+#banner{display:none;width:min(92vw,420px);background:#fef3c7;color:#92400e;border-radius:14px;padding:12px 14px;font-weight:600;text-align:center}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(30px);opacity:0;transition:.25s;padding:16px 24px;border-radius:16px;color:#fff;font-weight:700;font-size:20px;background:var(--ink);max-width:92vw;text-align:center;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}#toast.ok{background:var(--green)}#toast.bad{background:var(--red)}
+footer{padding:14px;text-align:center}footer a{color:var(--muted);font-size:15px}
+#sheet{display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);align-items:center;justify-content:center;padding:14px;z-index:20}#sheet .box{background:#fff;border-radius:18px;padding:18px;width:min(94vw,460px);max-height:92vh;overflow:auto}#sheet h2{margin:0 0 8px;font-size:22px}#sheet .step{margin:0 0 8px;color:var(--muted);font-size:15px}#sheet .notice{white-space:pre-wrap;font-size:16px;line-height:1.45;max-height:46vh;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px}#sheet video{width:100%;border-radius:12px;background:#000;transform:scaleX(-1)}#sheet .acts{display:grid;gap:10px;margin-top:14px}#sheet button{padding:16px;border:0;border-radius:14px;font:inherit;font-size:19px;font-weight:800;cursor:pointer}#sheet .yes{background:var(--green);color:#fff}#sheet .no{background:#fee2e2;color:#b91c1c}#sheet .plain{background:#e2e8f0;color:var(--ink)}#sheet button:disabled{opacity:.5}
+</style>
+</head>
+<body>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+<header><b id="title">Clock in / out</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
+<main>
+  <div id="hello"></div>
+  <div id="state"></div>
+  <button id="big" type="button" disabled></button>
+  <button id="breakBtn" type="button"></button>
+  <div id="banner"></div>
+  <a id="paper" href="us-onboarding.html" style="display:none;width:min(92vw,420px);background:#dbeafe;color:#1e3a8a;border-radius:14px;padding:14px;font-weight:700;text-align:center;text-decoration:none"></a>
+  <div class="totals"><div><b id="today">-</b><span id="lblToday"></span></div><div><b id="week">-</b><span id="lblWeek"></span></div></div>
+</main>
+<footer><a href="timesheet.html" id="sheetLink" style="display:inline-block;margin:0 14px 10px;font-weight:700;font-size:18px"></a><a href="leave.html" id="leaveLink" style="display:inline-block;margin:0 14px 10px;font-weight:700;font-size:18px"></a><br><a href="my-documents.html" id="docsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="report-injury.html" id="injuryLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="self-id.html" id="idLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><br><a href="tips.html" id="tipsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="leave-cases.html" id="casesLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-pay.html" id="payLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-profile.html" id="profileLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-schedule.html" id="schedLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-benefits.html" id="benLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-goals.html" id="goalsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-surveys.html" id="surveysLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-assets.html" id="assetsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-policies.html" id="policiesLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-privacy.html" id="privLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><br><a href="#" id="backLink"></a></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+
+const T = {
+  en: { title: 'Clock in / out', hello: 'Hello, {n}', in: 'CLOCK IN', out: 'CLOCK OUT', tap: 'Tap here', brk: 'Start break', brkEnd: 'End break',
+        offState: 'You are <strong>not clocked in</strong>', inState: 'Working since <strong>{t}</strong><br>{d}', brkState: 'On break since <strong>{t}</strong>',
+        today: 'Today', week: 'This week', done_in: 'Clocked in at {t}', done_out: 'Clocked out at {t}. Thank you!', done_bs: 'Break started', done_be: 'Back to work',
+        paper: 'Please finish your new-hire paperwork (tap here)', forgot: 'It looks like you forgot to clock out. Please tell your manager.', fail: 'Could not reach the server. Try again.', back: 'Back to my dashboard', leave: 'Time off', sheet: 'My hours', docs: 'My documents', injury: 'Report an injury', selfid: 'Optional: self-identification', tips: 'My tips', cases: 'Longer leave (medical, family, other)', pay: 'My pay stubs', profile: 'My details', sched: 'My schedule', ben: 'My benefits', priv: 'My privacy', goalsL: 'My goals', surveysL: 'Surveys', assetsL: 'My equipment', policiesL: 'Company policies',
+        already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.' },
+  es: { title: 'Entrada / salida', hello: 'Hola, {n}', in: 'ENTRAR', out: 'SALIR', tap: 'Toque aquí', brk: 'Empezar descanso', brkEnd: 'Terminar descanso',
+        offState: '<strong>No ha registrado entrada</strong>', inState: 'Trabajando desde <strong>{t}</strong><br>{d}', brkState: 'En descanso desde <strong>{t}</strong>',
+        today: 'Hoy', week: 'Esta semana', done_in: 'Entrada registrada a las {t}', done_out: 'Salida registrada a las {t}. ¡Gracias!', done_bs: 'Descanso iniciado', done_be: 'De vuelta al trabajo',
+        paper: 'Por favor termine sus papeles de nuevo empleado (toque aquí)', forgot: 'Parece que olvidó registrar su salida. Avise a su supervisor.', fail: 'No se pudo conectar. Intente de nuevo.', back: 'Volver a mi panel', leave: 'Tiempo libre', sheet: 'Mis horas', docs: 'Mis documentos', injury: 'Reportar una lesión', selfid: 'Opcional: autoidentificación', tips: 'Mis propinas', cases: 'Licencia larga (médica, familiar, otra)', pay: 'Mis recibos de pago', profile: 'Mis datos', sched: 'Mi horario', ben: 'Mis beneficios', priv: 'Mi privacidad', goalsL: 'Mis metas', surveysL: 'Encuestas', assetsL: 'Mi equipo', policiesL: 'Políticas de la empresa',
+        already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+const $ = (id) => document.getElementById(id);
+const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+let name = '', status = null, clockOffset = 0, busy = false, paperNeeded = false;
+
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit', timeZone: status && status.timeZone });
+const fmtDur = (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`; };
+
+function toast(text, kind) { const t = $('toast'); t.textContent = text; t.className = `show ${kind || ''}`; clearTimeout(toast.id); toast.id = setTimeout(() => { t.className = ''; }, 3200); }
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/time${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  return { ok: res.ok, status: res.status, json };
+}
+
+function render() {
+  document.documentElement.lang = lang;
+  $('title').textContent = tr('title'); document.title = tr('title');
+  $('leaveLink').textContent = tr('leave'); $('sheetLink').textContent = tr('sheet'); $('docsLink').textContent = tr('docs'); $('injuryLink').textContent = tr('injury'); $('idLink').textContent = tr('selfid'); $('tipsLink').textContent = tr('tips'); $('casesLink').textContent = tr('cases'); $('payLink').textContent = tr('pay'); $('profileLink').textContent = tr('profile'); $('schedLink').textContent = tr('sched'); $('benLink').textContent = tr('ben'); $('privLink').textContent = tr('priv'); $('goalsLink').textContent = tr('goalsL'); $('surveysLink').textContent = tr('surveysL'); $('assetsLink').textContent = tr('assetsL'); $('policiesLink').textContent = tr('policiesL'); $('lblToday').textContent = tr('today'); $('lblWeek').textContent = tr('week'); $('backLink').textContent = tr('back');
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('hello').textContent = name ? tr('hello', { n: name.split(' ')[0] }) : '';
+  if (!status) return;
+  const s = status.state;
+  const big = $('big');
+  big.disabled = busy;
+  big.className = s === 'out' ? 'in' : 'out';
+  big.innerHTML = `${s === 'out' ? tr('in') : tr('out')}<small>${tr('tap')}</small>`;
+  const brk = $('breakBtn');
+  brk.style.display = s === 'out' ? 'none' : 'block';
+  brk.className = s === 'break' ? 'end' : '';
+  brk.textContent = s === 'break' ? tr('brkEnd') : tr('brk');
+  tick();
+  $('today').textContent = fmtDur(status.todayMinutes); $('week').textContent = fmtDur(status.weekMinutes);
+  const banner = $('banner'); banner.style.display = status.forgottenClockOut ? 'block' : 'none'; banner.textContent = tr('forgot');
+  const paper = $('paper'); paper.textContent = tr('paper'); if (!paperNeeded) paper.style.display = 'none'; else paper.style.display = 'block';
+}
+
+function tick() {
+  if (!status) return;
+  const s = status.state;
+  if (s === 'out') { $('state').innerHTML = tr('offState'); return; }
+  const since = new Date(status.shiftStartedAt || status.lastPunchAt);
+  const mins = Math.max(0, Math.floor((Date.now() + clockOffset - since.getTime()) / 60000));
+  $('state').innerHTML = s === 'break' ? tr('brkState', { t: fmtTime(status.lastPunchAt) }) : tr('inState', { t: fmtTime(status.shiftStartedAt), d: fmtDur(mins) });
+}
+setInterval(tick, 20000);
+
+function here() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      () => resolve(null), { timeout: 4000, maximumAge: 60000 });
+  });
+}
+
+/* ---------- company clock rules (US): notices to accept, a photo, the work site area ---------- */
+const X = {
+  en: { consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed. Please take one.', outside_geofence: 'You are outside the work site area.', low_accuracy: 'Your phone location is not exact enough. Move near a window or outside and try again.', location_required: 'Turn on location for this page to clock in here.', week_locked: 'This week has been approved. Ask your manager if something needs to change.',
+        agree: 'I agree', disagree: 'I do not agree', declined: 'You did not accept the notice, so you cannot clock in this way. Talk to your manager.', noticeOf: 'Notice {a} of {b}', photoTitle: 'Take a photo', photoHint: 'Your employer asks for a photo when you clock in or out. It is used only to confirm it is you.', snap: 'Take photo and continue', skip: 'Continue without a photo', cancel: 'Cancel', noCam: 'The camera could not be opened. Allow the camera for this page, or ask your manager.', flagged: 'Clocked. Your manager will review this punch.' },
+  es: { consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto. Tome una.', outside_geofence: 'Usted está fuera del área del lugar de trabajo.', low_accuracy: 'La ubicación de su teléfono no es exacta. Acérquese a una ventana o salga e intente de nuevo.', location_required: 'Active la ubicación para esta página para registrar aquí.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor si algo debe cambiar.',
+        agree: 'Acepto', disagree: 'No acepto', declined: 'Usted no aceptó el aviso, así que no puede registrar de esta forma. Hable con su supervisor.', noticeOf: 'Aviso {a} de {b}', photoTitle: 'Tome una foto', photoHint: 'Su empleador pide una foto cuando registra entrada o salida. Se usa solo para confirmar que es usted.', snap: 'Tomar foto y continuar', skip: 'Continuar sin foto', cancel: 'Cancelar', noCam: 'No se pudo abrir la cámara. Permita la cámara para esta página o avise a su supervisor.', flagged: 'Registrado. Su supervisor revisará este registro.' }
+};
+const xt = (k, v = {}) => ((X[lang] || X.en)[k] || X.en[k] || k).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
+let isUs = false; let rules = null; let stream = null;
+const sheet = () => $('sheet'); const closeSheet = () => { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } sheet().style.display = 'none'; sheet().innerHTML = ''; };
+const escText = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function us(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/clock${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  return { ok: res.ok, json: await res.json().catch(() => ({})) };
+}
+async function loadRules() { if (!isUs) return; try { const r = await us('GET', '/my-requirements'); rules = r.ok && r.json.policy ? r.json : null; } catch (_) { rules = null; } }
+
+/** Shows each notice that still needs an answer. Resolves true when all are accepted. */
+function askNotices(list) {
+  return new Promise((resolve) => {
+    let i = 0;
+    const show = () => {
+      const n = list[i]; const title = (lang === 'es' && n.title_es) || n.title_en; const body = (lang === 'es' && n.body_es) || n.body_en;
+      sheet().innerHTML = `<div class="box"><p class="step">${escText(xt('noticeOf', { a: i + 1, b: list.length }))}</p><h2>${escText(title)}</h2><div class="notice">${escText(body)}</div><div class="acts"><button type="button" class="yes" id="nYes">${escText(xt('agree'))}</button><button type="button" class="no" id="nNo">${escText(xt('disagree'))}</button></div></div>`;
+      sheet().style.display = 'flex';
+      const answer = async (decision) => {
+        $('nYes').disabled = true; $('nNo').disabled = true;
+        const r = await us('POST', '/consents', { type: n.type, decision }).catch(() => ({ ok: false }));
+        if (!r.ok) { closeSheet(); toast(tr('fail'), 'bad'); return resolve(false); }
+        if (decision === 'declined') { closeSheet(); toast(xt('declined'), 'bad'); return resolve(false); }
+        i += 1; if (i < list.length) show(); else { closeSheet(); resolve(true); }
+      };
+      $('nYes').onclick = () => answer('accepted'); $('nNo').onclick = () => answer('declined');
+    };
+    show();
+  });
+}
+/** Opens the front camera. Resolves a JPEG data URL, '' to go on without a photo, or null to cancel. */
+function takePhoto(required) {
+  return new Promise((resolve) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(xt('photoTitle'))}</h2><p class="step">${escText(xt('photoHint'))}</p><video id="cam" autoplay playsinline muted></video><div class="acts"><button type="button" class="yes" id="pSnap" disabled>${escText(xt('snap'))}</button>${required ? '' : `<button type="button" class="plain" id="pSkip">${escText(xt('skip'))}</button>`}<button type="button" class="plain" id="pCancel">${escText(xt('cancel'))}</button></div></div>`;
+    sheet().style.display = 'flex';
+    const done = (v) => { closeSheet(); resolve(v); };
+    $('pCancel').onclick = () => done(null); if (!required) $('pSkip').onclick = () => done('');
+    const fail = () => { if (required) { closeSheet(); toast(xt('noCam'), 'bad'); resolve(null); } else done(''); };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fail();
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }).then((s) => {
+      stream = s; const v = $('cam'); if (!v) { s.getTracks().forEach((t) => t.stop()); return; }
+      v.srcObject = s; v.onloadedmetadata = () => { $('pSnap').disabled = false; };
+      $('pSnap').onclick = () => {
+        const w = Math.min(480, v.videoWidth || 480); const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
+        const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(v, 0, 0, w, h);
+        let q = 0.7; let url = c.toDataURL('image/jpeg', q);
+        while (url.length > 380000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); } // the server takes up to 300 KB
+        done(url);
+      };
+    }).catch(fail);
+  });
+}
+
+async function punch(action, retried) {
+  if (busy) return; busy = true; render();
+  try {
+    let photo;
+    if (isUs && !rules) await loadRules();
+    if (rules) {
+      if (rules.pending && rules.pending.length) { const ok = await askNotices(rules.pending); await loadRules(); if (!ok) { busy = false; render(); return; } }
+      const wantsPhoto = rules && rules.selfie !== 'off' && ['in', 'out'].includes(action);
+      if (wantsPhoto) { const p = await takePhoto(rules.selfie === 'required'); if (p === null) { busy = false; render(); return; } photo = p || undefined; }
+    }
+    const location = await here();
+    const r = await api('POST', '/punch', { action, location, photo });
+    if (r.ok) {
+      status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now();
+      const flagged = r.json.compliance && r.json.compliance.decision === 'flag';
+      toast(flagged ? xt('flagged') : tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[action], { t: fmtTime(status.lastPunchAt) }), 'ok');
+      if (navigator.vibrate) navigator.vibrate(60);
+    } else {
+      if (r.json.status) status = r.json.status;
+      const code = r.json.code;
+      // the rules changed since this page loaded: fetch them again and go through the steps once more
+      if (isUs && !retried && (code === 'consent_required' || code === 'selfie_required')) { await loadRules(); busy = false; return punch(action, true); }
+      toast(T[lang][code] || (X[lang] || X.en)[code] || r.json.error || tr('fail'), 'bad');
+    }
+  } catch (_) { toast(tr('fail'), 'bad'); }
+  busy = false; render();
+}
+
+$('big').onclick = () => punch(status.state === 'out' ? 'in' : 'out');
+$('breakBtn').onclick = () => punch(status.state === 'break' ? 'break_end' : 'break_start');
+$('backLink').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'login.html'; };
+document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} render(); }; });
+render();
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    const r = await api('GET', '/status');
+    if (!r.ok) throw new Error(r.json.error);
+    name = r.json.name || user.displayName || ''; status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now();
+    render();
+    if (r.json.country === 'US') {
+      isUs = true; loadRules();
+      try {
+        const token = await user.getIdToken();
+        const f = await fetch(`/api/us/employees/${encodeURIComponent(user.uid)}/forms`, { headers: { Authorization: `Bearer ${token}` } });
+        if (f.ok) { const j = await f.json(); paperNeeded = !j.forms.w4 || !j.forms.i9.section1; render(); }
+      } catch (_) {}
+    }
+  } catch (_) { toast(tr('fail'), 'bad'); }
+});
+</script>
+</body>
+</html>

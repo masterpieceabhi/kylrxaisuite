@@ -37,10 +37,13 @@ let db;
 let messaging;
 let rawCollection = null;
 
-if (serviceAccount) {
+// Local emulator mode (npm run emulators): the Admin SDK talks to the emulators, no key needed
+const useEmulator = !serviceAccount && !!process.env.FIRESTORE_EMULATOR_HOST;
+
+if (serviceAccount || useEmulator) {
   if (!admin.apps.length) {
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+      ...(serviceAccount ? { credential: admin.credential.cert(serviceAccount) } : { projectId: 'kylrxai' }),
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "kylrxai.firebasestorage.app"
     });
     console.log("Firebase Admin SDK initialized successfully!");

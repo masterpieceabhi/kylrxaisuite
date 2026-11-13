@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Careers</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:17px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fff;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap}
+h1{margin:0;font-size:24px}h2{margin:0 0 6px;font-size:20px}h3{margin:18px 0 8px;font-size:17px}
+.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}
+.meta{color:var(--muted);font-size:15px}.pay{font-weight:700;margin-top:4px}
+.desc{white-space:pre-wrap;margin:10px 0 0}
+label{display:grid;gap:4px;font-size:15px;color:var(--muted);font-weight:600;margin-bottom:12px}
+input,select{padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:16px;width:100%;color:var(--ink);background:#fff}
+button.go{padding:13px 18px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.soft{padding:11px 16px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-weight:700;cursor:pointer}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--ink);font-weight:500}.chk input{width:22px;height:22px;flex:none;margin-top:2px}
+.notice{background:#f1f5f9;border-radius:10px;padding:12px;font-size:14px;color:#334155}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.hint{color:var(--muted);font-size:14px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+details{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}summary{font-weight:700;cursor:pointer}
+fieldset{border:0;padding:0;margin:0 0 12px}legend{font-size:15px;color:var(--muted);font-weight:600;padding:0;margin-bottom:4px}
+</style>
+</head>
+<body>
+<header><h1 id="company"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div id="list"></div>
+
+  <section class="card" id="applyCard" hidden>
+    <h2 id="applyTitle"></h2>
+    <p class="meta" id="applyMeta"></p>
+    <form id="applyForm" novalidate>
+      <label><span data-t="name"></span><input name="name" required autocomplete="name" maxlength="100"></label>
+      <label><span data-t="email"></span><input name="email" type="email" required autocomplete="email" maxlength="160"></label>
+      <label><span data-t="phone"></span><input name="phone" type="tel" inputmode="tel" required autocomplete="tel" maxlength="30"></label>
+      <label><span data-t="resume"></span><input name="resume" type="file" required accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span class="hint" data-t="resumeHint"></span></label>
+      <label><span data-t="source"></span><select name="source" id="source"></select></label>
+      <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+
+      <details id="eeo">
+        <summary data-t="eeoTitle"></summary>
+        <p class="hint" data-t="eeoHint"></p>
+        <label><span data-t="sex"></span><select name="sex" data-eeo="sex"></select></label>
+        <label><span data-t="hispanic"></span><select name="hispanic" data-eeo="hispanic"></select></label>
+        <fieldset><legend data-t="race"></legend><div id="races"></div></fieldset>
+        <label><span data-t="veteran"></span><select name="veteran" data-eeo="veteran"></select></label>
+        <label><span data-t="disability"></span><select name="disability" data-eeo="disability"></select></label>
+      </details>
+
+      <div class="notice" id="privacy"></div>
+      <label class="chk" style="margin-top:12px"><input type="checkbox" name="privacyAccepted"> <span data-t="agree"></span></label>
+      <div class="row"><button class="go" type="submit" id="send" data-t="send"></button><button class="soft" type="button" id="back" data-t="back"></button></div>
+    </form>
+  </section>
+
+  <section class="card" id="doneCard" hidden>
+    <h2 data-t="doneTitle"></h2>
+    <p id="doneText"></p>
+    <div class="row"><button class="soft" type="button" id="again" data-t="seeJobs"></button></div>
+  </section>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var T = {
+    en: {
+      careers: 'Careers', open: 'Open jobs', none: 'There are no open jobs right now. Please check again soon.', gone: 'This careers page is not available.', apply: 'Apply', posted: 'Posted {d}', per_hour: 'per hour', per_year: 'per year',
+      name: 'Full name', email: 'Email', phone: 'Phone', resume: 'Resume', resumeHint: 'PDF or Word (.docx), up to 5 MB.', source: 'How did you hear about this job?', send: 'Send application', sending: 'Sending...', back: 'Back to jobs', seeJobs: 'See all jobs',
+      agree: 'I have read the applicant privacy notice above.', applyFor: 'Apply for {t}', doneTitle: 'Application received', done: 'Thank you. We have your application for {t}.', ref: 'Your reference: {r}',
+      eeoTitle: 'Optional: equal opportunity questions', eeoHint: 'Answering is voluntary. Your answers are not shown to the hiring team, never affect your application, and are stored apart from it and reported only as totals.',
+      sex: 'Sex', hispanic: 'Are you Hispanic or Latino?', race: 'Race (choose any that apply)', veteran: 'Veteran status', disability: 'Do you have a disability?', skip: 'Skip this question',
+      e_name: 'Enter your first and last name.', e_email: 'Enter a valid email address.', e_phone: 'Enter a phone number with at least 10 digits.', e_resume: 'Attach your resume (PDF or Word .docx).', e_big: 'The resume is larger than 5 MB.', e_agree: 'Please tick the box to confirm you read the privacy notice.', e_fail: 'Could not send your application. Please try again.', e_busy: 'Too many tries. Please wait a few minutes and try again.',
+      t_full_time: 'Full time', t_part_time: 'Part time', t_temporary: 'Temporary', t_contract: 'Contract', t_seasonal: 'Seasonal', t_intern: 'Internship',
+      s_careers_page: 'This careers page', s_referral: 'A friend or employee', s_job_board: 'A job website', s_agency: 'A staffing agency', s_social: 'Social media', s_walk_in: 'I walked in', s_other: 'Other',
+      o_male: 'Male', o_female: 'Female', o_non_binary: 'Non-binary', o_declined: 'I do not wish to answer', o_yes: 'Yes', o_no: 'No', o_protected_veteran: 'I am a protected veteran', o_not_protected_veteran: 'I am not a protected veteran',
+      o_white: 'White', o_black: 'Black or African American', o_asian: 'Asian', o_nhopi: 'Native Hawaiian or Other Pacific Islander', o_aian: 'American Indian or Alaska Native'
+    },
+    es: {
+      careers: 'Empleos', open: 'Empleos disponibles', none: 'No hay empleos disponibles en este momento. Vuelva a revisar pronto.', gone: 'Esta página de empleos no está disponible.', apply: 'Solicitar', posted: 'Publicado el {d}', per_hour: 'por hora', per_year: 'por año',
+      name: 'Nombre completo', email: 'Correo electrónico', phone: 'Teléfono', resume: 'Currículum', resumeHint: 'PDF o Word (.docx), hasta 5 MB.', source: '¿Cómo se enteró de este empleo?', send: 'Enviar solicitud', sending: 'Enviando...', back: 'Volver a los empleos', seeJobs: 'Ver todos los empleos',
+      agree: 'He leído el aviso de privacidad para solicitantes que aparece arriba.', applyFor: 'Solicitar: {t}', doneTitle: 'Solicitud recibida', done: 'Gracias. Recibimos su solicitud para {t}.', ref: 'Su referencia: {r}',
+      eeoTitle: 'Opcional: preguntas de igualdad de oportunidades', eeoHint: 'Responder es voluntario. El equipo de contratación no ve sus respuestas, nunca afectan su solicitud, se guardan por separado y solo se informan como totales.',
+      sex: 'Sexo', hispanic: '¿Es usted hispano o latino?', race: 'Raza (elija todas las que apliquen)', veteran: 'Condición de veterano', disability: '¿Tiene una discapacidad?', skip: 'Omitir esta pregunta',
+      e_name: 'Escriba su nombre y apellido.', e_email: 'Escriba un correo electrónico válido.', e_phone: 'Escriba un teléfono con al menos 10 dígitos.', e_resume: 'Adjunte su currículum (PDF o Word .docx).', e_big: 'El currículum pesa más de 5 MB.', e_agree: 'Marque la casilla para confirmar que leyó el aviso de privacidad.', e_fail: 'No se pudo enviar su solicitud. Intente de nuevo.', e_busy: 'Demasiados intentos. Espere unos minutos e intente de nuevo.',
+      t_full_time: 'Tiempo completo', t_part_time: 'Medio tiempo', t_temporary: 'Temporal', t_contract: 'Por contrato', t_seasonal: 'De temporada', t_intern: 'Pasantía',
+      s_careers_page: 'Esta página de empleos', s_referral: 'Un amigo o empleado', s_job_board: 'Un sitio de empleos', s_agency: 'Una agencia de personal', s_social: 'Redes sociales', s_walk_in: 'Llegué en persona', s_other: 'Otro',
+      o_male: 'Masculino', o_female: 'Femenino', o_non_binary: 'No binario', o_declined: 'Prefiero no responder', o_yes: 'Sí', o_no: 'No', o_protected_veteran: 'Soy veterano protegido', o_not_protected_veteran: 'No soy veterano protegido',
+      o_white: 'Blanco', o_black: 'Negro o afroamericano', o_asian: 'Asiático', o_nhopi: 'Nativo de Hawái u otra isla del Pacífico', o_aian: 'Indígena americano o nativo de Alaska'
+    }
+  };
+  var lang = (navigator.language || 'en').toLowerCase().indexOf('es') === 0 ? 'es' : 'en';
+  try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (e) {}
+  if (!T[lang]) lang = 'en';
+  var tr = function (k, v) { var s = T[lang][k] || T.en[k] || k; return s.replace(/\{(\w+)\}/g, function (m, x) { return v && v[x] !== undefined ? v[x] : ''; }); };
+  var esc = function (s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var say = function (t, ok) { var m = $('msg'); m.textContent = t; m.className = t ? (ok ? 'ok' : 'err') : ''; if (t) window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  var money = function (n) { return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 }); };
+  var orgId = new URLSearchParams(window.location.search).get('org') || '';
+  var data = null; var job = null; var state = 'loading'; var doneRef = '';
+
+  function payText(j) {
+    var parts = [j.payMin, j.payMax].filter(function (x) { return x !== null; }).map(money);
+    return parts.length ? parts.join(' - ') + ' ' + tr('per_' + j.payUnit) : '';
+  }
+  function fillSelect(sel, values, prefix, keep) {
+    var cur = keep ? sel.value : '';
+    sel.innerHTML = (prefix === 'o_' ? '<option value="">' + esc(tr('skip')) + '</option>' : '') + values.map(function (v) { return '<option value="' + esc(v) + '">' + esc(tr(prefix + v)) + '</option>'; }).join('');
+    if (cur) sel.value = cur;
+  }
+  function paint() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = tr(el.dataset.t); });
+    document.querySelectorAll('.lang button').forEach(function (b) { b.classList.toggle('on', b.dataset.l === lang); });
+    $('company').textContent = data ? data.company + ' · ' + tr('careers') : tr('careers');
+    document.title = (data ? data.company + ' - ' : '') + tr('careers');
+    $('list').hidden = state !== 'list'; $('applyCard').hidden = state !== 'apply'; $('doneCard').hidden = state !== 'done';
+    if (state === 'gone') { $('list').hidden = false; $('list').innerHTML = '<div class="card">' + esc(tr('gone')) + '</div>'; return; }
+    if (!data) return;
+    $('list').innerHTML = data.jobs.length ? data.jobs.map(function (j) {
+      var pay = payText(j);
+      return '<section class="card" style="margin-bottom:14px"><h2>' + esc(j.title) + '</h2><div class="meta">' + esc(j.department) + ' · ' + esc(j.location) + ' · ' + esc(tr('t_' + j.employmentType)) + '</div>' + (pay ? '<div class="pay">' + esc(pay) + '</div>' : '') + (j.description ? '<p class="desc">' + esc(j.description) + '</p>' : '') + '<div class="row"><button class="go" data-apply="' + esc(j.id) + '">' + esc(tr('apply')) + '</button></div></section>';
+    }).join('') : '<div class="card">' + esc(tr('none')) + '</div>';
+    fillSelect($('source'), data.sources, 's_', true);
+    ['sex', 'hispanic', 'veteran', 'disability'].forEach(function (k) { fillSelect(document.querySelector('[data-eeo="' + k + '"]'), data.eeoOptions[k], 'o_', true); });
+    var ticked = {}; document.querySelectorAll('[data-race]:checked').forEach(function (c) { ticked[c.dataset.race] = true; });
+    $('races').innerHTML = data.eeoOptions.races.map(function (r) { return '<label class="chk" style="margin-bottom:6px"><input type="checkbox" data-race="' + esc(r) + '"' + (ticked[r] ? ' checked' : '') + '> <span>' + esc(tr('o_' + r)) + '</span></label>'; }).join('');
+    $('privacy').textContent = data.privacyNotice[lang] || data.privacyNotice.en;
+    if (job) { $('applyTitle').textContent = tr('applyFor', { t: job.title }); $('applyMeta').textContent = [job.department, job.location, payText(job)].filter(Boolean).join(' · '); $('doneText').textContent = tr('done', { t: job.title }) + (doneRef ? ' ' + tr('ref', { r: doneRef }) : ''); }
+  }
+  function eeoAnswers() {
+    var pick = function (k) { return document.querySelector('[data-eeo="' + k + '"]').value; };
+    var races = []; document.querySelectorAll('[data-race]:checked').forEach(function (c) { races.push(c.dataset.race); });
+    var a = { sex: pick('sex'), hispanic: pick('hispanic'), veteran: pick('veteran'), disability: pick('disability') };
+    if (!a.sex && !a.hispanic && !a.veteran && !a.disability && !races.length) return null; // nothing answered: send nothing
+    return { voluntaryNoticeAccepted: true, sex: a.sex || 'declined', hispanic: a.hispanic || 'declined', veteran: a.veteran || 'declined', disability: a.disability || 'declined', races: races };
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-l]');
+    if (b) { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (x) {} paint(); return; }
+    b = e.target.closest('[data-apply]');
+    if (b) { job = data.jobs.filter(function (j) { return j.id === b.dataset.apply; })[0]; state = 'apply'; say('', true); paint(); window.scrollTo({ top: 0 }); $('applyForm').elements.name.focus(); }
+  });
+  $('back').addEventListener('click', function () { state = 'list'; say('', true); paint(); });
+  $('again').addEventListener('click', function () { state = 'list'; $('applyForm').reset(); paint(); });
+  $('applyForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target.elements; var file = f.resume.files[0];
+    var name = f.name.value.trim();
+    if (name.split(/\s+/).length < 2) return say(tr('e_name'), false);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.value.trim())) return say(tr('e_email'), false);
+    if (f.phone.value.replace(/\D/g, '').length < 10) return say(tr('e_phone'), false);
+    if (!file || !/\.(pdf|docx)$/i.test(file.name)) return say(tr('e_resume'), false);
+    if (file.size > 5 * 1024 * 1024) return say(tr('e_big'), false);
+    if (!f.privacyAccepted.checked) return say(tr('e_agree'), false);
+    var body = new FormData();
+    body.append('requisitionId', job.id); body.append('name', name); body.append('email', f.email.value.trim()); body.append('phone', f.phone.value.trim()); body.append('source', f.source.value); body.append('privacyAccepted', 'true'); body.append('website', f.website.value);
+    var eeo = eeoAnswers(); if (eeo) body.append('eeo', JSON.stringify(eeo));
+    body.append('resume', file);
+    $('send').disabled = true; $('send').textContent = tr('sending');
+    fetch('/api/public/careers/' + encodeURIComponent(orgId) + '/apply', { method: 'POST', body: body }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) {
+        if (res.status === 429) throw new Error(tr('e_busy'));
+        if (!res.ok) throw new Error((json.errors && json.errors.join(' ')) || json.error || tr('e_fail'));
+        doneRef = json.reference || ''; state = 'done'; say('', true); e.target.reset(); paint(); window.scrollTo({ top: 0 });
+      });
+    }).catch(function (err) { say(err.message || tr('e_fail'), false); }).then(function () { $('send').disabled = false; $('send').textContent = tr('send'); });
+  });
+
+  paint();
+  fetch('/api/public/careers/' + encodeURIComponent(orgId) + '/jobs').then(function (res) { if (!res.ok) throw new Error('gone'); return res.json(); })
+    .then(function (json) { data = json; state = 'list'; paint(); })
+    .catch(function () { state = 'gone'; paint(); });
+})();
+</script>
+</body>
+</html>

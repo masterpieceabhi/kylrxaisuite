@@ -586,12 +586,12 @@
                 <label for="country">8. Country *</label>
                 <div class="input-wrapper">
                   <i data-lucide="flag" class="icon-left"></i>
-                  <input type="text" id="country" name="Country" value="India" required>
+                  <select id="country" name="Country" required style="width:100%;padding-left:2.75rem;height:100%;min-height:2.9rem;border:1.5px solid #e2e8f0;border-radius:12px;font:inherit;background:#fff"><option value="India" selected>India</option><option value="United States">United States</option></select>
                 </div>
               </div>
 
               <div class="form-group">
-                <label for="state">9. State *</label>
+                <label for="state" id="stateLabel">9. State *</label>
                 <div class="input-wrapper">
                   <i data-lucide="map" class="icon-left"></i>
                   <input type="text" id="state" name="State" placeholder="e.g. Karnataka" required>
@@ -609,7 +609,7 @@
               </div>
 
               <div class="form-group">
-                <label for="pinCode">11. PIN Code *</label>
+                <label for="pinCode" id="pinLabel">11. PIN Code *</label>
                 <div class="input-wrapper">
                   <i data-lucide="navigation" class="icon-left"></i>
                   <input type="text" id="pinCode" name="PIN_Code" placeholder="e.g. 560103" required>
@@ -642,7 +642,13 @@
                   <select id="timeZone" name="Time_Zone" required>
                     <option value="Asia/Kolkata" selected>Asia/Kolkata (IST)</option>
                     <option value="UTC">UTC</option>
-                    <option value="America/New_York">America/New_York (EST)</option>
+                    <option value="America/New_York">America/New_York (Eastern)</option>
+                    <option value="America/Chicago">America/Chicago (Central)</option>
+                    <option value="America/Denver">America/Denver (Mountain)</option>
+                    <option value="America/Phoenix">America/Phoenix (Arizona)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+                    <option value="America/Anchorage">America/Anchorage (Alaska)</option>
+                    <option value="Pacific/Honolulu">Pacific/Honolulu (Hawaii)</option>
                     <option value="Europe/London">Europe/London (GMT)</option>
                     <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
                     <option value="Asia/Dubai">Asia/Dubai (GST)</option>
@@ -698,7 +704,8 @@
               <i data-lucide="shield-alert" style="color: var(--primary); width: 20px; height: 20px;"></i>
               <h3>D. Statutory & Legal Compliance Identifiers</h3>
             </div>
-            <p class="section-desc">Federal tax registrations for automated payroll TDS, corporate filings, and compliance.</p>
+            <p class="section-desc" id="statDescIn">Federal tax registrations for automated payroll TDS, corporate filings, and compliance.</p>
+            <div id="usStatNote" style="display:none;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin:0 0 1rem;color:#1e3a8a;font-size:0.9rem;line-height:1.5">United States companies do not need the India tax numbers. After you sign in, add your Employer Identification Number (EIN), business type and work states under company settings. You can go to the next step now.</div>
 
             <div class="form-grid-2">
               <div class="form-group">

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bring in past payroll | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 6px;font-size:14px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:150px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.num,th.num{text-align:right;white-space:nowrap}tr.bad td{background:#fef2f2}tr.warnRow td{background:#fffbeb}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.totals div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.totals b{display:block;font-size:16px}
+.problem{color:var(--bad)}.caution{color:#92400e}ul.plain{margin:6px 0 0;padding-left:18px}
+.scroll{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Bring in past payroll</h1><div><a href="admin-us-payroll.html">Payroll</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+
+  <section class="card">
+    <h2>1. The file</h2>
+    <p class="hint" style="margin-top:0">One line for each person for each pay date. The first line is the headings: <span id="cols"></span>. Dates as 2025-01-17 or 1/17/2025. Check number can be left empty.</p>
+    <div class="row" style="margin-top:0"><button type="button" class="ghost" id="tplBtn">Download an empty example file</button><label style="display:inline-grid">Choose a CSV file<input type="file" id="file" accept=".csv,text/csv,text/plain"></label></div>
+    <label style="margin-top:12px">Or paste the lines here<textarea id="csv" spellcheck="false" placeholder="Employee number,Pay date,Period start,..."></textarea></label>
+    <div class="row"><button type="button" id="previewBtn">Check the file</button><span class="hint">Checking saves nothing.</span></div>
+  </section>
+
+  <section class="card" id="previewCard" hidden>
+    <h2>2. Check before saving</h2>
+    <div id="verdict"></div>
+    <div class="totals" id="totals"></div>
+    <div class="scroll"><table><thead><tr><th>Row</th><th>Person</th><th>Pay date</th><th>Pay period</th><th class="num">Gross</th><th class="num">Employee taxes</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Employer taxes</th><th class="num">Hours</th><th>Check</th><th>Problems</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="row">
+      <label id="noteLabel">A note for this import (optional)<input id="batchNote" maxlength="300" size="40" placeholder="2025 pay from our old payroll company"></label>
+      <button type="button" id="commitBtn">Save this import</button><button type="button" class="ghost" id="errCsvBtn" hidden>Download the problems as CSV</button><button type="button" class="ghost" id="onlyBad" hidden>Show only rows with problems</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Imports so far</h2>
+    <p class="hint" style="margin-top:0">Undo takes out only the rows that import put in. The record of the import stays here.</p>
+    <table><thead><tr><th>When</th><th>By</th><th>File</th><th>Pay dates</th><th class="num">Rows</th><th class="num">People</th><th class="num">Gross</th><th class="num">Net</th><th>Status</th><th></th></tr></thead><tbody id="batches"></tbody></table>
+  </section>
+
+  <section class="card" id="batchCard" hidden>
+    <h2 id="bTitle">Rows of this import</h2>
+    <div class="scroll"><table><thead><tr><th>Person</th><th>Pay date</th><th>Pay period</th><th class="num">Gross</th><th class="num">Employee taxes</th><th class="num">Deductions</th><th class="num">Net</th><th class="num">Employer taxes</th><th class="num">Hours</th><th>Check</th></tr></thead><tbody id="bRows"></tbody></table></div>
+    <div class="row"><button type="button" class="ghost" id="bClose">Close</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const when = (d) => (d ? new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const usd = (n) => (typeof n === 'number' ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : esc(n ?? ''));
+const ST = { saved: ['saved', 'good'], undone: ['undone', 'grey'], saving: ['did not finish', 'warnTag'], failed: ['did not finish', 'warnTag'] };
+let options = null; let preview = null; let previewedCsv = ''; let fileName = ''; let onlyBad = false; let batches = [];
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/payroll-import${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((typeof json.error === 'string' ? json.error : '') || (json.errors && json.errors.join('; ')) || json.message || `Request failed (${res.status})`); e.body = json; throw e; }
+  return json;
+}
+function download(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);
+}
+function paintPreview() {
+  const p = preview; $('previewCard').hidden = !p; if (!p) return;
+  const t = p.totals;
+  $('verdict').innerHTML = p.fileErrors.length ? `<p class="problem"><b>This file cannot be read.</b></p><ul class="plain problem">${p.fileErrors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul>`
+    : p.ok ? `<p><span class="tag good">No problems found</span> ${p.warningCount ? `<span class="tag warnTag">${p.warningCount} to double-check</span>` : ''} Compare the totals with your old payroll reports, then save.</p>`
+      : `<p class="problem"><b>${p.errorRows} of ${p.rows.length} rows have a problem. Nothing can be saved until every row is right.</b> Fix the file and check it again.</p>`;
+  $('totals').hidden = Boolean(p.fileErrors.length);
+  $('totals').innerHTML = [['Rows that can be saved', t.rows], ['People', t.people], ['Pay dates', t.firstPayDate ? `${day(t.firstPayDate)} to ${day(t.lastPayDate)}` : ''], ['Gross', usd(t.gross)], ['Employee taxes', usd(t.employeeTaxes)], ['Deductions', usd(t.deductions)], ['Net', usd(t.net)], ['Employer taxes', usd(t.employerTaxes)], ['Hours', t.hours]]
+    .map(([k, v]) => `<div><span class="hint">${esc(k)}</span><b>${typeof v === 'string' ? v : esc(v)}</b></div>`).join('');
+  const list = onlyBad ? p.rows.filter((r) => r.errors.length) : p.rows;
+  $('rows').innerHTML = list.map((r) => `<tr class="${r.errors.length ? 'bad' : r.warnings.length ? 'warnRow' : ''}"><td>${esc(r.row)}</td><td>${esc(r.name || '')} <span class="hint">${esc(r.employeeNumber)}</span></td><td>${esc(r.payDate)}</td><td>${esc(r.periodStart)} to ${esc(r.periodEnd)}</td>
+    <td class="num">${usd(r.gross)}</td><td class="num">${usd(r.employeeTaxes)}</td><td class="num">${usd(r.deductions)}</td><td class="num">${usd(r.net)}</td><td class="num">${usd(r.employerTaxes)}</td><td class="num">${esc(r.hours)}</td><td>${esc(r.checkNumber || '')}</td>
+    <td>${r.errors.map((e) => `<div class="problem">${esc(e)}</div>`).join('')}${r.warnings.map((e) => `<div class="caution">Check: ${esc(e)}</div>`).join('')}</td></tr>`).join('');
+  $('commitBtn').hidden = !p.ok; $('noteLabel').hidden = !p.ok; $('errCsvBtn').hidden = !p.errorsCsv; $('onlyBad').hidden = !p.errorRows || p.errorRows === p.rows.length;
+  $('onlyBad').textContent = onlyBad ? 'Show every row' : 'Show only rows with problems';
+}
+async function loadBatches() {
+  batches = (await req('GET', '/batches')).data;
+  $('batches').innerHTML = batches.map((b) => { const st = ST[b.status] || [b.status, 'grey']; return `<tr><td>${esc(when(b.createdAt))}</td><td>${esc(b.createdByName || '')}</td><td>${esc(b.fileName || 'pasted')}${b.note ? `<br><span class="hint">${esc(b.note)}</span>` : ''}</td><td>${esc(day(b.firstPayDate))} to ${esc(day(b.lastPayDate))}</td>
+    <td class="num">${esc(b.rows)}</td><td class="num">${esc(b.people)}</td><td class="num">${usd(b.totals && b.totals.gross)}</td><td class="num">${usd(b.totals && b.totals.net)}</td>
+    <td><span class="tag ${st[1]}">${esc(st[0])}</span>${b.undoneAt ? `<br><span class="hint">${esc(when(b.undoneAt))}${b.undoneByName ? `, ${esc(b.undoneByName)}` : ''}</span>` : ''}</td>
+    <td>${b.status === 'undone' ? '' : `<button class="ghost" data-view="${esc(b.id)}">See the rows</button> <button class="no" data-undo="${esc(b.id)}">Undo</button>`}</td></tr>`; }).join('') || '<tr><td colspan="10" class="hint">Nothing has been imported yet.</td></tr>';
+}
+$('tplBtn').addEventListener('click', () => download(options.template, 'past-payroll-example.csv'));
+$('file').addEventListener('change', async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  if (f.size > options.maxChars * 2) { say('That file is too big. Split it into smaller files.', false); e.target.value = ''; return; }
+  $('csv').value = await f.text(); fileName = f.name; preview = null; paintPreview();
+});
+$('csv').addEventListener('input', () => { fileName = ''; });
+$('previewBtn').addEventListener('click', async () => {
+  $('previewBtn').disabled = true;
+  try { previewedCsv = $('csv').value; preview = await req('POST', '/preview', { csv: previewedCsv }); onlyBad = false; paintPreview(); $('msg').className = ''; $('previewCard').scrollIntoView({ behavior: 'smooth' }); } catch (err) { say(err.message, false); }
+  $('previewBtn').disabled = false;
+});
+$('onlyBad').addEventListener('click', () => { onlyBad = !onlyBad; paintPreview(); });
+$('errCsvBtn').addEventListener('click', () => { if (preview && preview.errorsCsv) download(preview.errorsCsv, 'past-payroll-problems.csv'); });
+$('commitBtn').addEventListener('click', async () => {
+  if (!preview || !preview.ok) return;
+  if ($('csv').value !== previewedCsv) { say('The text changed after it was checked. Check the file again first.', false); return; }
+  const t = preview.totals;
+  if (!window.confirm(`Save ${t.rows} rows of past pay for ${t.people} people, gross ${usd(t.gross)}? Nobody is paid and nothing is filed. You can undo this import later.`)) return;
+  $('commitBtn').disabled = true;
+  try {
+    const r = await req('POST', '/commit', { csv: previewedCsv, fileName, note: $('batchNote').value, expectRows: t.rows, expectGross: t.gross });
+    preview = null; previewedCsv = ''; $('csv').value = ''; $('file').value = ''; $('batchNote').value = ''; fileName = ''; paintPreview(); await loadBatches(); say(`Saved ${r.batch.rows} rows. They now count in the payroll cost report.`);
+  } catch (err) { if (err.body && err.body.rows) { preview = { ...err.body, errorsCsv: null }; paintPreview(); } say(err.message, false); }
+  $('commitBtn').disabled = false;
+});
+$('bClose').addEventListener('click', () => { $('batchCard').hidden = true; });
+document.addEventListener('click', async (e) => {
+  try {
+    const v = e.target.closest('[data-view]');
+    if (v) {
+      const r = await req('GET', `/batches/${encodeURIComponent(v.dataset.view)}`); $('batchCard').hidden = false; $('bTitle').textContent = `Rows of the import from ${when(r.batch.createdAt)} (${r.rows.length})`;
+      $('bRows').innerHTML = r.rows.map((x) => `<tr><td>${esc(x.name || '')} <span class="hint">${esc(x.employeeId || '')}</span></td><td>${esc(x.payDate)}</td><td>${esc(x.periodStart)} to ${esc(x.periodEnd)}</td><td class="num">${usd(x.gross)}</td><td class="num">${usd(x.employeeTaxes)}</td><td class="num">${usd(x.deductions)}</td><td class="num">${usd(x.net)}</td><td class="num">${usd(x.employerTaxes)}</td><td class="num">${esc(x.hours)}</td><td>${esc(x.checkNumber || '')}</td></tr>`).join('') || '<tr><td colspan="10" class="hint">No rows.</td></tr>';
+      $('batchCard').scrollIntoView({ behavior: 'smooth' }); return;
+    }
+    const u = e.target.closest('[data-undo]');
+    if (u) {
+      const b = batches.find((x) => x.id === u.dataset.undo); if (!b) return;
+      if (!window.confirm(`Undo the import from ${when(b.createdAt)}? Its ${b.rows} rows of past pay will be taken out. Other imports and payroll run in this system are not touched.`)) return;
+      const r = await req('DELETE', `/batches/${encodeURIComponent(b.id)}`); $('batchCard').hidden = true; await loadBatches(); say(`Undone. ${r.removedRows} rows were taken out.`);
+    }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { options = await req('GET', '/options'); $('note').textContent = options.note; $('cols').textContent = options.columns.map((c) => c.label).join(', '); await loadBatches(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

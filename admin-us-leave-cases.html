@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leave cases | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e}.good{background:#dcfce7;color:var(--ok)}.badTag{background:#fee2e2;color:var(--bad)}
+#msg{padding:10px 14px;border-radius:8px;display:none;white-space:pre-line}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+.over{color:var(--bad);font-weight:700}.chk{display:flex;gap:6px;align-items:center;color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<header><h1>Leave cases (FMLA and other statutory leave)</h1><div><a href="admin-us-leave.html">PTO and sick leave</a> &nbsp;|&nbsp; <a href="leave-cases.html">Employee view</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs"><button data-tab="cases" class="on">Cases</button><button data-tab="new">New case</button><button data-tab="settings">Settings and leave types</button></div>
+
+  <div id="tab-cases" style="display:grid;gap:20px">
+    <section class="card">
+      <div class="row" style="margin-top:0"><h2 style="margin:0">Cases</h2><select id="fStatus"><option value="open">Open</option><option value="">All</option><option value="requested">Requested</option><option value="designated">Approved</option><option value="on_leave">On leave</option><option value="closed">Closed</option><option value="denied">Denied</option></select><select id="fType"><option value="">All types</option></select><span id="overdue" class="hint"></span></div>
+      <table style="margin-top:10px"><thead><tr><th>Person</th><th>Type</th><th>Dates</th><th>Status</th><th>Eligible</th><th>Next deadline</th><th></th></tr></thead><tbody id="cases"></tbody></table>
+    </section>
+    <section class="card" id="detail" hidden></section>
+  </div>
+
+  <div id="tab-new" style="display:none">
+    <section class="card"><h2>Open a case for an employee</h2>
+      <form id="newForm"><div class="grid">
+        <label>Person<select name="userId" id="newUser"></select></label>
+        <label>Leave type<select name="typeKey" id="newType"></select></label>
+        <label>FMLA reason<select name="fmlaReason"><option value="own_health">Own health</option><option value="family_care">Family care</option><option value="bonding">Bonding with new child</option><option value="military_exigency">Military exigency</option><option value="military_caregiver">Military caregiver</option></select></label>
+        <label>Pattern<select name="pattern"><option value="continuous">Continuous</option><option value="intermittent">Intermittent</option><option value="reduced">Reduced schedule</option></select></label>
+        <label>First day<input type="date" name="startDate" required></label>
+        <label>Last day<input type="date" name="endDate"></label>
+        <label>Reason / note<input name="reason" maxlength="500"></label>
+      </div><div class="row"><button type="submit">Open case</button></div></form>
+    </section>
+  </div>
+
+  <div id="tab-settings" style="display:none;gap:20px">
+    <section class="card"><h2>FMLA settings</h2>
+      <div class="warn">These are the usual federal figures, kept here so you can change them. Confirm with counsel.</div>
+      <form id="setForm"><div class="grid" id="setGrid"></div><div class="row"><button type="submit">Save settings</button></div></form>
+    </section>
+    <section class="card"><h2>Other statutory leave types</h2>
+      <div class="warn">Every row below is a placeholder to be confirmed with counsel for your states. Leave "States" empty to apply everywhere.</div>
+      <table><thead><tr><th>Key</th><th>Name</th><th>Paid?</th><th>Max days</th><th>States</th><th>Confirmed</th><th>On</th></tr></thead><tbody id="typeRows"></tbody></table>
+      <div class="row"><button class="ghost" id="addType">Add a row</button><button id="saveTypes">Save leave types</button></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+let cfg = null; let typeRows = []; let openId = null;
+const STATUS = { requested: 'Requested', eligibility_noticed: 'Eligibility notice sent', certification_requested: 'Certification requested', certification_received: 'Certification received', designated: 'Designated', on_leave: 'On leave', returned: 'Returned', closed: 'Closed', denied: 'Denied', cancelled: 'Cancelled' };
+const ACTIONS = {
+  eligibility_notice: { label: 'Send eligibility notice', from: ['requested'] },
+  request_certification: { label: 'Request certification', from: ['requested', 'eligibility_noticed', 'certification_requested'] },
+  receive_certification: { label: 'Certification received', from: ['certification_requested'] },
+  designate: { label: 'Designate (approve)', from: ['requested', 'eligibility_noticed', 'certification_requested', 'certification_received'] },
+  deny: { label: 'Deny', from: ['requested', 'eligibility_noticed', 'certification_requested', 'certification_received'], reason: true, bad: true },
+  start_leave: { label: 'Leave started', from: ['designated'] },
+  request_recertification: { label: 'Request recertification', from: ['designated', 'on_leave'] },
+  receive_recertification: { label: 'Recertification received', from: ['designated', 'on_leave'] },
+  return_to_work: { label: 'Return to work', from: ['designated', 'on_leave'] },
+  close: { label: 'Close case', from: ['designated', 'on_leave', 'returned', 'denied'] },
+  cancel: { label: 'Cancel', from: ['requested', 'eligibility_noticed', 'certification_requested', 'certification_received', 'designated', 'on_leave'], bad: true }
+};
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/leave-cases${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+const nextDue = (c) => (c.deadlineList || []).filter((d) => !d.done).sort((a, b) => a.due.localeCompare(b.due))[0];
+
+async function loadCases() {
+  const q = new URLSearchParams(); if ($('fStatus').value) q.set('status', $('fStatus').value); if ($('fType').value) q.set('typeKey', $('fType').value);
+  const r = await api('GET', `/${q.toString() ? `?${q}` : ''}`);
+  $('overdue').textContent = r.overdue ? `${r.overdue} case(s) with an overdue notice or document` : '';
+  $('cases').innerHTML = r.data.map((c) => { const d = nextDue(c); return `<tr><td>${esc(c.name)}</td><td>${esc(c.typeLabel)}${c.jobProtected ? ' <span class="tag good">job protected</span>' : ''}</td><td>${esc(c.startDate)}${c.endDate ? ' to ' + esc(c.endDate) : ''}</td><td><span class="tag">${esc(STATUS[c.status] || c.status)}</span></td><td>${c.eligibility ? (c.eligibility.eligible ? '<span class="tag good">yes</span>' : '<span class="tag badTag">no</span>') : '-'}</td><td>${d ? `<span class="${d.overdue ? 'over' : ''}">${esc(d.label)} ${esc(d.due)}${d.overdue ? ' (overdue)' : ''}</span>` : ''}</td><td><button class="ghost" data-open="${esc(c.id)}">Open</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="hint">No cases.</td></tr>';
+}
+
+async function openCase(id) {
+  openId = id; const r = await api('GET', `/${id}`); const c = r.case; const el = c.eligibility;
+  const acts = Object.entries(ACTIONS).filter(([, a]) => a.from.includes(c.status));
+  $('detail').hidden = false;
+  $('detail').innerHTML = `
+    <h2>${esc(c.name)}: ${esc(c.typeLabel)} <span class="tag">${esc(STATUS[c.status] || c.status)}</span> ${c.jobProtected ? '<span class="tag good">job protected</span>' : ''}</h2>
+    <p class="hint">Requested ${esc(c.requestedOn)}. ${esc(c.pattern)} leave from ${esc(c.startDate)}${c.endDate ? ' to ' + esc(c.endDate) : ''}. ${c.fmlaReason ? 'Reason: ' + esc(c.fmlaReason.replace(/_/g, ' ')) + '.' : ''} ${esc(c.reason || '')}</p>
+    <div class="two">
+      <div>
+        ${el ? `<h3>FMLA eligibility (${esc(el.asOf)}) ${el.eligible ? '<span class="tag good">eligible</span>' : '<span class="tag badTag">not eligible</span>'}</h3><table>${el.checks.map((k) => `<tr><td>${esc(k.label)}</td><td>${esc(k.value)}${k.presumed ? ' (presumed, exempt)' : ''}</td><td>needs ${esc(k.required)}</td><td>${k.ok ? '<span class="tag good">ok</span>' : '<span class="tag badTag">no</span>'}</td></tr>`).join('')}</table><div class="row"><button class="ghost" data-recalc="${esc(c.id)}">Recalculate</button></div>` : '<p class="hint">Not an FMLA case, so no eligibility test.</p>'}
+        <h3>Deadlines</h3><table>${(c.deadlineList || []).map((d) => `<tr><td>${esc(d.label)}</td><td class="${d.overdue ? 'over' : ''}">due ${esc(d.due)}</td><td>${d.done ? '<span class="tag good">done ' + esc(d.done) + '</span>' : d.overdue ? 'overdue' : d.daysLeft + ' days left'}</td></tr>`).join('') || '<tr><td class="hint">None yet.</td></tr>'}</table>
+      </div>
+      <div>
+        ${c.balance ? `<h3>FMLA balance (${esc(c.balance.method.replace(/_/g, ' '))}: ${esc(c.balance.periodStart)} to ${esc(c.balance.periodEnd)})</h3><table><tr><td>Entitlement</td><td>${c.balance.entitlementWeeks} weeks = ${c.balance.entitlementHours} h</td></tr><tr><td>Used</td><td>${c.balance.usedHours} h (continuous ${c.balance.byKind.continuous}, intermittent ${c.balance.byKind.intermittent}, reduced ${c.balance.byKind.reduced})</td></tr><tr><td>Scheduled later</td><td>${c.balance.scheduledHours} h</td></tr><tr><td><b>Remaining</b></td><td><b>${c.balance.remainingHours} h (${c.balance.remainingWeeks} weeks)</b>${c.balance.exhausted ? ' <span class="tag badTag">used up</span>' : ''}</td></tr></table>` : ''}
+      </div>
+    </div>
+    <h3>Actions</h3>
+    <div class="row">${acts.map(([k, a]) => `<button class="${a.bad ? 'no' : ''}" data-act="${k}">${esc(a.label)}</button>`).join('') || '<span class="hint">No further actions.</span>'}</div>
+    <h3>Hours used</h3>
+    <table><thead><tr><th>Date</th><th>Hours</th><th>Type</th><th>Source</th><th></th></tr></thead><tbody>${(c.usage || []).sort((a, b) => a.date.localeCompare(b.date)).map((u) => `<tr><td>${esc(u.date)}</td><td>${esc(u.hours)}</td><td>${esc(u.kind)}</td><td>${u.source === 'leave_request' ? 'leave request' : 'manual'}</td><td><button class="no" data-rmu="${esc(u.id)}">Remove</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No hours recorded.</td></tr>'}</tbody></table>
+    <form id="useForm"><div class="grid" style="margin-top:10px"><label>Day<input type="date" name="date"></label><label>Hours<input type="number" name="hours" step="0.25" min="0.25" max="24"></label><label>Kind<select name="kind"><option value="intermittent">Intermittent</option><option value="reduced">Reduced schedule</option><option value="continuous">Continuous</option></select></label></div><div class="row"><button type="submit">Add one day</button></div></form>
+    <form id="blockForm"><div class="grid" style="margin-top:10px"><label>From<input type="date" name="startDate"></label><label>To<input type="date" name="endDate"></label><label>Hours per day (blank = weekly hours / 5)<input type="number" name="hoursPerDay" step="0.25" min="0.25" max="24"></label></div><div class="row"><button type="submit" class="ghost">Add a block of weekdays</button></div></form>
+    <form id="linkForm"><div class="row"><label>Approved leave request id (from the PTO module)<input name="requestId" style="min-width:260px"></label><button type="submit" class="ghost">Count it against this case</button></div></form>
+    <h3>HR notes (employee cannot see)</h3><textarea id="notes" rows="3" style="width:100%">${esc(c.hrNotes || '')}</textarea><div class="row"><button class="ghost" id="saveNotes">Save notes</button></div>
+    <h3>History</h3><table>${(c.history || []).map((h) => `<tr><td>${esc(String(h.at).slice(0, 10))}</td><td>${esc(h.action)}</td><td>${esc(h.note || '')}</td></tr>`).join('')}</table>`;
+  $('detail').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function refreshOpen() { await loadCases(); if (openId) await openCase(openId); }
+
+document.addEventListener('click', async (e) => {
+  const t = (s) => e.target.closest(s);
+  try {
+    if (t('[data-open]')) await openCase(t('[data-open]').dataset.open);
+    if (t('[data-act]')) {
+      const k = t('[data-act]').dataset.act; const a = ACTIONS[k]; const body = { action: k };
+      if (a.reason || k === 'designate') { const note = window.prompt(a.reason ? 'Reason (required):' : 'Note (optional):') ; if (note === null) return; body.note = note; }
+      try { await api('POST', `/${openId}/action`, body); }
+      catch (err) {
+        if (k === 'designate' && /not FMLA eligible/.test(err.message) && window.confirm('This person is not FMLA eligible. Designate anyway as an HR exception? You must give a reason.')) {
+          const why = window.prompt('Reason for the exception (required):'); if (!why) return; await api('POST', `/${openId}/action`, { action: k, override: true, note: why });
+        } else throw err;
+      }
+      say('Done.'); await refreshOpen();
+    }
+    if (t('[data-recalc]')) { await api('POST', `/${openId}/recalculate-eligibility`, {}); say('Eligibility recalculated.'); await refreshOpen(); }
+    if (t('[data-rmu]') && window.confirm('Remove this entry?')) { await api('DELETE', `/${openId}/usage/${t('[data-rmu]').dataset.rmu}`); await refreshOpen(); }
+    if (t('#saveNotes')) { await api('PUT', `/${openId}/notes`, { hrNotes: $('notes').value }); say('Notes saved.'); }
+  } catch (err) { say(err.message, false); }
+});
+document.addEventListener('submit', async (e) => {
+  const id = e.target.id; if (!['useForm', 'blockForm', 'linkForm'].includes(id)) return;
+  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); Object.keys(f).forEach((k) => { if (f[k] === '') delete f[k]; });
+  try {
+    if (id === 'linkForm') { const r = await api('POST', `/${openId}/link-request`, f); say(`Linked: ${r.hours} hours counted.`); }
+    else { if (f.hours) f.hours = Number(f.hours); if (f.hoursPerDay) f.hoursPerDay = Number(f.hoursPerDay); const r = await api('POST', `/${openId}/usage`, f); say(`Added ${r.added} day(s).`); }
+    await refreshOpen();
+  } catch (err) { say(err.message, false); }
+});
+
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  ['cases', 'new', 'settings'].forEach((n) => { $('tab-' + n).style.display = b.dataset.tab === n ? 'grid' : 'none'; });
+}));
+$('fStatus').addEventListener('change', () => loadCases().catch((err) => say(err.message, false)));
+$('fType').addEventListener('change', () => loadCases().catch((err) => say(err.message, false)));
+
+$('newForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); Object.keys(f).forEach((k) => { if (f[k] === '') delete f[k]; });
+  if (f.typeKey !== 'fmla') delete f.fmlaReason;
+  try { const r = await api('POST', '/', f); say('Case opened.' + ((r.warnings || []).length ? '\n' + r.warnings.join('\n') : '')); e.target.reset(); await loadCases(); } catch (err) { say(err.message, false); }
+});
+
+const SETTING_FIELDS = [['minMonthsService', 'Months of service needed'], ['minHoursLast12Months', 'Hours in last 12 months'], ['minWorksiteEmployees', 'Employees at worksite'], ['worksiteRadiusMiles', 'Worksite radius (miles)'], ['standardWeeks', 'Entitlement (weeks)'], ['militaryCaregiverWeeks', 'Military caregiver (weeks)'], ['defaultWeeklyHours', 'Default weekly hours'], ['eligibilityNoticeBusinessDays', 'Eligibility notice (business days)'], ['designationNoticeBusinessDays', 'Designation notice (business days)'], ['certificationDueDays', 'Certification due (days)'], ['recertificationDueDays', 'Recertification due (days)'], ['fixedPeriodStart', 'Fixed year start (MM-DD)']];
+function paintSettings() {
+  $('setGrid').innerHTML = `<label>12-month period method<select name="periodMethod">${['calendar_year', 'rolling_backward', 'rolling_forward', 'fixed_year'].map((m) => `<option value="${m}" ${cfg.settings.periodMethod === m ? 'selected' : ''}>${m.replace(/_/g, ' ')}</option>`).join('')}</select></label>` +
+    SETTING_FIELDS.map(([k, l]) => `<label>${esc(l)}<input name="${k}" value="${esc(cfg.settings[k])}"></label>`).join('') + `<label class="chk"><input type="checkbox" name="presumeExemptMeetsHours" ${cfg.settings.presumeExemptMeetsHours ? 'checked' : ''}> Treat exempt staff as meeting the hours test</label>`;
+  typeRows = cfg.types.map((t) => ({ ...t })); paintTypes();
+  $('newType').innerHTML = cfg.types.filter((t) => t.active !== false).map((t) => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+  $('fType').innerHTML = '<option value="">All types</option>' + cfg.types.map((t) => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+}
+function paintTypes() {
+  $('typeRows').innerHTML = typeRows.map((t, i) => `<tr data-i="${i}"><td><input data-f="key" value="${esc(t.key)}" size="12" ${t.key === 'fmla' ? 'readonly' : ''}></td><td><input data-f="label" value="${esc(t.label)}"></td><td><select data-f="paid">${['paid', 'unpaid', 'varies'].map((p) => `<option ${t.paid === p ? 'selected' : ''}>${p}</option>`).join('')}</select></td><td><input data-f="maxDays" type="number" min="1" value="${esc(t.maxDays ?? '')}" style="width:70px"></td><td><input data-f="states" value="${esc((t.states || []).join(','))}" placeholder="all" size="10"></td><td><input data-f="confirmed" type="checkbox" ${t.confirmed ? 'checked' : ''}></td><td><input data-f="active" type="checkbox" ${t.active !== false ? 'checked' : ''}></td></tr>`).join('');
+}
+$('typeRows').addEventListener('input', (e) => {
+  const tr = e.target.closest('tr'); const f = e.target.dataset.f; if (!tr || !f) return; const row = typeRows[Number(tr.dataset.i)];
+  row[f] = e.target.type === 'checkbox' ? e.target.checked : f === 'states' ? e.target.value.split(/[,\s]+/).filter(Boolean) : e.target.value;
+});
+$('addType').addEventListener('click', () => { typeRows.push({ key: '', label: '', paid: 'unpaid', maxDays: '', states: [], confirmed: false, active: true }); paintTypes(); });
+$('saveTypes').addEventListener('click', async () => { try { await api('PUT', '/config/types', { types: typeRows.map((t) => ({ ...t, maxDays: t.maxDays === '' ? null : t.maxDays })) }); say('Leave types saved.'); cfg = await api('GET', '/config'); paintSettings(); } catch (err) { say(err.message, false); } });
+$('setForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = Object.fromEntries(new FormData(e.target)); f.presumeExemptMeetsHours = Boolean(f.presumeExemptMeetsHours);
+  try { await api('PUT', '/config/settings', f); say('Settings saved.'); cfg = await api('GET', '/config'); paintSettings(); } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    cfg = await api('GET', '/config'); paintSettings();
+    const ppl = await api('GET', '/people'); $('newUser').innerHTML = ppl.data.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    await loadCases();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

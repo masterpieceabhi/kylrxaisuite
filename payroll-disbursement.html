@@ -2159,8 +2159,8 @@
                 <div style="border-top: 1px solid var(--border); padding-top: 0.85rem;">
                     <div style="font-weight: 700; font-size: 0.78rem; color: #334155; margin-bottom: 8px;">Re-authenticate or Switch Super Admin Account:</div>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
-                        <input type="email" id="loginEmailInput" name="email" value="superadmin@kylrx.ai" placeholder="superadmin@kylrx.ai" autocomplete="username" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; outline: none;">
-                        <input type="password" id="loginPasswordInput" name="password" value="Kylrx#SuperAdmin2026!Secured" placeholder="Password" autocomplete="current-password" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; outline: none;">
+                        <input type="email" id="loginEmailInput" name="email" value="" placeholder="Email" autocomplete="username" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; outline: none;">
+                        <input type="password" id="loginPasswordInput" name="password" value="" placeholder="Password" autocomplete="current-password" style="padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 0.8rem; outline: none;">
                         <button class="btn btn-primary" style="justify-content: center; font-size: 0.8rem; padding: 8px;" onclick="window.submitSuperAdminLogin()"><i data-lucide="log-in" size="14"></i> Sign In with Super Admin Credential</button>
                     </div>
                 </div>
@@ -2405,10 +2405,11 @@
                             applySuperAdminUiState(user, { role: 'SUPER_ADMIN' });
                         }
                     } else {
-                        // User not yet signed in on client: Attempt seamless auto-login for Super Admin credential
-                        console.log("⚡ No active Firebase Auth session. Auto-authenticating Super Admin credential (superadmin@kylrx.ai)...");
+                        // User not signed in: a real sign-in is required (no automatic credentials)
+                        window.location.replace('login.html');
+                        return;
                         try {
-                            const cred = await signInWithEmailAndPassword(auth, 'superadmin@kylrx.ai', 'Kylrx#SuperAdmin2026!Secured');
+                            const cred = null;
                             currentAuthUser = cred.user;
                             currentTokenResult = await cred.user.getIdTokenResult(true);
                             const claims = currentTokenResult?.claims || {};
@@ -2440,8 +2441,8 @@
         window.submitSuperAdminLogin = async function() {
             const emailInput = document.getElementById('loginEmailInput');
             const passInput = document.getElementById('loginPasswordInput');
-            const email = emailInput ? emailInput.value.trim() : 'superadmin@kylrx.ai';
-            const pass = passInput ? passInput.value : 'Kylrx#SuperAdmin2026!Secured';
+            const email = emailInput ? emailInput.value.trim() : '';
+            const pass = passInput ? passInput.value : '';
 
             window.showToast("Authenticating with Firebase Auth...");
             try {

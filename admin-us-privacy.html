@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy requests | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.danger{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:8px;padding:10px 12px;margin:12px 0}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Privacy requests</h1><div><a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-us-owner.html">Owner settings</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+  <div class="tabs"><button data-tab="queue" class="on">Requests <span id="qCount"></span></button><button data-tab="new">Record a request</button><button data-tab="set">Deadlines and how long records are kept</button></div>
+
+  <div id="tab-queue" class="pane on">
+    <section class="card">
+      <h2>Requests from employees</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="qStatus"><option value="open">Open</option><option value="completed">Completed</option><option value="denied">Denied</option><option value="cancelled">Cancelled</option><option value="">All</option></select></label><span id="qSum" class="hint"></span></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Asks to</th><th>Received</th><th>Answer by</th><th>Status</th><th></th></tr></thead><tbody id="qRows"></tbody></table>
+    </section>
+    <section class="card" id="oneCard" hidden>
+      <h2 id="oneTitle"></h2>
+      <p id="oneInfo"></p>
+      <div class="row" id="oneActs"></div>
+      <div id="delBox" hidden>
+        <h3>What would be deleted and what must be kept</h3>
+        <p id="delWho" class="hint"></p>
+        <table><thead><tr><th>Kind of record</th><th>On file</th><th>Delete</th><th>Keep</th><th>Keep until</th><th>Why</th></tr></thead><tbody id="delRows"></tbody></table>
+        <div class="danger" id="delWarn"></div>
+        <div class="row"><label>To go ahead, type <b id="delText"></b><input id="delConfirm" autocomplete="off"></label><button class="no" id="delGo">Delete for good</button></div>
+      </div>
+      <h3>What happened</h3>
+      <table><tbody id="oneHist"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-new" class="pane">
+    <section class="card">
+      <h2>Record a request you received by phone, letter or in person</h2>
+      <form id="newForm"><div class="grid">
+        <label>Person<select name="onBehalfOf" id="nUser"></select></label>
+        <label>They ask to<select name="type" id="nType"></select></label>
+        <label>Date you received it<input name="receivedAt" type="date"></label>
+        <label>How you checked who they are<select name="method"><option value="in_person">In person</option><option value="verified_call">Call to a number on file</option><option value="documents_checked">Documents checked</option></select></label>
+        <label>Note on the identity check<input name="vnote" required minlength="5" maxlength="300"></label>
+        <label>Details<input name="details" maxlength="2000"></label>
+      </div><div class="row"><button type="submit">Record request</button><span class="hint">The deadline counts from the date you received it.</span></div></form>
+    </section>
+  </div>
+
+  <div id="tab-set" class="pane">
+    <section class="card">
+      <h2>Deadlines</h2>
+      <form id="setForm"><div class="grid">
+        <label>Days to answer<input name="responseDays" type="number" min="1" max="120"></label>
+        <label>Extra days if extended<input name="extensionDays" type="number" min="0" max="90"></label>
+        <label>Business days to confirm receipt<input name="acknowledgeBusinessDays" type="number" min="0" max="30"></label>
+        <label>Warn this many days before the deadline<input name="dueSoonDays" type="number" min="1" max="30"></label>
+        <label>Hours a data copy can be downloaded<input name="exportLinkHours" type="number" min="1" max="720"></label>
+        <label>Most downloads of one copy<input name="exportMaxDownloads" type="number" min="1" max="50"></label>
+      </div>
+      <h3>How long each kind of record is kept after someone leaves</h3>
+      <p class="hint">Records inside their keep-period are not deleted by a deletion request. Rows with no number are kept for a fixed legal reason.</p>
+      <table><thead><tr><th>Kind of record</th><th>Years</th><th>Reason</th></tr></thead><tbody id="retRows"></tbody></table>
+      <div class="row"><button type="submit">Save</button></div></form>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const when = (i, time) => (i ? new Date(i).toLocaleString('en-US', time ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }) : '');
+const ST = { received: ['new', 'blueTag'], in_progress: ['being worked on', 'warnTag'], completed: ['completed', 'good'], denied: ['denied', 'badTag'], cancelled: ['cancelled', 'grey'] };
+let rows = []; let one = null; let settings = null; let delText = '';
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/privacy${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Request failed (${res.status})`); } return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const slaTag = (s) => (s.state === 'overdue' ? `<span class="tag badTag">${Math.abs(s.daysLeft)} days late</span>` : s.state === 'due_soon' ? `<span class="tag warnTag">${s.daysLeft} days left</span>` : s.state === 'on_track' ? `<span class="hint">${s.daysLeft} days left</span>` : '');
+const typeLabel = (r) => (r.typeLabel && r.typeLabel.en) || words(r.type);
+
+async function loadQueue() {
+  const [list, sum] = await Promise.all([req('GET', '/requests'), req('GET', '/summary')]);
+  const f = $('qStatus').value; rows = list.data.filter((r) => (f === 'open' ? ['received', 'in_progress'].includes(r.status) : !f || r.status === f));
+  $('qCount').textContent = sum.open ? `(${sum.open})` : ''; $('qSum').textContent = sum.overdue.length ? `${sum.overdue.length} past the deadline.` : '';
+  $('qRows').innerHTML = rows.map((r) => `<tr><td><b>${esc(r.subjectName || '')}</b> <span class="hint">${esc(r.employeeId || '')}</span><br><span class="hint">${r.source === 'hr' ? 'recorded by HR' : 'sent by the employee'}</span></td><td>${esc(typeLabel(r))}${r.details ? `<br><span class="hint">${esc(r.details.slice(0, 140))}</span>` : ''}</td><td>${esc(when(r.receivedAt))}</td><td>${esc(when(r.dueAt))}<br>${slaTag(r.sla)}</td><td><span class="tag ${ST[r.status][1]}">${esc(ST[r.status][0])}</span></td><td><button class="ghost" data-open="${esc(r.id)}">Open</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing here.</td></tr>';
+}
+async function openOne(id) {
+  one = (await req('GET', `/requests/${id}`)).request; const r = one; const open = ['received', 'in_progress'].includes(r.status);
+  $('oneCard').hidden = false; $('delBox').hidden = true; $('oneTitle').textContent = `${r.subjectName || ''}: ${typeLabel(r)}`;
+  $('oneInfo').innerHTML = `<span class="tag ${ST[r.status][1]}">${esc(ST[r.status][0])}</span> Received ${esc(when(r.receivedAt))}, answer by ${esc(when(r.dueAt))} ${slaTag(r.sla)}${r.extensionsUsed ? `<br><span class="hint">Extended: ${esc(r.extensionReason || '')}</span>` : ''}<br><span class="hint">Identity: ${esc(words(r.verification ? r.verification.method : ''))}. ${esc(r.verification ? r.verification.note : '')}</span>${r.details ? `<br>${esc(r.details)}` : ''}${r.resolution ? `<br><b>Outcome:</b> ${esc(words(r.resolution.outcome))}${r.resolution.note ? `. ${esc(r.resolution.note)}` : ''}` : ''}${r.export ? `<br><span class="hint">Data copy made ${esc(when(r.export.generatedAt, true))}, ${r.export.available ? `can be downloaded until ${esc(when(r.export.expiresAt, true))}` : 'no longer downloadable'} (${esc(r.export.downloads)} downloads).</span>` : ''}`;
+  const b = [];
+  if (open && r.status === 'received') b.push('<button class="ghost" data-act="start">Start work</button>');
+  if (r.type === 'access' && (open || r.status === 'completed')) b.push(`<button data-act="export">${r.export ? 'Make a new data copy' : 'Make the data copy'}</button>`);
+  if (r.export && r.export.available) b.push('<button class="ghost" data-act="dl">Download the copy (HTML)</button>');
+  if (open && r.type === 'delete') b.push('<button data-act="preview">See what would be deleted</button>');
+  if (open && !['access', 'delete'].includes(r.type)) b.push('<button data-act="complete">Mark as done</button>');
+  if (open && !r.extensionsUsed) b.push('<button class="ghost" data-act="extend">Extend the deadline</button>');
+  if (open) b.push('<button class="no" data-act="deny">Deny</button>');
+  $('oneActs').innerHTML = b.join(' ');
+  $('oneHist').innerHTML = (r.history || []).map((h) => `<tr><td>${esc(when(h.at, true))}</td><td>${esc(words(h.action))}</td><td class="hint">${esc(h.note || '')}</td></tr>`).join('');
+  if (r.deletionResult) { $('delBox').hidden = false; $('delWho').textContent = `Deletion ran ${when(r.deletionResult.executedAt, true)}.`; $('delRows').innerHTML = r.deletionResult.table.map((t) => `<tr><td>${esc(t.label || t.key)}</td><td colspan="4">${esc(words(t.result))}${t.retained ? `, ${esc(t.retained)} kept` : ''}</td><td class="hint">${esc(t.reason || '')}</td></tr>`).join(''); $('delWarn').hidden = true; $('delGo').parentElement.hidden = true; }
+  $('oneCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function act(a) {
+  const id = one.id;
+  if (a === 'start') { await req('POST', `/requests/${id}/start`, {}); say('Marked as being worked on.'); } else if (a === 'export') { const r = await req('POST', `/requests/${id}/export`, {}); say(`Data copy made. The employee can download it from their privacy page for ${r.hours} hours.`); } else if (a === 'dl') { const res = await req('GET', `/requests/${id}/export/download?format=html`, null, true); const el = document.createElement('a'); el.href = URL.createObjectURL(await res.blob()); el.download = `data-copy-${id}.html`; document.body.appendChild(el); el.click(); el.remove(); } else if (a === 'complete') { const note = window.prompt('What was done? (the employee can see this)'); if (!note) return; await req('POST', `/requests/${id}/complete`, { note }); say('Marked as done.'); } else if (a === 'extend') { const reason = window.prompt('Reason for the extension (you must also tell the person in writing):'); if (!reason) return; const r = await req('POST', `/requests/${id}/extend`, { reason }); say(`New deadline: ${when(r.dueAt)}. ${r.note}`); } else if (a === 'deny') { const reason = window.prompt('Reason for denying (the employee can see this):'); if (!reason) return; await req('POST', `/requests/${id}/deny`, { reason }); say('Denied.'); } else if (a === 'preview') {
+    const p = await req('POST', `/requests/${id}/deletion/preview`, {}); delText = p.confirmText;
+    $('delBox').hidden = false; $('delWarn').hidden = false; $('delGo').parentElement.hidden = false; $('delConfirm').value = '';
+    $('delWho').textContent = `${p.person.name || ''} ${p.person.employeeId || ''}. ${p.employmentActive ? 'This person still works here, so most records must be kept.' : 'This person no longer works here.'}${p.legalHold ? ' A legal hold is on: nothing can be deleted.' : ''}`;
+    $('delRows').innerHTML = p.rows.map((x) => `<tr><td>${esc(x.label)}</td><td>${esc(x.count)}</td><td>${x.deleteCount ? `<b>${esc(x.deleteCount)}</b>` : '0'}</td><td>${esc(x.retainCount)}</td><td>${esc(x.retainUntil ? when(x.retainUntil) : '')}</td><td class="hint">${esc(x.reason || '')}</td></tr>`).join('');
+    $('delWarn').textContent = p.anythingToDelete ? p.warning : 'Nothing can be deleted right now: every record on file is inside its keep-period. You can deny the request with that reason, or run it to record the outcome.'; $('delText').textContent = delText; return;
+  }
+  await loadQueue(); await openOne(id);
+}
+$('delGo').addEventListener('click', async () => {
+  if ($('delConfirm').value.trim() !== delText) { say(`Type ${delText} exactly to go ahead.`, false); return; }
+  try { const r = await req('POST', `/requests/${one.id}/deletion/execute`, { acknowledgeIrreversible: true, confirmText: delText }); say(r.success ? 'Deletion finished. Kept records are listed below with the reason.' : 'Part of the deletion failed. See the list below and run it again.', r.success); await loadQueue(); await openOne(one.id); } catch (err) { say(err.message, false); }
+});
+$('qStatus').addEventListener('change', () => loadQueue().catch((err) => say(err.message, false)));
+$('newForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', '/requests', { onBehalfOf: f.onBehalfOf.value, type: f.type.value, details: f.details.value, receivedAt: f.receivedAt.value || undefined, verification: { method: f.method.value, note: f.vnote.value } }); e.target.reset(); say('Request recorded.'); document.querySelector('[data-tab=queue]').click(); await loadQueue(); } catch (err) { say(err.message, false); }
+});
+async function loadSettings() {
+  const r = await req('GET', '/settings'); settings = r.settings; $('note').textContent = r.note; const f = $('setForm').elements;
+  ['responseDays', 'extensionDays', 'acknowledgeBusinessDays', 'dueSoonDays', 'exportLinkHours', 'exportMaxDownloads'].forEach((k) => { f[k].value = settings[k]; });
+  $('retRows').innerHTML = settings.retention.map((x, i) => `<tr><td>${esc(x.label)}</td><td>${x.years === null ? '<span class="hint">fixed</span>' : `<input data-ry="${i}" type="number" min="0" max="50" style="width:80px" value="${esc(x.years)}">`}</td><td><input data-rb="${i}" maxlength="200" style="width:100%" value="${esc(x.basis || '')}"></td></tr>`).join('');
+}
+$('setForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const body = {};
+  ['responseDays', 'extensionDays', 'acknowledgeBusinessDays', 'dueSoonDays', 'exportLinkHours', 'exportMaxDownloads'].forEach((k) => { body[k] = Number(f[k].value); });
+  body.retention = settings.retention.map((x, i) => { const y = document.querySelector(`[data-ry="${i}"]`); return { key: x.key, years: y ? Number(y.value) : null, basis: document.querySelector(`[data-rb="${i}"]`).value }; });
+  try { await req('PUT', '/settings', body); say('Saved.'); await loadSettings(); } catch (err) { say(err.message, false); }
+});
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const o = e.target.closest('[data-open]'); const a = e.target.closest('[data-act]');
+  try { if (o) await openOne(o.dataset.open); else if (a) await act(a.dataset.act); } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  await step(loadSettings); await step(loadQueue);
+  await step(async () => { const t = (await req('GET', '/types')).types; $('nType').innerHTML = t.map((x) => `<option value="${esc(x.key)}">${esc(x.en)}</option>`).join(''); });
+  await step(async () => { const token = await auth.currentUser.getIdToken(); const r = await (await fetch('/api/us/employees', { headers: { Authorization: `Bearer ${token}` } })).json(); $('nUser').innerHTML = (r.data || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)} ${esc(p.employeeId || '')}</option>`).join(''); });
+});
+</script>
+</body>
+</html>

@@ -7,6 +7,19 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Development-only shortcut: lets the local demo run without real logins (dev tokens and ?role=
+// act as a super admin). It needs an explicit opt-in and can never be on in production.
+const DEV_AUTH = process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_AUTH === 'true';
+if (DEV_AUTH) {
+    logger.warn('ALLOW_DEV_AUTH is on: dev tokens and ?role= grant super admin access. Local use only.');
+}
+const devUser = (req) => ({
+    id: 'superadmin_dev',
+    uid: 'superadmin_dev',
+    email: 'superadmin@kylrx.ai',
+    role: req.query.role || 'super_admin'
+});
+
 const ALLOWED_ROLES = [
     'Super Admin',
     'Admin',
@@ -16,8 +29,41 @@ const ALLOWED_ROLES = [
     'hr_payroll',
     'hr_admin',
     'super_admin',
-    'client_executive'
+    'client_executive',
+    'payroll_admin',
+    'accountant',
+    'auditor',
+    'executive'
 ];
+
+/**
+ * Vendor support token (granted by the customer owner): read-only, one company, checked against the
+ * grant on every request so revoking it takes effect immediately, and every request is logged.
+ */
+async function handleSupportSession(decoded, req, res, next) {
+    try {
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+            return res.status(403).json({ success: false, error: 'Support access is read-only' });
+        }
+        const { rawCollection } = require('../config/firebase');
+        const grant = await rawCollection('support_grants').doc(String(decoded.grantId)).get();
+        const exists = typeof grant.exists === 'function' ? grant.exists() : grant.exists;
+        if (!exists || grant.data().revokedAt || grant.data().expiresAt <= new Date().toISOString() || grant.data().orgId !== decoded.orgId) {
+            return res.status(403).json({ success: false, error: 'This support access has ended' });
+        }
+        req.user = {
+            id: decoded.id, uid: decoded.id, email: decoded.email, name: 'Support (read-only)', role: 'auditor',
+            orgId: decoded.orgId, support: true, supportGrantId: decoded.grantId
+        };
+        rawCollection('organizations').doc(decoded.orgId).collection('audit_logs').add({
+            action: 'support_access_request', actorId: decoded.id, at: new Date().toISOString(), method: req.method, path: String(req.originalUrl || '').split('?')[0].slice(0, 200)
+        }).catch(() => {});
+        return next();
+    } catch (error) {
+        logger.error(`Support session error: ${error.message}`);
+        return res.status(401).json({ success: false, error: 'Token is invalid or expired' });
+    }
+}
 
 const verifyToken = async (req, res, next) => {
     try {
@@ -34,14 +80,8 @@ const verifyToken = async (req, res, next) => {
         }
 
         if (!token || token === 'super_admin_dev_token' || token.startsWith('dev_')) {
-            // Allow development mode, dev tokens, or internal frontend console requests with role parameter
-            if (process.env.NODE_ENV !== 'production' || req.query.role || token === 'super_admin_dev_token') {
-                req.user = {
-                    id: 'superadmin_dev',
-                    uid: 'superadmin_dev',
-                    email: 'superadmin@kylrx.ai',
-                    role: req.query.role || 'super_admin'
-                };
+            if (DEV_AUTH) {
+                req.user = devUser(req);
                 return next();
             }
             return res.status(401).json({ success: false, error: 'Authentication token required' });
@@ -57,6 +97,9 @@ const verifyToken = async (req, res, next) => {
                     mfaRequired: true
                 });
             }
+            if (decoded && decoded.type === 'support_session') {
+                return await handleSupportSession(decoded, req, res, next);
+            }
             userId = decoded.id;
         } catch (jwtError) {
             try {
@@ -67,13 +110,8 @@ const verifyToken = async (req, res, next) => {
                 decoded = await admin.auth().verifyIdToken(token);
                 userId = decoded.uid;
             } catch (firebaseError) {
-                if (req.query.role || process.env.NODE_ENV !== 'production') {
-                    req.user = {
-                        id: 'superadmin_dev',
-                        uid: 'superadmin_dev',
-                        email: 'superadmin@kylrx.ai',
-                        role: req.query.role || 'super_admin'
-                    };
+                if (DEV_AUTH) {
+                    req.user = devUser(req);
                     return next();
                 }
                 logger.error(`Auth Error: Token verification failed for both JWT and Firebase`);
@@ -116,6 +154,11 @@ const verifyToken = async (req, res, next) => {
             managerAssigned: userData.managerAssigned || 'default-manager-queue',
             role: effectiveRole
         };
+
+        // Someone whose employment has ended can no longer use any existing session
+        if (/^terminated$/i.test(String(userData.status || ''))) {
+            return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
 
         req.user = userData;
         next();

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Time clock | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.in{background:#dcfce7;color:var(--ok)}.break{background:#fef3c7;color:#92400e}.out{background:#f1f5f9;color:var(--muted)}.warn{background:#fee2e2;color:var(--bad)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+code{background:#f1f5f9;padding:2px 6px;border-radius:6px;word-break:break-all}
+</style>
+</head>
+<body>
+<header><h1>Time clock</h1><div><a href="punch.html">Open my clock</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Hours waiting for approval <span class="hint" id="apCount"></span></h2>
+    <table><thead><tr><th>Person</th><th>Week of</th><th>Total</th><th>Regular</th><th>Overtime</th><th>Double</th><th>Notes</th><th></th></tr></thead><tbody id="approvals"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Punch fixes waiting <span class="hint" id="corCount"></span></h2>
+    <table><thead><tr><th>Person</th><th>What</th><th>Day</th><th>Time</th><th>Reason</th><th></th></tr></thead><tbody id="corrections"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Overtime, break and holiday pay rules</h2>
+    <div class="hint" style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px">Daily overtime, double time, meal and rest breaks, and extra pay for missed breaks depend on your state. Holiday pay is your own company policy. Confirm each setting with a US compliance advisor before you rely on it.</div>
+    <form id="rulesForm"><div class="grid">
+      <label>Weekly overtime after (hours)<input name="weekly" type="number" step="0.5" min="1" max="168" required></label>
+      <label>Daily overtime<select name="dailyOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Daily overtime after (hours)<input name="dailyHours" type="number" step="0.5" min="1" max="24"></label>
+      <label>Double time after (hours, optional)<input name="dtHours" type="number" step="0.5" min="1" max="24"></label>
+      <label>Meal-break check<select name="mealOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Meal break needed after (hours worked)<input name="mealAfter" type="number" step="0.5" min="1" max="24"></label>
+      <label>Shortest meal break (minutes)<input name="mealMin" type="number" step="5" min="5" max="240"></label>
+      <label>Rest breaks (people confirm them each week)<select name="restOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>One rest break for every (hours worked)<input name="restEvery" type="number" step="0.5" min="0.5" max="24"></label>
+      <label>Length of a rest break (minutes)<input name="restMin" type="number" step="1" min="1" max="60"></label>
+      <label>Extra paid hours for a missed break<select name="premOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Extra hours per missed break, per day<input name="premHours" type="number" step="0.25" min="0.25" max="8"></label>
+      <label>Pay for paid company holidays<select name="holOn"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Hours paid for each holiday<input name="holHours" type="number" step="0.5" min="0.5" max="24"></label>
+      <label>Who gets holiday pay<select name="holWho"><option value="everyone">Every hourly employee</option><option value="full_time">Full-time hourly employees only</option></select></label>
+    </div><p class="hint" style="margin-top:12px">Holiday pay is added for each day marked as a paid holiday on the Company structure page. Holiday hours and extra hours for missed breaks are paid at the regular rate, on top of hours worked, and do not count toward overtime. Salaried exempt staff get neither. Working on a holiday at a higher rate is not calculated.</p><div class="row"><button type="submit">Save rules</button></div></form>
+  </section>
+
+  <section class="card">
+    <h2>Approved hours for payroll</h2>
+    <div class="row" style="margin-top:0"><label style="display:flex;gap:6px;align-items:center">From <input type="date" id="exFrom"></label><label style="display:flex;gap:6px;align-items:center">To <input type="date" id="exTo"></label><button id="exGo" class="ghost">Download CSV</button></div>
+    <p class="hint">One row for each person and week, with regular, overtime and double-time hours. Only approved weeks are included.</p>
+  </section>
+
+  <section class="card">
+    <h2>Who is working now <span class="hint" id="counts"></span></h2>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Job</th><th>Status</th><th>Since</th><th>Today</th><th>Kiosk PIN</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Shared tablets (kiosks)</h2>
+    <p class="hint">Put a tablet at the front desk or staff room. Workers type their number and PIN. Each tablet gets its own setup link; open it once on that tablet.</p>
+    <div class="row"><input id="kioskName" placeholder="Name, for example Front desk"><button id="kioskAdd">Add tablet</button></div>
+    <div id="kioskNew" class="hint" style="margin-top:10px"></div>
+    <table style="margin-top:10px"><tbody id="kiosks"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Fix a missed punch</h2>
+    <form id="manual"><div class="grid">
+      <label>Person<select name="userId" id="manualUser"></select></label>
+      <label>Action<select name="type"><option value="in">Clock in</option><option value="out">Clock out</option><option value="break_start">Start break</option><option value="break_end">End break</option></select></label>
+      <label>Date and time (your computer's time zone)<input name="at" type="datetime-local" required></label>
+      <label>Reason (recorded)<input name="reason" required minlength="5" placeholder="Forgot to clock out"></label>
+    </div><div class="row"><button type="submit">Add punch</button></div></form>
+  </section>
+
+  <section class="card">
+    <h2>Timesheet</h2>
+    <div class="row" style="margin-top:0"><select id="tsUser"></select><label style="display:flex;gap:6px;align-items:center">From <input type="date" id="tsFrom"></label><label style="display:flex;gap:6px;align-items:center">To <input type="date" id="tsTo"></label><button id="tsGo" class="ghost">Show</button></div>
+    <table style="margin-top:10px"><thead><tr><th>Day</th><th>Worked</th><th>Breaks</th><th>Punches</th></tr></thead><tbody id="tsRows"></tbody></table>
+    <p class="hint" id="tsWeeks"></p>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; };
+const dur = (m) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+let people = [], tz = 'UTC';
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/time${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || (json.errors || []).join('; ') || `Request failed (${res.status})`);
+  return json;
+}
+
+async function loadRoster() {
+  const r = await api('GET', '/team/now'); people = r.data; tz = r.timeZone;
+  $('counts').textContent = `(${r.counts.in} working, ${r.counts.break} on break, ${r.counts.out} not clocked in; times in ${tz})`;
+  const label = { in: 'Working', break: 'On break', out: 'Not in' };
+  $('rows').innerHTML = people.map((p) => `<tr><td>${p.employeeId || '-'}</td><td>${p.name || ''}</td><td>${p.jobTitle || ''}</td><td><span class="tag ${p.state}">${label[p.state]}</span>${p.forgottenClockOut ? ' <span class="tag warn">Forgot to clock out?</span>' : ''}</td><td>${p.since ? new Date(p.since).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }) : '-'}</td><td>${dur(p.todayMinutes)}</td><td>${p.hasPin ? 'Set' : 'Not set'}</td><td><button class="ghost" data-pin="${p.userId}">${p.hasPin ? 'Reset PIN' : 'Make PIN'}</button></td></tr>`).join('');
+  const opts = people.map((p) => `<option value="${p.userId}">${p.name || p.employeeId} ${p.employeeId ? `(${p.employeeId})` : ''}</option>`).join('');
+  $('manualUser').innerHTML = opts; $('tsUser').innerHTML = opts;
+}
+
+async function loadKiosks() {
+  const r = await api('GET', '/kiosks');
+  $('kiosks').innerHTML = r.data.map((k) => `<tr><td>${k.name}</td><td>${k.active ? 'Active' : 'Turned off'}</td><td>${k.active ? `<button class="ghost" data-off="${k.id}">Turn off</button>` : ''}</td></tr>`).join('') || '<tr><td class="hint">No tablets yet.</td></tr>';
+}
+
+$('rows').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-pin]'); if (!b) return;
+  try { const r = await api('PUT', '/pin', { userId: b.dataset.pin }); say(`PIN for ${r.name} (number ${r.employeeId}): ${r.pin}. Write it down for them now: it is shown only once.`); await loadRoster(); }
+  catch (err) { say(err.message, false); }
+});
+$('kiosks').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-off]'); if (!b) return;
+  try { await api('DELETE', `/kiosks/${b.dataset.off}`); await loadKiosks(); } catch (err) { say(err.message, false); }
+});
+$('kioskAdd').onclick = async () => {
+  try {
+    const r = await api('POST', '/kiosks', { name: $('kioskName').value });
+    const url = `${location.origin}${r.setupPath}`;
+    $('kioskNew').innerHTML = `Open this link <b>once</b> on the tablet. It is shown only now: <code>${url}</code>`; $('kioskName').value = ''; await loadKiosks();
+  } catch (err) { say(err.message, false); }
+};
+$('manual').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await api('POST', '/punches/manual', { userId: f.get('userId'), type: f.get('type'), at: new Date(f.get('at')).toISOString(), reason: f.get('reason') }); say('Punch added and recorded in the audit log.'); e.target.reset(); await loadRoster(); }
+  catch (err) { say(err.message, false); }
+});
+$('tsGo').onclick = async () => {
+  try {
+    const q = new URLSearchParams({ userId: $('tsUser').value }); if ($('tsFrom').value) q.set('from', $('tsFrom').value); if ($('tsTo').value) q.set('to', $('tsTo').value);
+    const r = await api('GET', `/timesheet?${q}`);
+    $('tsRows').innerHTML = r.days.map((d) => `<tr><td>${d.date}</td><td>${dur(d.workedMinutes)}</td><td>${dur(d.breakMinutes)}</td><td>${d.punches}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No punches in this range.</td></tr>';
+    $('tsWeeks').textContent = r.weeks.map((w) => `Week of ${w.weekStart}: ${dur(w.workedMinutes)}${w.overtimeMinutes ? `, overtime ${dur(w.overtimeMinutes)}` : ''}`).join('  |  ');
+  } catch (err) { say(err.message, false); }
+};
+
+
+const mins = (h) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+async function loadApprovals() {
+  const r = await api('GET', '/approvals?status=submitted');
+  $('apCount').textContent = `(${r.count})`;
+  $('approvals').innerHTML = r.data.map((w) => `<tr><td>${w.name || ''}</td><td>${w.weekStart}</td><td>${mins(w.totals.workedHours)}</td><td>${mins(w.totals.regularHours)}</td><td>${mins(w.totals.overtimeHours)}</td><td>${mins(w.totals.doubleTimeHours)}</td><td>${[...(w.flags || []).map((f) => f.replace(/_/g, ' ')), w.totals.holidayHours ? `holiday pay ${mins(w.totals.holidayHours)}` : '', w.totals.premiumHours ? `missed-break pay ${mins(w.totals.premiumHours)}` : ''].filter(Boolean).join(', ')}</td><td><button data-wa="${w.userId}|${w.weekStart}">Approve</button> <button class="ghost" data-wr="${w.userId}|${w.weekStart}">Send back</button></td></tr>`).join('') || '<tr><td colspan="8" class="hint">Nothing waiting.</td></tr>';
+}
+async function loadCorrections() {
+  const r = await api('GET', '/corrections?scope=pending');
+  $('corCount').textContent = `(${r.count})`;
+  const kind = { add: 'Add punch', change: 'Change time', remove: 'Remove punch' };
+  $('corrections').innerHTML = r.data.map((c) => `<tr><td>${c.name || ''}</td><td>${kind[c.kind]}: ${c.type.replace('_', ' ')}</td><td>${c.localDate}</td><td>${c.kind === 'change' ? `${c.originalLocalTime} to ${c.localTime}` : (c.localTime || '')}</td><td>${c.reason}</td><td><button data-ca="${c.id}">Approve</button> <button class="ghost" data-cd="${c.id}">Deny</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing waiting.</td></tr>';
+}
+async function loadRules() {
+  const r = await api('GET', '/rules'); const x = r.rules; const f = $('rulesForm');
+  f.weekly.value = x.overtimeWeeklyHours; f.dailyOn.value = String(x.dailyOvertime.enabled); f.dailyHours.value = x.dailyOvertime.thresholdHours;
+  f.dtHours.value = x.dailyOvertime.doubleTimeThresholdHours || ''; f.mealOn.value = String(x.meal.enabled); f.mealAfter.value = x.meal.requiredAfterHours; f.mealMin.value = x.meal.minimumMinutes;
+  const rb = x.restBreak || { enabled: false, everyHours: 4, minutes: 10 }; const bp = x.breakPremium || { enabled: false, hours: 1 }; const hp = x.holidayPay || { enabled: false, hours: 8, who: 'everyone' };
+  f.restOn.value = String(rb.enabled); f.restEvery.value = rb.everyHours; f.restMin.value = rb.minutes; f.premOn.value = String(bp.enabled); f.premHours.value = bp.hours; f.holOn.value = String(hp.enabled); f.holHours.value = hp.hours; f.holWho.value = hp.who;
+}
+document.addEventListener('click', async (e) => {
+  const wa = e.target.closest('[data-wa]'); const wr = e.target.closest('[data-wr]'); const ca = e.target.closest('[data-ca]'); const cd = e.target.closest('[data-cd]');
+  try {
+    if (wa) { const [u, w] = wa.dataset.wa.split('|'); await api('PUT', `/weeks/${u}/${w}/decision`, { decision: 'approve' }); say('Hours approved. That week is now locked.'); await loadApprovals(); await loadRoster(); }
+    if (wr) { const [u, w] = wr.dataset.wr.split('|'); const note = window.prompt('What needs fixing? The person will see this.'); if (!note) return; await api('PUT', `/weeks/${u}/${w}/decision`, { decision: 'reject', note }); say('Sent back.'); await loadApprovals(); }
+    if (ca) { await api('PUT', `/corrections/${ca.dataset.ca}/decision`, { decision: 'approve' }); say('Fix applied.'); await loadCorrections(); await loadRoster(); }
+    if (cd) { const note = window.prompt('Reason (optional):') || ''; await api('PUT', `/corrections/${cd.dataset.cd}/decision`, { decision: 'deny', note }); say('Denied.'); await loadCorrections(); }
+  } catch (err) { say(err.message, false); }
+});
+$('rulesForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  try {
+    await api('PUT', '/rules', { overtimeWeeklyHours: Number(f.weekly.value), dailyOvertime: { enabled: f.dailyOn.value === 'true', thresholdHours: Number(f.dailyHours.value), doubleTimeThresholdHours: f.dtHours.value ? Number(f.dtHours.value) : null }, meal: { enabled: f.mealOn.value === 'true', requiredAfterHours: Number(f.mealAfter.value), minimumMinutes: Number(f.mealMin.value) },
+      restBreak: { enabled: f.restOn.value === 'true', everyHours: Number(f.restEvery.value), minutes: Number(f.restMin.value) }, breakPremium: { enabled: f.premOn.value === 'true', hours: Number(f.premHours.value) },
+      holidayPay: { enabled: f.holOn.value === 'true', hours: Number(f.holHours.value), who: f.holWho.value } });
+    say('Rules saved.');
+  } catch (err) { say(err.message, false); }
+});
+$('exGo').onclick = async () => {
+  try {
+    const q = new URLSearchParams({ format: 'csv' }); if ($('exFrom').value) q.set('from', $('exFrom').value); if ($('exTo').value) q.set('to', $('exTo').value);
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch(`/api/time/export/hours?${q}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error('Could not export');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = 'approved-hours.csv'; a.click();
+  } catch (err) { say(err.message, false); }
+};
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { await loadRoster(); await loadKiosks(); await loadApprovals(); await loadCorrections(); await loadRules(); await $('tsGo').onclick(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

@@ -708,6 +708,7 @@
             box-shadow: 0 4px 12px rgba(37, 99, 235, 0.08);
         }
     </style>
+<script src="country-format.js"></script>
 </head>
 
 <body>
@@ -3883,7 +3884,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
                             <div>
                                 <div style="font-weight:800; font-size:0.9rem;">${r.employeeName || 'Employee'}</div>
-                                <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : 'Date unknown'}</div>
+                                <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {day:'2-digit', month:'short', year:'numeric'}) : 'Date unknown'}</div>
                             </div>
                             <span style="background:#fef3c7; color:#d97706; font-size:0.7rem; font-weight:800; padding:4px 10px; border-radius:100px;">Pending Review</span>
                         </div>
@@ -4025,7 +4026,7 @@
 
                 const totalNet = payslipData.reduce((s, e) => s + e.net, 0);
                 countEl.textContent = `${payslipData.length} employees loaded`;
-                totalEl.textContent = `Total Net: \u20b9${totalNet.toLocaleString('en-IN')}`;
+                totalEl.textContent = `Total Net: \u20b9${totalNet.toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}`;
 
                 tbody.innerHTML = payslipData.map((e, i) => `
                     <tr style="border-bottom:1px solid #f1f5f9; ${i % 2 === 0 ? 'background:white;' : 'background:#fafafa;'}">
@@ -4034,10 +4035,10 @@
                             ${!e.bankComplete ? '<span style="margin-left:6px;background:#fee2e2;color:#b91c1c;font-size:0.62rem;font-weight:800;padding:2px 6px;border-radius:100px;">No Bank</span>' : ''}
                         </td>
                         <td style="padding:12px 16px; color:#64748b; font-family:monospace; font-size:0.8rem;">${e.employeeCode || e.id.substring(0,8).toUpperCase()}</td>
-                        <td style="padding:12px 16px; text-align:right; font-weight:600;">\u20b9${e.basic.toLocaleString('en-IN')}</td>
-                        <td style="padding:12px 16px; text-align:right; color:#10b981; font-weight:600;">\u20b9${e.incentives.toLocaleString('en-IN')}</td>
-                        <td style="padding:12px 16px; text-align:right; color:#ef4444; font-weight:600;">\u20b9${e.deductions.toLocaleString('en-IN')}</td>
-                        <td style="padding:12px 16px; text-align:right; font-weight:800; color:#1e40af;">\u20b9${e.net.toLocaleString('en-IN')}</td>
+                        <td style="padding:12px 16px; text-align:right; font-weight:600;">\u20b9${e.basic.toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</td>
+                        <td style="padding:12px 16px; text-align:right; color:#10b981; font-weight:600;">\u20b9${e.incentives.toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</td>
+                        <td style="padding:12px 16px; text-align:right; color:#ef4444; font-weight:600;">\u20b9${e.deductions.toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</td>
+                        <td style="padding:12px 16px; text-align:right; font-weight:800; color:#1e40af;">\u20b9${e.net.toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'))}</td>
                         <td style="padding:12px 16px; text-align:center;">
                             <div style="display:flex; gap:6px; justify-content:center;">
                                 <button onclick="downloadSinglePayslip(${i})" style="background:#eff6ff; color:#1d4ed8; border:none; padding:5px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; cursor:pointer;">
@@ -4427,7 +4428,7 @@
                 tbody.innerHTML = holdCandidates.map(c => {
                     const pendingDocs = c.pendingDocuments || ['Identity Proof', 'Address Proof', 'Academic Certificates'];
                     const lastAlert = c.lastReminderSentAt 
-                        ? new Date(c.lastReminderSentAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) 
+                        ? new Date(c.lastReminderSentAt).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) 
                         : 'Never';
                     return `
                         <tr style="border-bottom: 1px solid #fde68a;">

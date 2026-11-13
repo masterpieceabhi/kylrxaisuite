@@ -1,0 +1,54 @@
+# Runs on every push and pull request: install exactly what the lock file says, run all the tests,
+# and check that the static-file guard still covers the pages. See docs/DEPLOY.md.
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Throwaway values for the test run only. Real secrets live in the host's environment, never here.
+      NODE_ENV: test
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-real-0123456789
+      REFRESH_SECRET: ci-only-refresh-secret-not-used-anywhere-real-9876543210
+      TENANT_READ_SCOPING: 'off'
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install (exactly the lock file)
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Static-file guard covers every page
+        run: node scripts/static-audit.js
+      - name: Server starts without syntax errors
+        run: node --check server.js
+
+  audit:
+    # Reports known problems in the libraries. It does not fail the build yet: see the open list in docs/DEPLOY.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Known problems in the libraries the server uses
+        run: npm audit --omit=dev --audit-level=critical

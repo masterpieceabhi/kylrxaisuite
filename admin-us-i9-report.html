@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Form I-9 audit report | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#cbd5e1;--blue:#2563eb;--bg:#f8fafc}
+*{box-sizing:border-box}body{margin:0;font:13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px}
+.sheet{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 4px;font-size:18px}.hint{color:var(--muted);font-size:12px}
+.stats{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0}.stats div b{display:block;font-size:20px}
+table{width:100%;border-collapse:collapse;margin-top:8px}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:11px;color:var(--muted)}
+tr.act td{background:#fef2f2}.late{color:#b45309}.miss{color:#b91c1c;font-weight:700}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.ghost{background:#eef2ff;color:var(--blue)}
+select{padding:7px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
+#msg{display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.sign{display:none;margin-top:28px;gap:40px}.sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:12px}
+@media print{header,.noprint{display:none!important}body{background:#fff;font-size:11px}main{padding:0;max-width:none}.sheet{border:0;padding:0}tr{page-break-inside:avoid}tr.act td{background:#fff}.sign{display:flex}}
+</style>
+</head>
+<body>
+<header><h1>Form I-9 audit report</h1><div><a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-us-calendar.html">Compliance calendar</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="alert"></div>
+  <div class="noprint" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+    <label class="hint">Show <select id="show"><option value="all">Everyone</option><option value="action">Only people who need action</option><option value="current">Current employees</option><option value="former">Former employees</option></select></label>
+    <button id="print">Print or save as PDF</button><button class="ghost" id="csv">Download CSV</button>
+  </div>
+  <div class="sheet">
+    <h2 id="company">Form I-9 audit report</h2>
+    <div class="hint" id="asOf"></div>
+    <div class="stats" id="stats"></div>
+    <p class="hint" id="note"></p>
+    <table><thead><tr><th>Person</th><th>Status</th><th>First day</th><th>Section 1 signed (due)</th><th>Section 2 examined (due)</th><th>Reverify by</th><th>Keep until</th><th>Findings</th></tr></thead><tbody id="rows"></tbody></table>
+    <p class="hint">Section 1 is due by the first day of work. Section 2 is due within 3 business days of the first day. A form is kept for 3 years after the first day or 1 year after the last day, whichever is later. This report does not show document numbers.</p>
+    <div class="sign"><div>Reviewed by (name and signature)</div><div>Date</div></div>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+let report = null;
+async function get(path, raw) {
+  const res = await fetch(`/api/us${path}`, { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+function paint() {
+  const f = $('show').value;
+  const list = report.list.filter((r) => (f === 'action' ? r.needsAction : f === 'current' ? r.status === 'current' : f === 'former' ? r.status === 'former' : true));
+  const cell = (on, due, missing) => (on ? `${esc(day(on))}${on > due ? ` <span class="late">(late, due ${esc(day(due))})</span>` : ''}` : `<span class="${missing ? 'miss' : 'late'}">${missing ? 'Missing' : 'Not yet'}</span> <span class="hint">due ${esc(day(due))}</span>`);
+  $('rows').innerHTML = list.map((r) => `<tr class="${r.needsAction ? 'act' : ''}"><td><b>${esc(r.name || '')}</b><br><span class="hint">${esc(r.employeeId || '')} ${esc(r.department || '')}</span></td><td>${r.status === 'former' ? `Former<br><span class="hint">left ${esc(day(r.lastDay))}</span>` : 'Current'}</td><td>${esc(day(r.hireDate))}</td><td>${cell(r.section1On, r.section1Due, r.status === 'former' || report.asOf > r.section1Due)}</td><td>${cell(r.section2On, r.section2Due, r.status === 'former' || report.asOf > r.section2Due)}</td><td>${esc(day(r.reverifyOn))}</td><td>${esc(day(r.keepUntil))}</td><td>${r.findings.map(esc).join('<br>') || '<span class="hint">None</span>'}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">Nobody matches.</td></tr>';
+}
+$('show').addEventListener('change', paint);
+$('print').addEventListener('click', () => window.print());
+$('csv').addEventListener('click', async () => { try { const res = await get('/reports/i9-audit?format=csv', true); const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = `i9-audit-${report.asOf}.csv`; document.body.appendChild(a); a.click(); a.remove(); } catch (e) { $('msg').textContent = e.message; $('msg').style.display = 'block'; } });
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    report = await get('/reports/i9-audit');
+    $('asOf').textContent = `As of ${day(report.asOf)}. Printed by ${user.displayName || user.email || ''}.`; $('note').textContent = report.note;
+    $('stats').innerHTML = [['current', 'current employees'], ['complete', 'with both sections done'], ['needsAction', 'need action'], ['late', 'completed late'], ['former', 'former employees'], ['canDispose', 'forms past their keep-date']].map(([k, l]) => `<div><b>${esc(report[k])}</b>${esc(l)}</div>`).join('');
+    paint();
+  } catch (e) { $('msg').textContent = e.message; $('msg').style.display = 'block'; }
+});
+</script>
+</body>
+</html>

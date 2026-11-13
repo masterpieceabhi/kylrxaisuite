@@ -1,5 +1,26 @@
 import { auth, db, doc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from "./firebase-config.js";
-import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, OAuthProvider, SAMLAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+
+/** A page inside this app that asked for sign-in first (for example the app-approval page). Only plain same-site pages are accepted. */
+function afterLoginTarget() {
+    try {
+        const t = sessionStorage.getItem('kylrx_after_login');
+        sessionStorage.removeItem('kylrx_after_login');
+        return t && /^\/[A-Za-z0-9_-]+\.html(\?[^#\s]{0,2000})?$/.test(t) ? t : null;
+    } catch (_) { return null; }
+}
+
+/** The company's country, asked from the server with the signed-in user's token ('US', 'IN' or null when unknown) */
+async function companyCountry() {
+    try {
+        if (!auth.currentUser) return null;
+        const res = await fetch('/api/time/status', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+        if (!res.ok) return null;
+        return (await res.json()).country || null;
+    } catch (_) { return null; }
+}
+
+const US_STAFF_ROLES = ['hradmin', 'hrms', 'hr', 'payrolladmin', 'manager', 'accountant', 'auditor', 'executive'];
 
 async function getRedirectUrl(userData, role) {
     if (!role) {
@@ -9,6 +30,15 @@ async function getRedirectUrl(userData, role) {
         throw new Error("Your account is currently inactive. Please contact support.");
     }
     const cleanRole = (role || '').toLowerCase().replace(/[\s_-]+/g, '');
+    const known = ['superadmin', 'admin', 'employee', ...US_STAFF_ROLES].includes(cleanRole);
+    const back = known ? afterLoginTarget() : null;
+    if (back) return back;
+    // United States companies have their own pages; the dashboards below are the India ones
+    if (known && (await companyCountry()) === 'US') {
+        if (userData?.orgId) localStorage.setItem('orgId', userData.orgId);
+        if (cleanRole === 'superadmin' || cleanRole === 'admin') { localStorage.setItem('orgConfigured', 'true'); return 'admin-dashboard.html'; }
+        return cleanRole === 'employee' ? 'punch.html' : 'us-home.html';
+    }
     if (cleanRole === 'superadmin' || cleanRole === 'admin') {
         const orgId = userData?.orgId || localStorage.getItem('orgId') || 'org_kylrx_ai';
         localStorage.setItem('orgId', orgId);
@@ -82,80 +112,60 @@ if (closeDemoBtn && demoModal) {
     demoModal.addEventListener('click', (e) => { if (e.target === demoModal) demoModal.style.display = 'none'; });
 }
 
-if (selectSuperAdmin) {
-    selectSuperAdmin.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'superadmin@kylrx.ai';
-        if (passwordInput) passwordInput.value = 'Kylrx#SuperAdmin2026!Secured';
-        demoModal.style.display = 'none';
+// Demo shortcuts exist ONLY on a developer's own machine, talking to the local emulator.
+// No account or password is kept in this file: the buttons ask the local server, and the server only answers when it
+// runs against the Firebase emulators, is not in production and is asked from this same machine (services/local-demo.js).
+const IS_LOCAL_DEMO = ['localhost', '127.0.0.1'].includes(window.location.hostname) && sessionStorage.getItem('kylrx_live_firebase') !== '1';
+
+async function localDemoLogin(key) {
+    const res = await fetch(`/api/auth/dev-demo-login${key ? `?account=${encodeURIComponent(key)}` : ''}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return data && data.success ? data : null;
+}
+
+function hideDemoShortcuts() {
+    document.querySelectorAll('[data-demo-shortcut]').forEach((el) => { el.style.display = 'none'; });
+    const quick = document.getElementById('btnQuickSuperAdmin');
+    const panel = quick && quick.parentElement && quick.parentElement.parentElement;
+    if (panel) panel.style.display = 'none';
+    if (credentialsBtn) credentialsBtn.style.display = 'none';
+    if (demoModal) demoModal.style.display = 'none';
+}
+
+function bindDemo(button, key, closeModal) {
+    if (!button) return;
+    button.setAttribute('data-demo-shortcut', key);
+    if (!IS_LOCAL_DEMO) { button.style.display = 'none'; return; }
+    button.addEventListener('click', async () => {
+        let account = null;
+        try { account = await localDemoLogin(key); } catch (_) { account = null; }
+        if (closeModal && demoModal) demoModal.style.display = 'none';
+        if (!account) { hideDemoShortcuts(); window.alert('Demo sign-in works only with the local emulators (npm run emulators, npm run seed:local, npm run start:local).'); return; }
+        if (emailInput) emailInput.value = account.email;
+        if (passwordInput) passwordInput.value = account.password;
         loginBtn?.click();
     });
 }
+bindDemo(selectSuperAdmin, 'superAdmin', true);
+bindDemo(selectHrAdmin, 'hrAdmin', true);
+bindDemo(selectManager, 'manager', true);
+bindDemo(selectEmployee, 'employee', true);
 
-if (selectHrAdmin) {
-    selectHrAdmin.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'hradmin@kylrx.ai';
-        if (passwordInput) passwordInput.value = 'Kylrx#HrAdmin2026!Secured';
-        demoModal.style.display = 'none';
-        loginBtn?.click();
-    });
-}
-
-if (selectManager) {
-    selectManager.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'john.doe@example.com';
-        if (passwordInput) passwordInput.value = 'UNIT-CYB-802-Manager-John@2026!';
-        demoModal.style.display = 'none';
-        loginBtn?.click();
-    });
-}
-
-if (selectEmployee) {
-    selectEmployee.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'marry@gmail.com';
-        if (passwordInput) passwordInput.value = 'UNIT-CYB-799-Employee-Marry@2026!';
-        demoModal.style.display = 'none';
-        loginBtn?.click();
-    });
-}
-
-// ═══════════ 1-CLICK ROLE DEMO BUTTONS ═══════════════════════════════════════
 const btnQuickSuperAdmin = document.getElementById('btnQuickSuperAdmin');
 const btnQuickHrAdmin = document.getElementById('btnQuickHrAdmin');
 const btnQuickManager = document.getElementById('btnQuickManager');
 const btnQuickEmployee = document.getElementById('btnQuickEmployee');
-
-if (btnQuickSuperAdmin) {
-    btnQuickSuperAdmin.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'superadmin@kylrx.ai';
-        if (passwordInput) passwordInput.value = 'Kylrx#SuperAdmin2026!Secured';
-        loginBtn?.click();
-    });
-}
-
-if (btnQuickHrAdmin) {
-    btnQuickHrAdmin.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'Savitha.balraju@GMAIL.COM';
-        if (passwordInput) passwordInput.value = 'SYSTEM-Hrms-Savitha@2026!';
-        localStorage.setItem('hrms_manager_name', 'Savitha Balraju');
-        localStorage.setItem('hrms_manager_role', 'Strategic Operations');
-        loginBtn?.click();
-    });
-}
-
-if (btnQuickManager) {
-    btnQuickManager.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'john.doe@example.com';
-        if (passwordInput) passwordInput.value = 'UNIT-CYB-802-Manager-John@2026!';
-        loginBtn?.click();
-    });
-}
-
-if (btnQuickEmployee) {
-    btnQuickEmployee.addEventListener('click', () => {
-        if (emailInput) emailInput.value = 'marry@gmail.com';
-        if (passwordInput) passwordInput.value = 'UNIT-CYB-799-Employee-Marry@2026!';
-        loginBtn?.click();
-    });
+bindDemo(btnQuickSuperAdmin, 'superAdmin', false);
+bindDemo(btnQuickHrAdmin, 'hrAdmin', false);
+bindDemo(btnQuickManager, 'manager', false);
+bindDemo(btnQuickEmployee, 'employee', false);
+if (!IS_LOCAL_DEMO) {
+    // hide the whole "1-click demo login" panel and the demo-roles button on real deployments
+    hideDemoShortcuts();
+} else {
+    // on localhost the shortcuts stay only when the local server offers the demo helper (emulators on)
+    localDemoLogin('').then((ok) => { if (!ok) hideDemoShortcuts(); }).catch(hideDemoShortcuts);
 }
 
 // ═══════════ FORGOT PASSWORD MODAL ═══════════════════════════════════════════
@@ -273,20 +283,7 @@ loginForm?.addEventListener('submit', async (e) => {
       try {
         userCredential = await signInWithEmailAndPassword(auth, email, password);
       } catch (firstErr) {
-        // Only allow fallback if the user is using designated demo credentials
-        const validDemoMap = {
-          'superadmin@kylrx.ai': 'Kylrx#SuperAdmin2026!Secured',
-          'hradmin@kylrx.ai': 'Kylrx#HrAdmin2026!Secured',
-          'savitha.balraju@gmail.com': 'SYSTEM-Hrms-Savitha@2026!',
-          'john.doe@example.com': 'UNIT-CYB-802-Manager-John@2026!',
-          'marry@gmail.com': 'UNIT-CYB-799-Employee-Marry@2026!',
-          'employee@kylrx.ai': 'UNIT-CYB-799-Employee-Marry@2026!'
-        };
-        if (validDemoMap[cleanEmail] && validDemoMap[cleanEmail] === password.trim()) {
-          userCredential = await signInWithEmailAndPassword(auth, cleanEmail, validDemoMap[cleanEmail]);
-        } else {
-          throw firstErr;
-        }
+        throw firstErr;
       }
       finalUid = userCredential.user.uid;
       token = userCredential.user.accessToken;
@@ -382,16 +379,8 @@ loginForm?.addEventListener('submit', async (e) => {
       }
     }
 
-    // Strategy 3: Offline / Demo mode fallback ONLY for authorized passwords
-    const validAuthorizedPasswords = [
-      'Nansav@04',
-      'SYSTEM-Hrms-Savitha@2026!',
-      'UNIT-CYB-802-Manager-John@2026!',
-      'UNIT-CYB-799-Employee-Marry@2026!',
-      'Kylrx#SuperAdmin2026!Secured',
-      'Kylrx#HrAdmin2026!Secured',
-      'Kylrx#Employee2026!Secured'
-    ];
+    // Strategy 3 (offline demo sessions with built-in passwords) was removed: a session only exists after a real sign-in.
+    const validAuthorizedPasswords = [];
     const passwordIsValidMasterOrDemo = validAuthorizedPasswords.includes(password.trim());
 
     if (!userData) {
@@ -710,6 +699,38 @@ if (googleLoginBtn) {
             await handleGoogleAuthError(error);
         }
     });
+
+    // Company single sign-on (OIDC / SAML through Firebase Authentication): shown when the typed email's
+    // domain belongs to a company that turned SSO on. Companies that require it refuse passwords on the server.
+    (function setupSso() {
+        const emailField = document.getElementById('email') || document.querySelector('input[type=email]');
+        if (!emailField || !googleLoginBtn) return;
+        let ssoBtn = null; let lastDomain = '';
+        async function check() {
+            const email = (emailField.value || '').trim();
+            const domain = (email.split('@')[1] || '').toLowerCase();
+            if (!domain || domain === lastDomain) return;
+            lastDomain = domain;
+            try {
+                const r = await (await fetch('/api/sso/discover?email=' + encodeURIComponent(email))).json();
+                if (ssoBtn) { ssoBtn.remove(); ssoBtn = null; }
+                if (!r.sso) return;
+                ssoBtn = document.createElement('button');
+                ssoBtn.type = 'button'; ssoBtn.className = googleLoginBtn.className; ssoBtn.textContent = 'Sign in with your company (SSO)';
+                ssoBtn.style.marginTop = '8px'; ssoBtn.style.width = '100%';
+                googleLoginBtn.parentElement.appendChild(ssoBtn);
+                ssoBtn.addEventListener('click', async () => {
+                    try {
+                        const provider = r.providerId.startsWith('saml.') ? new SAMLAuthProvider(r.providerId) : new OAuthProvider(r.providerId);
+                        const result = await signInWithPopup(auth, provider);
+                        if (result && result.user) await processGoogleLoginUser(result.user);
+                    } catch (error) { showError(error.message || 'Single sign-on failed.'); }
+                });
+            } catch (_) {}
+        }
+        emailField.addEventListener('blur', check);
+        emailField.addEventListener('change', check);
+    })();
 
     // Check if user completed a redirect (with quiet handling for partitioned environments)
     try {

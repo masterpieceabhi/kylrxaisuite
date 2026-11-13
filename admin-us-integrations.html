@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Integrations | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#f1f5f9;color:var(--muted)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.stat{border:1px solid var(--line);border-radius:10px;padding:12px}.big{font-size:22px;font-weight:700}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.once{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px;display:grid;gap:8px}
+.once code{display:block;padding:10px;background:#fff;border:1px solid var(--line);border-radius:8px;word-break:break-all;font-size:13px}
+code{font-family:ui-monospace,Consolas,monospace}
+pre.out{margin:10px 0 0;padding:10px;background:#f8fafc;border:1px solid var(--line);border-radius:8px;font:12px/1.4 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto}
+#mapRows input[type=text]{width:100%;min-width:110px}#mapRows tr.off td{opacity:.5}
+.alertRow{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}.alertRow:last-child{border-bottom:0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Integrations</h1><div><a href="/api/v1/openapi.json" target="_blank" rel="noopener">API description (OpenAPI)</a> &nbsp;|&nbsp; <a href="admin-us-security.html">Security</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="once" id="once" hidden><b id="onceTitle"></b><span id="onceNote"></span><code id="onceValue"></code><div class="row" style="margin-top:0"><button id="onceCopy">Copy</button><button class="ghost" id="onceDone">I saved it, hide it</button></div></div>
+  <section class="card"><div class="grid" id="overview"></div></section>
+  <section class="card" id="alertBanner" hidden style="border-color:#fecaca"><h2>Needs attention</h2><div id="alertBannerList"></div></section>
+  <div class="tabs" id="tabs"><button data-tab="keys" class="on">API keys</button><button data-tab="hooks">Webhooks</button><button data-tab="apps">Connected apps (OAuth)</button><button data-tab="scim">User provisioning (SCIM)</button><button data-tab="conn">Connectors</button><button data-tab="alerts" id="alertsTab">Alerts</button><button data-tab="log">API activity</button></div>
+
+  <div id="tab-keys" style="display:grid;gap:20px">
+    <section class="card"><h2>API keys</h2><p class="hint">A key lets another system read or change this company's data through the API. Give each system its own key with only the access it needs.</p>
+      <table><thead><tr><th>Name</th><th>Starts with</th><th>Access</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="keys"></tbody></table></section>
+    <section class="card" data-manage><h2>Create a key</h2><form id="keyForm"><div class="grid"><label>Name (which system uses it)<input name="name" required maxlength="80"></label><label>Expires on (optional)<input name="expires" type="date"></label></div>
+      <h3>Access</h3><div class="grid" id="keyScopes"></div><div class="row"><button type="submit">Create key</button></div></form></section>
+    <section class="card" data-manage><h2>Settings</h2><label class="chk"><input type="checkbox" id="allowTimeWrite"> Allow other systems to post clock punches through the API</label><p class="hint">Off by default. Turn it on only for a time clock you trust.</p></section>
+  </div>
+
+  <div id="tab-hooks" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Webhooks</h2><p class="hint">We send a signed message to your address when something happens (for example a person is added). Failed messages are retried.</p>
+      <table><thead><tr><th>Address</th><th>Events</th><th>Health</th><th>Secret ends</th><th></th></tr></thead><tbody id="hooks"></tbody></table></section>
+    <section class="card" data-manage><h2>Add a webhook</h2><form id="hookForm"><div class="grid"><label>Address (https)<input name="url" type="url" required placeholder="https://example.com/hooks/kylrx"></label><label>Description<input name="description" maxlength="120"></label></div>
+      <h3>Events</h3><label class="chk"><input type="checkbox" id="allEvents" checked> All events</label><div class="grid" id="hookEvents" style="margin-top:8px" hidden></div><div class="row"><button type="submit">Add webhook</button></div></form></section>
+    <section class="card"><h2>Recent deliveries</h2><table><thead><tr><th>When</th><th>Event</th><th>Status</th><th>Tries</th><th>Answer</th><th></th></tr></thead><tbody id="deliveries"></tbody></table></section>
+  </div>
+
+  <div id="tab-apps" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Connected apps</h2><p class="hint">For software vendors that sign in with OAuth instead of a fixed key.</p><table><thead><tr><th>Name</th><th>Client ID</th><th>Access</th><th>Status</th><th></th></tr></thead><tbody id="apps"></tbody></table></section>
+    <section class="card" data-manage><h2>Register an app</h2><form id="appForm"><div class="grid"><label>Name<input name="name" required maxlength="80"></label><label>Return address (redirect URI)<input name="redirect" type="url" placeholder="https://example.com/callback"></label></div><h3>Access</h3><div class="grid" id="appScopes"></div><div class="row"><button type="submit">Register app</button></div></form></section>
+    <section class="card"><h2>Access you have granted</h2><table><thead><tr><th>App</th><th>Access</th><th>Granted</th><th></th></tr></thead><tbody id="grants"></tbody></table></section>
+  </div>
+
+  <div id="tab-scim" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>User provisioning (SCIM)</h2><p class="hint">Lets Okta, Microsoft Entra ID or Google Workspace create and switch off people here automatically. In your identity provider use this address: <code id="scimBase"></code> and a token from below.</p>
+      <table><thead><tr><th>Name</th><th>Token</th><th>Created</th><th>Last used</th><th>Status</th><th></th></tr></thead><tbody id="scim"></tbody></table>
+      <form id="scimForm" class="row" data-manage><input name="name" placeholder="Name, for example Okta" required maxlength="80"><button type="submit">Create token</button></form></section>
+  </div>
+
+  <div id="tab-conn" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Your connections</h2><table><thead><tr><th>Name</th><th>System</th><th>Status</th><th>Last run</th><th></th></tr></thead><tbody id="connections"></tbody></table></section>
+    <section class="card"><h2>Available connectors</h2><p class="hint">Each one needs an account and credentials at that vendor. None of these has been run against the vendor's live service yet, so test with the vendor's sandbox first.</p><table><thead><tr><th>System</th><th>Kind</th><th>What it does</th><th></th></tr></thead><tbody id="catalog"></tbody></table></section>
+    <section class="card" id="mapCard" hidden><h2 id="mapTitle">Field mapping</h2>
+      <p class="hint">Each row is one field sent to the other system. "Comes from" is the field in this system (for example <code>job.title</code>). "Change" is optional: one or more of <span id="mapTransforms"></span>, separated by commas, or JSON for a change with settings such as <code>{"fn":"date","format":"MM/DD/YYYY"}</code>. <span id="mapNote"></span></p>
+      <div class="row" style="margin-top:0"><label>What is being sent<select id="mapEntity"></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Field in the other system</th><th>Comes from</th><th>Change</th><th>If empty, use</th><th>Must have a value</th><th>Leave out</th><th></th></tr></thead><tbody id="mapRows"></tbody></table>
+      <div class="row"><button type="button" class="ghost" id="mapAdd" data-manage>Add a field</button><button type="button" class="ghost" id="mapPreview">Preview with a real record</button><button type="button" id="mapSave" data-manage>Save mapping</button><button type="button" class="no" id="mapReset" data-manage>Back to the connector's defaults</button><button type="button" class="ghost" id="mapClose">Close</button></div>
+      <pre class="out" id="mapOut" hidden></pre></section>
+    <section class="card" id="connFormCard" hidden><h2 id="connTitle"></h2><form id="connForm"><div class="grid" id="connFields"></div><div class="row"><button type="submit">Save connection</button><button type="button" class="ghost" id="connCancel">Cancel</button></div></form></section>
+  </div>
+
+  <div id="tab-alerts" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>Alerts</h2><p class="hint">An alert appears when a connection's sync fails several times in a row, or a webhook address keeps failing. It closes by itself when things work again. Alerts are shown on this page only; nothing is sent by e-mail.</p><div id="alertList"></div></section>
+    <section class="card" data-manage><h2>When to raise an alert</h2><form id="alertForm"><div class="grid"><label class="chk"><input type="checkbox" name="enabled"> Raise alerts</label><label>Failed sync runs in a row<input name="syncFailures" type="number" min="1" max="50" required></label><label>Failed webhook attempts in a row<input name="webhookFailures" type="number" min="1" max="50" required></label></div><div class="row"><button type="submit">Save</button></div></form></section>
+    <section class="card"><h2>Closed alerts</h2><table><thead><tr><th>What</th><th>Raised</th><th>Closed</th><th>Acknowledged</th></tr></thead><tbody id="alertHistory"></tbody></table></section>
+  </div>
+
+  <div id="tab-log" hidden style="display:grid;gap:20px">
+    <section class="card"><h2>API activity</h2><table><thead><tr><th>When</th><th>Who</th><th>Request</th><th>Result</th><th>Time</th></tr></thead><tbody id="log"></tbody></table></section>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const tag = (text, cls) => `<span class="tag ${cls}">${esc(text)}</span>`;
+let meta = { scopes: {}, events: {} }; let canManage = true; let catalog = []; let connKey = null; let map = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/integrations${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = res.status === 204 ? {} : await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+const guard = (fn) => async (ev) => { try { await fn(ev); } catch (e) { if (e.status === 403) noManage(); say(e.message, false); } };
+function noManage() { canManage = false; document.querySelectorAll('[data-manage]').forEach((n) => { n.hidden = true; }); }
+function showOnce(title, note, value) { $('onceTitle').textContent = title; $('onceNote').textContent = note; $('onceValue').textContent = value; $('once').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+$('onceCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('onceValue').textContent); say('Copied.'); } catch (_) { say('Could not copy. Select the text and copy it yourself.', false); } });
+$('onceDone').addEventListener('click', () => { $('onceValue').textContent = ''; $('once').hidden = true; });
+const scopeBoxes = (name) => Object.entries(meta.scopes).map(([k, d]) => `<label class="chk"><input type="checkbox" name="${name}" value="${esc(k)}"${k.endsWith(':read') ? ' checked' : ''}> <span><b>${esc(k)}</b><br><span class="hint">${esc(d)}</span></span></label>`).join('');
+const picked = (form, name) => [...form.querySelectorAll(`input[name="${name}"]:checked`)].map((i) => i.value);
+
+async function loadOverview() {
+  const o = await req('GET', '/overview');
+  const a = o.api_last_24h || {};
+  $('overview').innerHTML = [['Active API keys', o.counts.active_keys], ['Webhooks', o.counts.webhooks], ['Connected apps', o.counts.oauth_apps], ['Connections', o.counts.connections], ['API requests, last 24 hours', a.requests || 0], ['Errors, last 24 hours', a.errors || 0], ['Messages that could not be delivered', (o.dead_letters.webhook_deliveries || 0) + (o.dead_letters.connector_records || 0)]].map(([k, v]) => `<div class="stat"><div class="hint">${k}</div><div class="big">${esc(v)}</div></div>`).join('');
+}
+
+/* keys */
+async function loadKeys() {
+  const r = await req('GET', '/keys');
+  $('keys').innerHTML = r.data.map((k) => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}</code></td><td>${k.scopes.map(esc).join(', ')}</td><td>${esc(when(k.last_used_at) || 'never')}</td><td>${k.status === 'active' ? tag('Active', 'good') : tag(k.status, 'grey')}</td><td>${k.status === 'active' && canManage ? `<button class="no" data-revoke="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No keys yet.</td></tr>';
+  try { const s = await req('GET', '/settings'); $('allowTimeWrite').checked = s.settings.allowTimeWrite === true; } catch (_) { /* view only */ }
+}
+$('keyForm').addEventListener('submit', guard(async (ev) => {
+  ev.preventDefault(); const f = ev.target; const scopes = picked(f, 'scope');
+  if (!scopes.length) throw new Error('Choose at least one kind of access.');
+  const r = await req('POST', '/keys', { name: f.name.value, scopes, expiresAt: f.expires.value ? `${f.expires.value}T23:59:59Z` : undefined });
+  showOnce(`API key for ${r.record.name}`, r.note, r.key); f.reset(); $('keyScopes').innerHTML = scopeBoxes('scope'); await loadKeys(); await loadOverview();
+}));
+$('keys').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-revoke]'); if (!b) return; if (!window.confirm(`Revoke the key "${b.dataset.name}"? The system using it stops working at once.`)) return; await req('DELETE', `/keys/${b.dataset.revoke}`); say('Key revoked.'); await loadKeys(); await loadOverview(); }));
+$('allowTimeWrite').addEventListener('change', guard(async (ev) => { try { await req('PUT', '/settings', { allowTimeWrite: ev.target.checked }); say('Saved.'); } catch (e) { ev.target.checked = !ev.target.checked; throw e; } }));
+
+/* webhooks */
+async function loadHooks() {
+  const r = await req('GET', '/webhooks');
+  $('hooks').innerHTML = r.data.map((h) => `<tr><td>${esc(h.url)}<div class="hint">${esc(h.description || '')}</div></td><td>${h.events.map(esc).join(', ')}</td><td>${!h.active ? tag('Paused', 'grey') : h.consecutive_failures ? tag(`${h.consecutive_failures} failures in a row`, 'badTag') : tag('Healthy', 'good')}<div class="hint">${h.last_success_at ? `Last success ${esc(when(h.last_success_at))}` : ''}</div></td><td><code>${esc(h.secret_last4 || '')}</code></td><td>${canManage ? `<button class="ghost" data-test="${esc(h.id)}">Send a test</button> <button class="ghost" data-toggle="${esc(h.id)}" data-active="${h.active}">${h.active ? 'Pause' : 'Resume'}</button> <button class="ghost" data-rotate="${esc(h.id)}">New secret</button> <button class="no" data-del="${esc(h.id)}">Delete</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No webhooks yet.</td></tr>';
+  const d = await req('GET', '/webhooks/deliveries');
+  $('deliveries').innerHTML = d.data.slice(0, 50).map((x) => `<tr><td>${esc(when(x.created_at || x.createdAt))}</td><td>${esc(x.event_type || x.eventType || '')}</td><td>${x.status === 'delivered' ? tag('Delivered', 'good') : x.status === 'dead' ? tag('Gave up', 'badTag') : tag(x.status || '', 'warnTag')}</td><td>${esc(x.attempts ?? '')}</td><td>${esc(x.last_status_code ?? x.last_error ?? '')}</td><td>${canManage ? `<button class="ghost" data-replay="${esc(x.id)}">Send again</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing sent yet.</td></tr>';
+}
+$('allEvents').addEventListener('change', (ev) => { $('hookEvents').hidden = ev.target.checked; });
+$('hookForm').addEventListener('submit', guard(async (ev) => {
+  ev.preventDefault(); const f = ev.target; const events = $('allEvents').checked ? ['*'] : picked(f, 'event');
+  if (!events.length) throw new Error('Choose at least one event.');
+  const r = await req('POST', '/webhooks', { url: f.url.value, description: f.description.value, events });
+  showOnce('Signing secret for this webhook', r.note, r.secret); f.reset(); $('hookEvents').hidden = true; await loadHooks(); await loadOverview();
+}));
+$('hooks').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.test) { await req('POST', `/webhooks/${b.dataset.test}/test`, {}); say('Test message queued. It shows under recent deliveries in a few seconds.'); setTimeout(() => loadHooks().catch(() => {}), 6000); }
+  if (b.dataset.toggle) { await req('PATCH', `/webhooks/${b.dataset.toggle}`, { active: b.dataset.active !== 'true' }); await loadHooks(); }
+  if (b.dataset.rotate) { if (!window.confirm('Create a new signing secret? The old one keeps working for a short time so you can switch.')) return; const r = await req('POST', `/webhooks/${b.dataset.rotate}/rotate-secret`, {}); showOnce('New signing secret', r.note || 'Copy it now. It is shown only once.', r.secret); await loadHooks(); }
+  if (b.dataset.del) { if (!window.confirm('Delete this webhook?')) return; await req('DELETE', `/webhooks/${b.dataset.del}`); say('Webhook deleted.'); await loadHooks(); await loadOverview(); }
+}));
+$('deliveries').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-replay]'); if (!b) return; await req('POST', `/webhooks/deliveries/${b.dataset.replay}/replay`, {}); say('Queued to send again.'); }));
+
+/* oauth apps */
+async function loadApps() {
+  const r = await req('GET', '/oauth/apps');
+  $('apps').innerHTML = r.data.map((a) => `<tr><td>${esc(a.name)}</td><td><code>${esc(a.client_id)}</code></td><td>${a.scopes.map(esc).join(', ')}</td><td>${a.active ? tag('Active', 'good') : tag('Off', 'grey')}</td><td>${canManage ? `<button class="ghost" data-secret="${esc(a.client_id)}">New secret</button> <button class="ghost" data-app="${esc(a.client_id)}" data-active="${a.active}">${a.active ? 'Turn off' : 'Turn on'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No apps yet.</td></tr>';
+  const g = await req('GET', '/oauth/grants');
+  $('grants').innerHTML = g.data.map((x) => `<tr><td>${esc(x.app_name || x.client_id || '')}</td><td>${(x.scopes || []).map(esc).join(', ')}</td><td>${esc(when(x.created_at || x.granted_at))}</td><td>${canManage ? `<button class="no" data-grant="${esc(x.id)}">Remove access</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No access granted.</td></tr>';
+}
+$('appForm').addEventListener('submit', guard(async (ev) => {
+  ev.preventDefault(); const f = ev.target; const scopes = picked(f, 'ascope');
+  if (!scopes.length) throw new Error('Choose at least one kind of access.');
+  const r = await req('POST', '/oauth/apps', { name: f.name.value, redirectUris: f.redirect.value ? [f.redirect.value] : [], redirect_uris: f.redirect.value ? [f.redirect.value] : [], scopes });
+  const secret = r.client_secret || r.clientSecret || r.secret || (r.app && (r.app.client_secret || r.app.clientSecret));
+  if (secret) showOnce(`Client secret for ${f.name.value}`, r.note || 'Copy it now. It is shown only once.', secret);
+  f.reset(); $('appScopes').innerHTML = scopeBoxes('ascope'); await loadApps(); await loadOverview();
+}));
+$('apps').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.secret) { if (!window.confirm('Create a new client secret? The app must be updated with it.')) return; const r = await req('POST', `/oauth/apps/${b.dataset.secret}/rotate-secret`, {}); showOnce('New client secret', r.note || 'Copy it now. It is shown only once.', r.client_secret || r.clientSecret || r.secret); }
+  if (b.dataset.app) { await req('PATCH', `/oauth/apps/${b.dataset.app}`, { active: b.dataset.active !== 'true' }); await loadApps(); }
+}));
+$('grants').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-grant]'); if (!b) return; if (!window.confirm('Remove this app\'s access?')) return; await req('DELETE', `/oauth/grants/${b.dataset.grant}`); await loadApps(); }));
+
+/* scim */
+async function loadScim() {
+  const r = await req('GET', '/scim/tokens');
+  $('scimBase').textContent = `${window.location.origin}${r.base_path || '/scim/v2'}`;
+  $('scim').innerHTML = r.data.map((t) => `<tr><td>${esc(t.name || '')}</td><td><code>${esc(t.prefix || '')}...${esc(t.last4 || '')}</code></td><td>${esc(when(t.created_at))}</td><td>${esc(when(t.last_used_at) || 'never')}</td><td>${t.revoked_at ? tag('Revoked', 'grey') : tag('Active', 'good')}</td><td>${!t.revoked_at && canManage ? `<button class="no" data-scim="${esc(t.id)}">Revoke</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No tokens yet.</td></tr>';
+}
+$('scimForm').addEventListener('submit', guard(async (ev) => { ev.preventDefault(); const r = await req('POST', '/scim/tokens', { name: ev.target.name.value }); showOnce('Provisioning token', r.note, r.token); ev.target.reset(); await loadScim(); }));
+$('scim').addEventListener('click', guard(async (ev) => { const b = ev.target.closest('button[data-scim]'); if (!b) return; if (!window.confirm('Revoke this token? Automatic provisioning with it stops.')) return; await req('DELETE', `/scim/tokens/${b.dataset.scim}`); await loadScim(); }));
+
+/* connectors */
+async function loadConn() {
+  const [c, k] = await Promise.all([req('GET', '/connectors/connections'), req('GET', '/connectors/catalog')]);
+  catalog = k.data;
+  const nameOf = (key) => (catalog.find((x) => x.key === key) || {}).name || key;
+  $('connections').innerHTML = c.data.map((x) => `<tr><td>${esc(x.name || nameOf(x.connector || x.connectorKey))}</td><td>${esc(nameOf(x.connector || x.connectorKey))}</td><td>${x.status === 'error' ? tag('Problem', 'badTag') : x.active === false ? tag('Paused', 'grey') : tag(x.status || 'Ready', 'good')}<div class="hint">${esc(x.failed_runs_in_a_row ? `${x.failed_runs_in_a_row} failed ${x.failed_runs_in_a_row === 1 ? 'run' : 'runs'} in a row` : (x.last_error || x.last_status || ''))}</div></td><td>${esc(when(x.last_run_at) || 'never')}</td><td><button class="ghost" data-cmap="${esc(x.id)}">Field mapping</button> ${canManage ? `<button class="ghost" data-ctest="${esc(x.id)}">Test</button> <button class="ghost" data-csync="${esc(x.id)}">Run now</button> <button class="no" data-cdel="${esc(x.id)}">Remove</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing connected yet.</td></tr>';
+  $('catalog').innerHTML = catalog.map((x) => `<tr><td><b>${esc(x.name)}</b><div class="hint">${esc(x.vendor || '')}</div></td><td>${esc(x.category || '')}</td><td>${esc(x.description || '')}</td><td>${canManage ? `<button class="ghost" data-add="${esc(x.key)}">Connect</button>` : ''}</td></tr>`).join('');
+}
+$('catalog').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-add]'); if (!b) return;
+  const def = catalog.find((x) => x.key === b.dataset.add); connKey = def.key;
+  $('connTitle').textContent = `Connect ${def.name}`;
+  const field = (f, group) => `<label>${esc(f.label)}${f.required ? ' *' : ''}<input name="${group}.${esc(f.key)}" ${f.secret ? 'type="password" autocomplete="off"' : ''} value="${f.secret ? '' : esc(f.default || '')}" ${f.required ? 'required' : ''}>${f.help ? `<span class="hint" style="font-weight:400">${esc(f.help)}</span>` : ''}</label>`;
+  $('connFields').innerHTML = `<label>Name for this connection<input name="name" value="${esc(def.name)}" required></label>` + (def.credentialFields || []).map((f) => field(f, 'credentials')).join('') + (def.configFields || []).map((f) => field(f, 'config')).join('');
+  $('connFormCard').hidden = false; $('connFormCard').scrollIntoView({ behavior: 'smooth' });
+});
+$('connCancel').addEventListener('click', () => { $('connFormCard').hidden = true; $('connForm').reset(); });
+$('connForm').addEventListener('submit', guard(async (ev) => {
+  ev.preventDefault(); const body = { connector: connKey, name: '', credentials: {}, config: {} };
+  for (const [k, v] of new FormData(ev.target).entries()) { if (k === 'name') body.name = v; else if (v !== '') { const path = k.split('.'); let o = body; for (const p of path.slice(0, -1)) { o[p] = o[p] || {}; o = o[p]; } o[path[path.length - 1]] = v; } }
+  await req('POST', '/connectors/connections', body); say('Connection saved. Press Test to check it.'); $('connFormCard').hidden = true; ev.target.reset(); await loadConn(); await loadOverview();
+}));
+$('connections').addEventListener('click', guard(async (ev) => {
+  const b = ev.target.closest('button'); if (!b) return;
+  if (b.dataset.ctest) { const r = await req('POST', `/connectors/connections/${b.dataset.ctest}/test`, {}); const hl = r.health || {}; const ok = hl.ok !== false && hl.status !== 'error'; say(ok ? 'Connection works.' : `Test failed: ${hl.detail || hl.message || hl.error || 'check the credentials'}`, ok); }
+  if (b.dataset.cmap) { await openMap(b.dataset.cmap); return; }
+  if (b.dataset.csync) { const r = await req('POST', `/connectors/connections/${b.dataset.csync}/sync`, {}); const st = (r.run || {}).status; say(st === 'success' ? 'Run finished.' : st === 'partial' ? 'Run finished, but some records failed.' : 'The run failed.', st === 'success'); loadAlerts().catch(() => {}); }
+  if (b.dataset.cdel) { if (!window.confirm('Remove this connection?')) return; await req('DELETE', `/connectors/connections/${b.dataset.cdel}`); }
+  await loadConn();
+}));
+
+/* field mapping */
+const mapEntity = () => (map ? map.entities.find((e) => e.key === $('mapEntity').value) : null);
+const originTag = { default: '', changed: tag('changed', 'warnTag'), added: tag('added', 'good'), removed: tag('left out', 'grey') };
+function mapRowHtml(r) {
+  const ro = canManage ? '' : ' disabled';
+  return `<tr class="${r.origin === 'removed' ? 'off' : ''}" data-origin="${esc(r.origin)}"><td>${r.origin === 'added' ? `<input type="text" data-f="target" value="${esc(r.target || '')}" placeholder="FieldName"${ro}>` : `<b data-target="${esc(r.target)}">${esc(r.target)}</b>`}</td><td><input type="text" data-f="source" value="${esc(r.source || '')}"${ro}></td><td><input type="text" data-f="transform_text" value="${esc(r.transform_text || '')}"${ro}></td><td><input type="text" data-f="default" value="${esc(r.default ?? '')}"${ro}></td><td><input type="checkbox" data-f="required"${r.required ? ' checked' : ''}${ro}></td><td><input type="checkbox" data-f="removed"${r.origin === 'removed' ? ' checked' : ''}${ro}></td><td>${originTag[r.origin] || ''}</td></tr>`;
+}
+function renderMap() {
+  const e = mapEntity(); if (!e) return;
+  $('mapRows').innerHTML = e.rules.map(mapRowHtml).join('') || '<tr><td colspan="7" class="hint">No fields yet.</td></tr>';
+  $('mapOut').hidden = true;
+}
+function editedRows() {
+  return [...$('mapRows').querySelectorAll('tr[data-origin]')].map((tr) => {
+    const v = (f) => tr.querySelector(`[data-f="${f}"]`);
+    const b = tr.querySelector('[data-target]');
+    return { target: b ? b.dataset.target : v('target').value.trim(), source: v('source').value.trim(), transform_text: v('transform_text').value, default: v('default').value === '' ? undefined : v('default').value, required: v('required').checked, removed: v('removed').checked };
+  }).filter((r) => r.target || r.source);
+}
+async function openMap(id, keepEntity) {
+  const r = await req('GET', `/connectors/connections/${id}/mapping`);
+  if (!r.entities.length) { say('This connection has no field mapping to edit.', false); return; }
+  map = { id, entities: r.entities };
+  $('mapTitle').textContent = `Field mapping: ${r.connection.name}`;
+  $('mapTransforms').innerHTML = r.transforms.map((t) => `<code>${esc(t)}</code>`).join(' ');
+  $('mapNote').textContent = r.note || '';
+  $('mapEntity').innerHTML = r.entities.map((e) => `<option value="${esc(e.key)}">${esc(e.label)}${e.changed ? ' (changed)' : ''}</option>`).join('');
+  if (keepEntity && r.entities.some((e) => e.key === keepEntity)) $('mapEntity').value = keepEntity;
+  renderMap(); $('mapCard').hidden = false; $('mapCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('mapEntity').addEventListener('change', renderMap);
+$('mapClose').addEventListener('click', () => { $('mapCard').hidden = true; map = null; });
+$('mapAdd').addEventListener('click', () => { const tb = $('mapRows'); if (!tb.querySelector('tr[data-origin]')) tb.innerHTML = ''; tb.insertAdjacentHTML('beforeend', mapRowHtml({ origin: 'added', target: '', source: '', transform_text: '', required: false })); });
+$('mapRows').addEventListener('change', (ev) => { if (ev.target.dataset.f === 'removed') ev.target.closest('tr').classList.toggle('off', ev.target.checked); });
+$('mapPreview').addEventListener('click', guard(async () => {
+  if (!map) return;
+  const r = await req('POST', `/connectors/connections/${map.id}/mapping/preview`, { entity: $('mapEntity').value, edited: editedRows() });
+  const out = $('mapOut'); out.hidden = false;
+  const head = r.sample_record_id ? `Sample record: ${r.sample_record_id}` : 'No sample record yet (add a person first). Showing what an empty record gives.';
+  const problems = (r.errors || []).length ? ['Problems:', ...r.errors.map((e) => `- ${e}`)] : ['No problems found.'];
+  out.textContent = [head, '', 'What would be sent:', JSON.stringify(r.output, null, 2), '', ...problems].join('\n');
+}));
+$('mapSave').addEventListener('click', guard(async () => {
+  if (!map) return;
+  const entity = $('mapEntity').value;
+  const r = await req('PUT', `/connectors/connections/${map.id}/mapping`, { entity, rules: editedRows() });
+  say(r.changes ? `Mapping saved (${r.changes} ${r.changes === 1 ? 'change' : 'changes'} from the defaults).` : 'Mapping saved. It matches the defaults of the connector.'); await openMap(map.id, entity);
+}));
+$('mapReset').addEventListener('click', guard(async () => {
+  if (!map || !window.confirm('Go back to the default fields of the connector for this list? Your changes to it are removed.')) return;
+  const entity = $('mapEntity').value;
+  await req('PUT', `/connectors/connections/${map.id}/mapping`, { entity, reset: true }); say('Back to the defaults.'); await openMap(map.id, entity);
+}));
+
+/* alerts */
+function alertHtml(a) {
+  return `<div class="alertRow"><div><b>${esc(a.title)}</b> ${a.status === 'acknowledged' ? tag('Acknowledged', 'warnTag') : tag('Open', 'badTag')}<div>${esc(a.message)}</div><div class="hint">Since ${esc(when(a.raised_at))}${a.last_error ? ` · last error: ${esc(a.last_error)}` : ''}${a.acknowledge_note ? ` · note: ${esc(a.acknowledge_note)}` : ''}</div></div>${a.status === 'open' && canManage ? `<button class="ghost" data-ack="${esc(a.id)}">Acknowledge</button>` : ''}</div>`;
+}
+async function loadAlerts() {
+  const r = await req('GET', '/alerts?status=all');
+  const active = r.data.filter((a) => a.status !== 'resolved'); const open = active.filter((a) => a.status === 'open');
+  $('alertsTab').textContent = open.length ? `Alerts (${open.length})` : 'Alerts';
+  $('alertBanner').hidden = !open.length; $('alertBannerList').innerHTML = open.map(alertHtml).join('');
+  $('alertList').innerHTML = active.map(alertHtml).join('') || '<p class="hint">Nothing needs attention.</p>';
+  $('alertHistory').innerHTML = r.data.filter((a) => a.status === 'resolved').slice(0, 50).map((a) => `<tr><td>${esc(a.title)}<div class="hint">${esc(a.failures)} failures in a row at most</div></td><td>${esc(when(a.raised_at))}</td><td>${esc(when(a.resolved_at))}</td><td>${a.acknowledged_at ? `${esc(when(a.acknowledged_at))}${a.acknowledge_note ? `<div class="hint">${esc(a.acknowledge_note)}</div>` : ''}` : 'No'}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No closed alerts.</td></tr>';
+  const f = $('alertForm'); f.enabled.checked = r.settings.enabled; f.syncFailures.value = r.settings.syncFailures; f.webhookFailures.value = r.settings.webhookFailures;
+}
+const ackClick = guard(async (ev) => {
+  const b = ev.target.closest('button[data-ack]'); if (!b) return;
+  const note = window.prompt('Add a short note for your colleagues (optional). The alert stays listed until the problem is fixed.', ''); if (note === null) return;
+  await req('POST', `/alerts/${b.dataset.ack}/acknowledge`, { note }); say('Acknowledged.'); await loadAlerts();
+});
+$('alertBannerList').addEventListener('click', ackClick); $('alertList').addEventListener('click', ackClick);
+$('alertForm').addEventListener('submit', guard(async (ev) => { ev.preventDefault(); const f = ev.target; await req('PUT', '/alerts/settings', { enabled: f.enabled.checked, syncFailures: Number(f.syncFailures.value), webhookFailures: Number(f.webhookFailures.value) }); say('Saved.'); await loadAlerts(); }));
+
+/* log */
+async function loadLog() {
+  const r = await req('GET', '/api-log');
+  $('log').innerHTML = r.data.slice(0, 200).map((x) => `<tr><td>${esc(when(x.at))}</td><td>${esc(x.principal || '')}</td><td><code>${esc(x.method)} ${esc(x.path)}</code></td><td>${x.status < 400 ? tag(String(x.status), 'good') : tag(String(x.status), 'badTag')}</td><td>${esc(x.ms)} ms</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No API requests yet.</td></tr>';
+}
+
+const LOADERS = { keys: loadKeys, hooks: loadHooks, apps: loadApps, scim: loadScim, conn: loadConn, alerts: loadAlerts, log: loadLog };
+function show(tab) {
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;
+  LOADERS[tab]().catch((e) => say(e.message, false));
+}
+$('tabs').addEventListener('click', (ev) => { const b = ev.target.closest('button[data-tab]'); if (b) show(b.dataset.tab); });
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try {
+    meta = await req('GET', '/meta');
+    $('keyScopes').innerHTML = scopeBoxes('scope'); $('appScopes').innerHTML = scopeBoxes('ascope');
+    $('hookEvents').innerHTML = Object.entries(meta.events || {}).map(([k, d]) => `<label class="chk"><input type="checkbox" name="event" value="${esc(k)}"> <span><b>${esc(k)}</b><br><span class="hint">${esc(d.description || '')}</span></span></label>`).join('');
+    try { await req('GET', '/settings'); } catch (e) { if (e.status === 403) noManage(); }
+    await loadOverview(); await loadKeys(); loadAlerts().catch(() => {});
+  } catch (e) { say(e.status === 409 ? 'Integrations are for US companies.' : e.status === 403 ? 'You do not have access to integrations.' : e.message, false); }
+});
+</script>
+</body>
+</html>

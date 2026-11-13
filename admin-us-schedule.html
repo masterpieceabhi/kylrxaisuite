@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Schedule | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1320px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+table.week{min-width:980px;table-layout:fixed}table.week th,table.week td{border:1px solid var(--line);padding:6px}table.week th:first-child,table.week td:first-child{width:170px}
+table.week td.today,table.week th.today{background:#f0f9ff}
+.shift{display:block;width:100%;text-align:left;border-radius:8px;padding:5px 7px;margin-bottom:4px;font-size:12px;font-weight:600;background:#dbeafe;color:#1e3a8a;border:1px solid #bfdbfe}
+.shift.draft{background:#fff;color:#334155;border:1px dashed #94a3b8}.shift.open{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.shift small{display:block;font-weight:500}
+.add{display:block;width:100%;background:transparent;color:#94a3b8;border:1px dashed transparent;padding:2px;font-size:12px}.add:hover{border-color:#cbd5e1;color:var(--blue)}
+</style>
+</head>
+<body>
+<header><h1>Schedule</h1><div><a href="admin-us-time.html">Time</a> &nbsp;|&nbsp; <a href="admin-us-org.html">Company structure</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs">
+    <button data-tab="week" class="on">Week</button>
+    <button data-tab="asks">Requests <span id="askCount"></span></button>
+    <button data-tab="actual">Planned and worked</button>
+    <button data-tab="jobs">Jobs</button>
+    <button data-tab="rules">Rules</button>
+  </div>
+
+  <div id="tab-week" class="pane on">
+    <section class="card">
+      <div class="row" style="margin-top:0;justify-content:space-between">
+        <div class="row" style="margin-top:0"><button class="ghost" id="wPrev">Earlier week</button><b id="wLabel"></b><button class="ghost" id="wNext">Later week</button><span id="wState"></span></div>
+        <div class="row" style="margin-top:0"><button class="ghost" id="wCopy">Copy last week into this week</button><button id="wPublish">Publish this week</button></div>
+      </div>
+      <p class="hint">Dashed shifts are drafts that staff cannot see yet. Click an empty day to add a shift, or a shift to change it. Staff are told when you publish, and again if you change a published shift.</p>
+      <table class="week" style="margin-top:8px"><thead id="wHead"></thead><tbody id="wBody"></tbody></table>
+    </section>
+    <section class="card" id="shiftCard" hidden>
+      <h2 id="shiftTitle">Add a shift</h2>
+      <form id="shiftForm"><div class="grid">
+        <label>Who<select name="userId" id="sUser"></select></label>
+        <label>Day<input name="date" type="date" required></label>
+        <label>Starts<input name="startTime" type="time" required></label>
+        <label>Ends<input name="endTime" type="time" required></label>
+        <label>Unpaid break (minutes)<input name="breakMinutes" type="number" min="0" max="240" value="0"></label>
+        <label>Role (optional)<input name="role" maxlength="60" placeholder="Cashier"></label>
+        <label>Note (optional)<input name="notes" maxlength="300"></label>
+      </div>
+      <div class="row" id="repeatRow"><span class="hint">Also add on:</span><span id="repeatDays"></span></div>
+      <div class="row"><button type="submit">Save shift</button><button type="button" class="no" id="shiftDelete" hidden>Remove shift</button><button type="button" class="ghost" id="shiftCancel">Close</button></div></form>
+      <div id="shiftWarn" style="margin-top:10px"></div>
+    </section>
+  </div>
+
+  <div id="tab-asks" class="pane">
+    <section class="card">
+      <h2>People asking to take an open shift</h2>
+      <table><thead><tr><th>Who</th><th>Shift</th><th>Asked</th><th></th></tr></thead><tbody id="claimRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Swaps and shifts people want to give up</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="swStatus"><option value="pending_manager">Waiting for you</option><option value="pending_peer">Waiting for the coworker</option><option value="approved">Approved</option><option value="denied">Denied</option><option value="">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Who</th><th>What</th><th>Shift</th><th>Note</th><th>Status</th><th></th></tr></thead><tbody id="swRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-actual" class="pane">
+    <section class="card">
+      <h2>Planned shifts compared with clock-ins</h2>
+      <div class="row" style="margin-top:0"><label>From<input id="aFrom" type="date"></label><label>To<input id="aTo" type="date"></label><button class="ghost" id="aGo">Show</button></div>
+      <p id="aSum" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Person</th><th>Shift</th><th>Clocked in</th><th>Clocked out</th><th>Planned</th><th>Worked</th><th>Result</th></tr></thead><tbody id="aRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Extra pay that may be owed for late schedule changes</h2>
+      <p class="hint">Listed only when you have set up a notice rule on the Rules tab. These amounts are not sent to payroll for you.</p>
+      <table><thead><tr><th>Person</th><th>Shift</th><th>What changed</th><th>Rule</th><th>Extra hours</th></tr></thead><tbody id="pRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-jobs" class="pane">
+    <section class="card">
+      <h2>Jobs, projects or customers that time is charged to</h2>
+      <p class="hint">Staff say which job their worked time went to on their "My schedule" page. Use this to see labor hours by job.</p>
+      <table><thead><tr><th>Code</th><th>Name</th><th>Billable</th><th>Cost center</th><th>Status</th><th></th></tr></thead><tbody id="jobRows"></tbody></table>
+      <form id="jobForm" style="margin-top:12px"><div class="grid">
+        <label>Code<input name="code" required maxlength="20" placeholder="KITCHEN-REMODEL"></label>
+        <label>Name<input name="name" required maxlength="100"></label>
+        <label>Cost center (optional)<input name="costCenter" maxlength="40"></label>
+        <label class="chk"><input type="checkbox" name="billable"> Billable to a customer</label>
+      </div><div class="row"><button type="submit" class="ghost">Add job</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Hours by job</h2>
+      <div class="row" style="margin-top:0"><label>From<input id="jFrom" type="date"></label><label>To<input id="jTo" type="date"></label><button class="ghost" id="jGo">Show</button></div>
+      <p id="jSum" style="margin:12px 0 0"></p>
+      <table style="margin-top:8px"><thead><tr><th>Job</th><th>Hours</th><th>People</th><th>Billable</th><th>Cost center</th></tr></thead><tbody id="jRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-rules" class="pane">
+    <section class="card">
+      <h2>Scheduling limits</h2>
+      <form id="setForm"><div class="grid">
+        <label>Rest between shifts (hours)<input name="minRestHours" type="number" min="0" max="24" step="0.5"></label>
+        <label>Longest day (hours)<input name="maxDailyHours" type="number" min="1" max="24" step="0.5"></label>
+        <label>Longest week (hours)<input name="maxWeeklyHours" type="number" min="1" max="168"></label>
+        <label>Overtime starts after (hours a week)<input name="overtimeWeeklyHours" type="number" min="1" max="168"></label>
+        <label class="chk"><input type="checkbox" name="enforceRest"> Block shifts that break the rest rule</label>
+        <label class="chk"><input type="checkbox" name="enforceMax"> Block shifts that go over the longest day or week</label>
+        <label class="chk"><input type="checkbox" name="claimNeedsApproval"> A manager approves open-shift requests</label>
+        <label class="chk"><input type="checkbox" name="swapNeedsManager"> A manager approves swaps</label>
+      </div>
+      <p class="hint">When a rule is not blocking, you still get a warning. Some states set their own rest and overtime rules: confirm yours with an advisor.</p>
+      <div class="row"><button type="submit">Save limits</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Notice rules for schedule changes</h2>
+      <div class="warn" id="prNote"></div>
+      <table><thead><tr><th>Name</th><th>Notice needed</th><th>Extra pay</th><th>Where</th><th>Status</th><th></th></tr></thead><tbody id="prRows"></tbody></table>
+      <form id="prForm" style="margin-top:12px"><div class="grid">
+        <label>Name<input name="name" required maxlength="120" placeholder="City fair workweek rule"></label>
+        <label>Days of notice needed<input name="noticeDays" type="number" min="0" max="60" required></label>
+        <label>Extra hours of pay for a late change<input name="premiumHours" type="number" min="0" max="8" step="0.5" value="1"></label>
+        <label>States it applies to (2-letter codes, commas; empty = all)<input name="jurisdictions" placeholder="NY, IL"></label>
+      </div><div class="row"><button type="submit" class="ghost">Add rule</button></div></form>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const addDays = (s, n) => { const d = new Date(`${s}T12:00:00`); d.setDate(d.getDate() + n); return iso(d); };
+const mondayOf = (s) => { const d = new Date(`${s}T12:00:00`); return addDays(s, -((d.getDay() + 6) % 7)); };
+const dayLabel = (s, long) => new Date(`${s}T12:00:00`).toLocaleDateString('en-US', long ? { weekday: 'long', month: 'short', day: 'numeric' } : { weekday: 'short', month: 'numeric', day: 'numeric' });
+const t12 = (t) => { const [h, m] = String(t || '').split(':').map(Number); if (Number.isNaN(h)) return ''; return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`; };
+const hm = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
+const stamp = (i) => (i ? new Date(i).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const clock = (i) => (i ? new Date(i).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '');
+let weekStart = mondayOf(iso(new Date())); let week = null; let editing = null; let canRules = true;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us/schedule${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const warnText = (list) => (list || []).map((c) => c.message || words(c.type || c.code || '')).filter(Boolean);
+
+// ----------------------------------------------------------------------- week
+async function loadWeek() {
+  week = await req('GET', `/week?weekStart=${weekStart}`);
+  const days = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(weekStart, n));
+  $('wLabel').textContent = `${dayLabel(days[0], true)} to ${dayLabel(days[6], true)}`;
+  const drafts = week.shifts.filter((s) => s.status === 'draft').length;
+  $('wState').innerHTML = !week.shifts.length ? '<span class="tag grey">nothing planned</span>' : drafts ? `<span class="tag warnTag">${drafts} draft shift${drafts === 1 ? '' : 's'} not published</span>` : '<span class="tag good">published</span>';
+  $('wPublish').disabled = drafts === 0; $('wPublish').style.opacity = drafts ? '1' : '.5';
+  $('wHead').innerHTML = `<tr><th>Person</th>${days.map((d) => `<th class="${d === week.today ? 'today' : ''}">${esc(dayLabel(d))}</th>`).join('')}</tr>`;
+  const cell = (userId, d) => {
+    const list = week.shifts.filter((s) => (s.userId || '') === userId && s.date === d).sort((a, b) => a.startTime.localeCompare(b.startTime));
+    return `<td class="${d === week.today ? 'today' : ''}">${list.map((s) => `<button type="button" class="shift ${s.status === 'draft' ? 'draft' : ''} ${!s.userId && s.status !== 'draft' ? 'open' : ''}" data-shift="${esc(s.id)}">${esc(t12(s.startTime))} - ${esc(t12(s.endTime))}<small>${esc([s.role, `${s.hours}h`, s.claim && s.claim.status === 'pending' ? 'requested' : ''].filter(Boolean).join(' · '))}</small></button>`).join('')}<button type="button" class="add" data-add="${esc(userId)}" data-date="${d}" aria-label="Add a shift on ${esc(dayLabel(d, true))}">+ add</button></td>`;
+  };
+  const W = { over_weekly_hours: ['over the longest week', 'badTag'], overtime_risk: ['overtime', 'warnTag'] };
+  $('wBody').innerHTML = `<tr><td><b>Open shifts</b><br><span class="hint">anyone can ask to take these</span></td>${days.map((d) => cell('', d)).join('')}</tr>` + week.staff.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="hint">${esc(p.jobTitle || '')} ${esc(p.scheduledHours)}h planned</span>${p.warnings.map((w) => `<br><span class="tag ${W[w][1]}">${W[w][0]}</span>`).join('')}</td>${days.map((d) => cell(p.userId, d)).join('')}</tr>`).join('');
+  $('sUser').innerHTML = '<option value="">Open shift (nobody yet)</option>' + week.staff.map((p) => `<option value="${esc(p.userId)}">${esc(p.name)}</option>`).join('');
+}
+function openShiftForm(shift, userId, date) {
+  editing = shift ? shift.id : null; const f = $('shiftForm').elements; $('shiftCard').hidden = false; $('shiftWarn').innerHTML = '';
+  $('shiftTitle').textContent = shift ? 'Change a shift' : 'Add a shift';
+  f.userId.value = shift ? shift.userId || '' : userId; f.date.value = shift ? shift.date : date; f.startTime.value = shift ? shift.startTime : '09:00'; f.endTime.value = shift ? shift.endTime : '17:00';
+  f.breakMinutes.value = shift ? shift.breakMinutes || 0 : 30; f.role.value = shift ? shift.role || '' : ''; f.notes.value = shift ? shift.notes || '' : '';
+  $('shiftDelete').hidden = !shift; $('repeatRow').hidden = Boolean(shift);
+  $('repeatDays').innerHTML = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(weekStart, n)).filter((d) => d !== f.date.value).map((d) => `<label class="chk" style="display:inline-flex;margin-right:10px"><input type="checkbox" data-repeat="${d}"> ${esc(dayLabel(d))}</label>`).join('');
+  $('shiftCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+$('shiftCancel').addEventListener('click', () => { $('shiftCard').hidden = true; });
+$('shiftForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  const body = { userId: f.userId.value || null, date: f.date.value, startTime: f.startTime.value, endTime: f.endTime.value, breakMinutes: Number(f.breakMinutes.value || 0), role: f.role.value, notes: f.notes.value };
+  try {
+    let warnings = []; let extra = '';
+    if (editing) { const r = await req('PUT', `/shifts/${editing}`, body); warnings = warnText(r.warnings); if ((r.premiumOwed || []).length) extra = ' A notice rule applies: extra pay may be owed (see Planned and worked).'; } else {
+      const more = [...document.querySelectorAll('[data-repeat]:checked')].map((c) => c.dataset.repeat);
+      if (more.length) {
+        const r = await req('POST', '/shifts/bulk', { ...body, userIds: body.userId ? [body.userId] : [], dates: [body.date, ...more] });
+        r.results.forEach((x) => { if (!x.created) warnings.push(`${dayLabel(x.date)} was not added: ${x.error}`); else warnings.push(...warnText(x.warnings).map((w) => `${dayLabel(x.date)}: ${w}`)); });
+        extra = ` ${r.created} added${r.skipped ? `, ${r.skipped} skipped` : ''}.`;
+      } else { const r = await req('POST', '/shifts', body); warnings = warnText(r.warnings); }
+    }
+    await loadWeek(); say(`Shift saved.${extra}`);
+    if (warnings.length) { $('shiftWarn').innerHTML = `<div class="warn" style="margin:0">Check: ${warnings.map(esc).join('; ')}</div>`; } else $('shiftCard').hidden = true;
+  } catch (err) { say(err.message, false); }
+});
+$('shiftDelete').addEventListener('click', async () => {
+  const s = week.shifts.find((x) => x.id === editing);
+  if (s.status === 'published' && !window.confirm('This shift is published. Cancel it and tell the person?')) return;
+  try { const r = await req('DELETE', `/shifts/${editing}`); $('shiftCard').hidden = true; await loadWeek(); say(r.cancelled ? `Shift cancelled.${(r.premiumOwed || []).length ? ' A notice rule applies: extra pay may be owed.' : ''}` : 'Draft shift removed.'); } catch (err) { say(err.message, false); }
+});
+$('wPrev').addEventListener('click', () => { weekStart = addDays(weekStart, -7); $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
+$('wNext').addEventListener('click', () => { weekStart = addDays(weekStart, 7); $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
+$('wCopy').addEventListener('click', async () => {
+  if (!window.confirm('Copy every shift from last week into this week as drafts?')) return;
+  try { const r = await req('POST', '/copy', { fromWeek: addDays(weekStart, -7), toWeek: weekStart }); await loadWeek(); say(`${r.created} shifts copied as drafts.${r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped[0].reason}` : ''}`, r.skipped.length === 0); } catch (err) { say(err.message, false); }
+});
+$('wPublish').addEventListener('click', async () => {
+  if (!window.confirm('Publish this week? Staff will see their shifts and get a notice.')) return;
+  try { const r = await req('POST', '/publish', { weekStart }); await loadWeek(); say(`${r.published} shifts published. ${r.notified} ${r.notified === 1 ? 'person' : 'people'} told.`); } catch (err) { say(err.message, false); }
+});
+
+// ------------------------------------------------------------------- requests
+async function loadAsks() {
+  const [c, s, waiting] = await Promise.all([req('GET', '/claims'), req('GET', `/swaps?scope=manage${$('swStatus').value ? `&status=${$('swStatus').value}` : ''}`), req('GET', '/swaps?scope=manage&status=pending_manager')]);
+  const n = c.data.length + waiting.data.length; $('askCount').textContent = n ? `(${n})` : '';
+  $('claimRows').innerHTML = c.data.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(dayLabel(x.date, true))}, ${esc(t12(x.startTime))} - ${esc(t12(x.endTime))}</td><td>${esc(stamp(x.at))}</td><td><button data-claim="${esc(x.shiftId)}" data-d="approve">Approve</button> <button class="no" data-claim="${esc(x.shiftId)}" data-d="deny">Deny</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nobody is waiting.</td></tr>';
+  const ST = { pending_manager: ['waiting for you', 'warnTag'], pending_peer: ['waiting for the coworker', 'grey'], approved: ['approved', 'good'], denied: ['denied', 'badTag'], declined: ['coworker declined', 'grey'], cancelled: ['cancelled', 'grey'] };
+  $('swRows').innerHTML = s.data.map((x) => `<tr><td><b>${esc(x.requesterName || '')}</b></td><td>${x.type === 'drop' ? 'Wants to give up the shift' : `Swap with ${esc(x.targetName || '')}${x.targetShiftId ? ' (trading shifts)' : ''}`}</td><td>${esc(dayLabel(x.shiftDate, true))}, ${esc(x.shiftTime.split('-').map(t12).join(' - '))}</td><td>${esc(x.note || '')}</td><td><span class="tag ${(ST[x.status] || [0, 'grey'])[1]}">${esc((ST[x.status] || [x.status])[0])}</span></td><td>${x.status === 'pending_manager' ? `<button data-swap="${esc(x.id)}" data-d="approve">Approve</button> <button class="no" data-swap="${esc(x.id)}" data-d="deny">Deny</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nothing here.</td></tr>';
+}
+$('swStatus').addEventListener('change', () => loadAsks().catch((err) => say(err.message, false)));
+
+// ----------------------------------------------------------- planned vs worked
+async function loadActual() {
+  const r = await req('GET', `/reports/vs-actual?from=${$('aFrom').value}&to=${$('aTo').value}`);
+  const s = r.summary; $('aSum').textContent = s.shifts ? `${s.shifts} shifts: ${s.onTime} on time, ${s.late} late, ${s.earlyLeave} left early, ${s.noShow} did not show. Planned ${hm(s.scheduledMinutes)}, worked ${hm(s.workedMinutes || 0)}.` : '';
+  const R = { on_time: ['on time', 'good'], late: ['late', 'warnTag'], early_leave: ['left early', 'warnTag'], late_and_early_leave: ['late and left early', 'warnTag'], no_show: ['did not show', 'badTag'], late_pending: ['not clocked in yet', 'warnTag'], upcoming: ['not started', 'grey'] };
+  $('aRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(dayLabel(x.date))}, ${esc(t12(x.startTime))} - ${esc(t12(x.endTime))}</td><td>${esc(clock(x.punchedIn))}${x.lateMinutes ? ` <span class="hint">${x.lateMinutes} min late</span>` : ''}</td><td>${esc(clock(x.punchedOut))}${x.earlyMinutes ? ` <span class="hint">${x.earlyMinutes} min early</span>` : ''}</td><td>${hm(x.scheduledMinutes)}</td><td>${hm(x.workedMinutes)}</td><td><span class="tag ${(R[x.status] || [0, 'grey'])[1]}">${esc((R[x.status] || [x.status])[0])}</span></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No published shifts in these dates.</td></tr>';
+  const p = await req('GET', '/reports/premium');
+  $('pRows').innerHTML = p.data.flatMap((x) => x.premiumOwed.map((o) => `<tr><td><b>${esc(x.name || 'Open shift')}</b></td><td>${esc(dayLabel(x.date))} ${esc(t12(x.startTime))}</td><td>${esc(words(o.change || ''))}</td><td>${esc(o.ruleName || o.rule || '')}</td><td>${esc(o.premiumHours ?? o.hours ?? '')}</td></tr>`)).join('') || '<tr><td colspan="5" class="hint">Nothing owed.</td></tr>';
+}
+$('aGo').addEventListener('click', () => loadActual().catch((err) => say(err.message, false)));
+
+// ----------------------------------------------------------------------- jobs
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function loadJobs() {
+  const jobs = (await api('GET', '/jobs?all=1')).data;
+  $('jobRows').innerHTML = jobs.map((j) => `<tr><td><b>${esc(j.code)}</b></td><td>${esc(j.name)}</td><td>${j.billable ? 'Yes' : 'No'}</td><td>${esc(j.costCenter || '')}</td><td>${j.active === false ? '<span class="tag grey">closed</span>' : '<span class="tag good">open</span>'}</td><td><button class="ghost" data-jobtoggle="${esc(j.id)}" data-on="${j.active === false ? '1' : ''}">${j.active === false ? 'Reopen' : 'Close'}</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No jobs yet.</td></tr>';
+  const r = await api('GET', `/jobs/report?from=${$('jFrom').value}&to=${$('jTo').value}`);
+  $('jSum').textContent = r.data.length ? `${r.totalHours} hours charged to jobs in these dates.` : '';
+  $('jRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.code)}</b> ${esc(x.name)}</td><td>${esc(x.hours)}</td><td>${esc(x.workers)}</td><td>${x.billable ? 'Yes' : 'No'}</td><td>${esc(x.costCenter || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No time charged to jobs in these dates.</td></tr>';
+}
+$('jobForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await api('POST', '/jobs', { code: f.code.value, name: f.name.value, costCenter: f.costCenter.value, billable: f.billable.checked }); e.target.reset(); say('Job added.'); await loadJobs(); } catch (err) { say(err.message, false); }
+});
+$('jGo').addEventListener('click', () => loadJobs().catch((err) => say(err.message, false)));
+
+// ---------------------------------------------------------------------- rules
+async function loadRules() {
+  const s = (await req('GET', '/settings')).settings; const f = $('setForm').elements;
+  ['minRestHours', 'maxDailyHours', 'maxWeeklyHours', 'overtimeWeeklyHours'].forEach((k) => { f[k].value = s[k]; });
+  ['enforceRest', 'enforceMax', 'claimNeedsApproval', 'swapNeedsManager'].forEach((k) => { f[k].checked = Boolean(s[k]); });
+  const r = await req('GET', '/predictive-rules'); $('prNote').textContent = r.note;
+  $('prRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.noticeDays)} days</td><td>${x.premiumPay ? `${esc(x.premiumHours)} hours` : 'none'}</td><td>${esc((x.jurisdictions || []).join(', ') || 'Everywhere')}</td><td>${x.enabled ? '<span class="tag good">on</span>' : '<span class="tag grey">off</span>'}</td><td><button class="ghost" data-prtoggle="${esc(x.id)}" data-on="${x.enabled ? '' : '1'}">${x.enabled ? 'Turn off' : 'Turn on'}</button> <button class="no" data-prdel="${esc(x.id)}">Delete</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No notice rules. Add one only if a fair-workweek law applies where your staff work.</td></tr>';
+}
+$('setForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const body = {};
+  ['minRestHours', 'maxDailyHours', 'maxWeeklyHours', 'overtimeWeeklyHours'].forEach((k) => { body[k] = Number(f[k].value); });
+  ['enforceRest', 'enforceMax', 'claimNeedsApproval', 'swapNeedsManager'].forEach((k) => { body[k] = f[k].checked; });
+  try { await req('PUT', '/settings', body); say('Limits saved.'); } catch (err) { say(err.message, false); }
+});
+$('prForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', '/predictive-rules', { name: f.name.value, noticeDays: Number(f.noticeDays.value), premiumHours: Number(f.premiumHours.value), jurisdictions: f.jurisdictions.value.split(',').map((s) => s.trim()).filter(Boolean) }); e.target.reset(); say('Rule added. Confirm it with counsel before relying on it.'); await loadRules(); } catch (err) { say(err.message, false); }
+});
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('shift'))) openShiftForm(week.shifts.find((s) => s.id === t.dataset.shift));
+    else if ((t = el('add'))) openShiftForm(null, t.dataset.add, t.dataset.date);
+    else if ((t = el('claim'))) { await req('POST', `/shifts/${t.dataset.claim}/claim/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The shift is theirs.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('swap'))) { await req('POST', `/swaps/${t.dataset.swap}/decision`, { decision: t.dataset.d }); say(t.dataset.d === 'approve' ? 'Approved. The schedule is updated.' : 'Denied.'); await loadAsks(); await loadWeek(); } else if ((t = el('jobtoggle'))) { await api('PUT', `/jobs/${t.dataset.jobtoggle}`, { active: Boolean(t.dataset.on) }); await loadJobs(); } else if ((t = el('prtoggle'))) { await req('PUT', `/predictive-rules/${t.dataset.prtoggle}`, { enabled: Boolean(t.dataset.on) }); await loadRules(); } else if ((t = el('prdel'))) { if (window.confirm('Delete this rule?')) { await req('DELETE', `/predictive-rules/${t.dataset.prdel}`); await loadRules(); } }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  const today = iso(new Date()); $('aTo').value = today; $('aFrom').value = addDays(today, -6);
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  $('jTo').value = today; $('jFrom').value = addDays(today, -29);
+  await step(loadWeek); await step(loadAsks); await step(loadActual); await step(loadRules); await step(loadJobs);
+});
+</script>
+</body>
+</html>

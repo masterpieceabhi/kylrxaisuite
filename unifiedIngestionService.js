@@ -56,10 +56,43 @@
         return `${prefix}_${timestamp}_${random}`.toUpperCase();
     }
 
+    // Placeholder company IDs that ship in the sample templates; they mean "the signed-in company"
+    const PLACEHOLDER_ORG_IDS = ['ORG_KYLRX_CORP', 'ORG_KYLRX_01', 'ORG_KYLRX', 'ORG_SAMPLE', 'YOUR_ORG_ID'];
+
+    /**
+     * Company a row is written to. The signed-in company (options.orgId) always wins; a blank or
+     * template-placeholder Organization_ID means "this company"; a row naming a different real company
+     * is rejected. Without a signed-in company (dry run / tests) the row's own ID is used.
+     */
+    function resolveTenant(rowOrgId, sessionOrgId) {
+        const rowOrg = String(rowOrgId == null ? '' : rowOrgId).trim();
+        if (!sessionOrgId) return { orgId: rowOrg || '' };
+        if (!rowOrg || PLACEHOLDER_ORG_IDS.indexOf(rowOrg.toUpperCase()) !== -1 || rowOrg === sessionOrgId) {
+            return { orgId: sessionOrgId };
+        }
+        return { error: `Organization_ID '${rowOrg}' belongs to a different company than the one you are signed in to.` };
+    }
+
+    /**
+     * Where a person's login/profile document lives: the existing user of this company with that
+     * employee ID, otherwise a new roster-only profile (no login yet) that an invite can later claim.
+     */
+    async function resolveUserPath(firestore, orgId, empId) {
+        try {
+            if (firestore && typeof firestore.collection === 'function') {
+                const snap = await firestore.collection('users').where('orgId', '==', orgId).where('employeeId', '==', empId).limit(1).get();
+                const docs = snap && snap.docs ? snap.docs : [];
+                if (docs.length) return { path: `users/${docs[0].id}`, existing: true };
+            }
+        } catch (_) { /* fall through to a roster-only profile */ }
+        const safe = `${orgId}_${empId}`.replace(/[^A-Za-z0-9_-]/g, '_');
+        return { path: `users/roster_${safe}`, existing: false };
+    }
+
     /**
      * Standard monthly salary breakdown from annual CTC
      */
-    function computeStandardSalaryComponents(annualCtc) {
+    function computeStandardSalaryComponents(annualCtc, currency) {
         const monthlyGross = Math.round((annualCtc || 0) / 12);
         const basic = Math.round(monthlyGross * 0.50);
         const hra = Math.round(basic * 0.40);
@@ -71,7 +104,7 @@
             basic,
             hra,
             specialAllowance,
-            currency: 'INR',
+            currency: currency || 'INR',
             frequency: 'Monthly'
         };
     }
@@ -82,7 +115,7 @@
      * =========================================================================
      */
     async function ingestJobRosterBatch(records, options = {}) {
-        const orgId = options.orgId || 'ORG_KYLRX_CORP';
+        const orgId = options.orgId || '';
         const actorId = options.actorId || options.adminId || 'SUPER_ADMIN';
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
         const isDryRun = Boolean(options.dryRun);
@@ -91,11 +124,18 @@
         const errors = [];
         const successRecords = [];
         const historySnapshots = [];
+        const currency = options.currency || 'INR';
+
+        if (!isDryRun && !orgId) {
+            return { success: false, template: 'JOB_ROSTER_UPDATES', totalCount: total, successCount: 0, failureCount: total, records: [], historySnapshots: [],
+                errors: [{ error: 'No signed-in company. Sign in again before importing.' }] };
+        }
 
         for (let i = 0; i < records.length; i++) {
             const row = records[i];
             const empId = row.Employee_ID;
-            const rowTenant = row.Organization_ID || orgId;
+            const tenant = resolveTenant(row.Organization_ID, orgId);
+            const rowTenant = tenant.orgId;
 
             if (!empId) {
                 errors.push({
@@ -105,9 +145,13 @@
                 });
                 continue;
             }
+            if (tenant.error) {
+                errors.push({ rowIndex: row.rowIndex || i + 1, employeeId: empId, error: tenant.error });
+                continue;
+            }
 
             try {
-                const salaryBreakdown = computeStandardSalaryComponents(row.Annual_CTC);
+                const salaryBreakdown = computeStandardSalaryComponents(row.Annual_CTC, currency);
                 const recordId = generateId('JOB_HIST');
                 const nowIso = new Date().toISOString();
 
@@ -183,36 +227,56 @@
                 // Commit to Firestore if not in dry-run mode
                 if (!isDryRun) {
                     const firestore = options.db || getFirestoreDb();
-                    if (firestore) {
+                    const modules = (typeof window !== 'undefined') ? (window.firestoreModules || window.firebaseFirestore) : null;
+                    const canBatch = firestore && (typeof firestore.batch === 'function' || (modules && modules.writeBatch));
+                    if (!canBatch) throw new Error('No database connection available to save this row.');
+                    {
+                        // The person: the company's existing user with this employee ID, or a new roster-only profile
+                        const userTarget = await resolveUserPath(firestore, rowTenant, empId);
+                        const userPayload = {
+                            orgId: rowTenant,
+                            employeeId: empId,
+                            department: row.Department_Code,
+                            departmentCode: row.Department_Code,
+                            designation: row.Designation_Title,
+                            status: row.Active !== false ? 'Active' : 'Inactive',
+                            updatedAt: nowIso
+                        };
+                        if (row.Employee_Name) userPayload.name = row.Employee_Name;
+                        if (row.Official_Email) userPayload.email = String(row.Official_Email).toLowerCase();
+                        if (!userTarget.existing) {
+                            if (!userPayload.name) userPayload.name = empId;
+                            Object.assign(userPayload, { role: 'employee', hasLogin: false, invite_status: 'not_invited', createdAt: nowIso, source: 'job_roster_import' });
+                        }
                         if (typeof firestore.batch === 'function') {
                             // Firestore v8 / Admin SDK
                             const batch = firestore.batch();
                             const salaryRef = firestore.doc(`organizations/${rowTenant}/salary_structures/${empId}`);
                             const employeeRef = firestore.doc(`organizations/${rowTenant}/employees/${empId}`);
-                            const userRef = firestore.doc(`users/${empId}`);
+                            const userRef = firestore.doc(userTarget.path);
                             const rosterRef = firestore.doc(`organizations/${rowTenant}/attendance_rosters/${empId}`);
                             const historyRef = firestore.doc(`organizations/${rowTenant}/employee_job_history/${empId}/records/${recordId}`);
 
                             batch.set(salaryRef, salaryPayload, { merge: true });
                             batch.set(employeeRef, employeePayload, { merge: true });
-                            batch.set(userRef, { department: row.Department_Code, designation: row.Designation_Title, updatedAt: nowIso }, { merge: true });
+                            batch.set(userRef, userPayload, { merge: true });
                             batch.set(rosterRef, rosterPayload, { merge: true });
                             batch.set(historyRef, historyRecord);
 
                             await batch.commit();
-                        } else if (typeof window !== 'undefined' && window.firestoreModules) {
+                        } else {
                             // Modular Firebase SDK
-                            const { doc, setDoc, writeBatch } = window.firestoreModules;
+                            const { doc, writeBatch } = modules;
                             const batch = writeBatch(firestore);
                             const salaryRef = doc(firestore, `organizations/${rowTenant}/salary_structures/${empId}`);
                             const employeeRef = doc(firestore, `organizations/${rowTenant}/employees/${empId}`);
-                            const userRef = doc(firestore, `users/${empId}`);
+                            const userRef = doc(firestore, userTarget.path);
                             const rosterRef = doc(firestore, `organizations/${rowTenant}/attendance_rosters/${empId}`);
                             const historyRef = doc(firestore, `organizations/${rowTenant}/employee_job_history/${empId}/records/${recordId}`);
 
                             batch.set(salaryRef, salaryPayload, { merge: true });
                             batch.set(employeeRef, employeePayload, { merge: true });
-                            batch.set(userRef, { department: row.Department_Code, designation: row.Designation_Title, updatedAt: nowIso }, { merge: true });
+                            batch.set(userRef, userPayload, { merge: true });
                             batch.set(rosterRef, rosterPayload, { merge: true });
                             batch.set(historyRef, historyRecord);
 
@@ -257,7 +321,7 @@
      * =========================================================================
      */
     async function ingestEmployeeFinanceBatch(records, options = {}) {
-        const orgId = options.orgId || 'ORG_KYLRX_CORP';
+        const orgId = options.orgId || '';
         const actorId = options.actorId || options.adminId || 'SUPER_ADMIN';
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
         const isDryRun = Boolean(options.dryRun);
@@ -270,7 +334,8 @@
         for (let i = 0; i < records.length; i++) {
             const row = records[i];
             const empId = row.Employee_ID;
-            const rowTenant = row.Organization_ID || orgId;
+            const tenant = resolveTenant(row.Organization_ID, orgId);
+            const rowTenant = tenant.orgId;
 
             if (!empId) {
                 errors.push({
@@ -278,6 +343,10 @@
                     employeeId: empId,
                     error: 'Missing mandatory Employee_ID.'
                 });
+                continue;
+            }
+            if (tenant.error) {
+                errors.push({ rowIndex: row.rowIndex || i + 1, employeeId: empId, error: tenant.error });
                 continue;
             }
 
@@ -371,7 +440,12 @@
                 // Commit to Firestore if not dry run
                 if (!isDryRun) {
                     const firestore = options.db || getFirestoreDb();
-                    if (firestore) {
+                    const modules = (typeof window !== 'undefined') ? (window.firestoreModules || window.firebaseFirestore) : null;
+                    const canBatch = firestore && (typeof firestore.batch === 'function' || (modules && modules.writeBatch));
+                    if (!canBatch) throw new Error('No database connection available to save this row.');
+                    {
+                        const financeUser = await resolveUserPath(firestore, rowTenant, empId);
+                        const financeUserPayload = { orgId: rowTenant, employeeId: empId, pan: row.PAN_Number, updatedAt: nowIso };
                         if (typeof firestore.batch === 'function') {
                             const batch = firestore.batch();
                             const bankRef = firestore.doc(`organizations/${rowTenant}/employee_bank_details/${empId}`);
@@ -380,7 +454,7 @@
                             const esicRef = firestore.doc(`organizations/${rowTenant}/employee_esic_details/${empId}`);
                             const npsRef = firestore.doc(`organizations/${rowTenant}/employee_nps_details/${empId}`);
                             const empRef = firestore.doc(`organizations/${rowTenant}/employees/${empId}`);
-                            const userRef = firestore.doc(`users/${empId}`);
+                            const userRef = firestore.doc(financeUser.path);
 
                             batch.set(bankRef, bankPayload, { merge: true });
                             batch.set(bankVerificationRef, bankPayload, { merge: true });
@@ -388,7 +462,7 @@
                             batch.set(esicRef, esicPayload, { merge: true });
                             batch.set(npsRef, npsPayload, { merge: true });
                             batch.set(empRef, employeeUpdatePayload, { merge: true });
-                            batch.set(userRef, { pan: row.PAN_Number, updatedAt: nowIso }, { merge: true });
+                            batch.set(userRef, financeUserPayload, { merge: true });
 
                             if (pennyDropTriggered && pennyDropDetails) {
                                 const pdRef = firestore.doc(`organizations/${rowTenant}/penny_drop_transactions/${pennyDropDetails.transactionRefId}`);
@@ -396,8 +470,8 @@
                             }
 
                             await batch.commit();
-                        } else if (typeof window !== 'undefined' && window.firestoreModules) {
-                            const { doc, writeBatch } = window.firestoreModules;
+                        } else {
+                            const { doc, writeBatch } = modules;
                             const batch = writeBatch(firestore);
                             const bankRef = doc(firestore, `organizations/${rowTenant}/employee_bank_details/${empId}`);
                             const bankVerificationRef = doc(firestore, `bank_verifications/${empId}`);
@@ -405,7 +479,7 @@
                             const esicRef = doc(firestore, `organizations/${rowTenant}/employee_esic_details/${empId}`);
                             const npsRef = doc(firestore, `organizations/${rowTenant}/employee_nps_details/${empId}`);
                             const empRef = doc(firestore, `organizations/${rowTenant}/employees/${empId}`);
-                            const userRef = doc(firestore, `users/${empId}`);
+                            const userRef = doc(firestore, financeUser.path);
 
                             batch.set(bankRef, bankPayload, { merge: true });
                             batch.set(bankVerificationRef, bankPayload, { merge: true });
@@ -413,7 +487,7 @@
                             batch.set(esicRef, esicPayload, { merge: true });
                             batch.set(npsRef, npsPayload, { merge: true });
                             batch.set(empRef, employeeUpdatePayload, { merge: true });
-                            batch.set(userRef, { pan: row.PAN_Number, updatedAt: nowIso }, { merge: true });
+                            batch.set(userRef, financeUserPayload, { merge: true });
 
                             if (pennyDropTriggered && pennyDropDetails) {
                                 const pdRef = doc(firestore, `organizations/${rowTenant}/penny_drop_transactions/${pennyDropDetails.transactionRefId}`);
@@ -474,7 +548,7 @@
 
         for (let i = 0; i < records.length; i++) {
             const row = records[i];
-            const tenantId = row.Organization_ID || 'ORG_KYLRX_CORP';
+            const tenantId = resolveTenant(row.Organization_ID, options.orgId).orgId || 'ORG_KYLRX_CORP';
 
             try {
                 const nowIso = new Date().toISOString();
@@ -601,6 +675,7 @@
     }
 
     return {
+        resolveTenant,
         ingestJobRosterBatch,
         ingestEmployeeFinanceBatch,
         ingestOrgComplianceBatch,

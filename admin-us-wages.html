@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minimum wage and tips | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+</style>
+</head>
+<body>
+<header><h1>Minimum wage and tips</h1><div><a href="admin-us-time.html">Time</a> &nbsp;|&nbsp; <a href="admin-us-benefits.html">Benefits</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="tabs"><button data-tab="wages" class="on">Minimum wage rules</button><button data-tab="tips">Tips</button></div>
+
+  <div id="tab-wages" style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Minimum wage rules (dated)</h2>
+      <div class="warn" id="wageNote">Only the federal rows are filled in. Enter your state, county and city rates yourself and confirm every rate with a US compliance advisor. The highest rule in force on a date applies.</div>
+      <table><thead><tr><th>Level</th><th>Place</th><th>Effective</th><th>Hourly minimum</th><th>Tipped cash wage</th><th>Checked</th><th>Notes</th><th></th></tr></thead><tbody id="rules"></tbody></table>
+    </section>
+    <section class="card">
+      <h2 id="formTitle">Add a rule</h2>
+      <form id="ruleForm"><div class="grid">
+        <label>Level<select name="jurisdiction"><option value="state">State</option><option value="county">County</option><option value="city">City</option><option value="federal">Federal</option></select></label>
+        <label>State (2 letters)<input name="state" maxlength="2" placeholder="TX"></label>
+        <label>County or city name<input name="name" placeholder="Only for county or city"></label>
+        <label>Effective date<input name="effectiveDate" type="date" required></label>
+        <label>Hourly minimum ($)<input name="hourlyMinimum" type="number" step="0.01" min="0"></label>
+        <label>Tipped cash wage ($)<input name="tippedCashWage" type="number" step="0.01" min="0"></label>
+        <label>Notes<input name="notes" maxlength="500"></label>
+        <label class="chk"><input type="checkbox" name="verified"> I confirmed this rate with an advisor</label>
+      </div>
+      <div class="row"><button type="submit" id="saveRule">Save rule</button><button type="button" class="ghost" id="cancelEdit" hidden>Cancel edit</button></div></form>
+    </section>
+    <section class="card">
+      <h2>What minimum applies?</h2>
+      <div class="grid">
+        <label>State<input id="effState" maxlength="2" placeholder="TX"></label>
+        <label>City (optional)<input id="effCity"></label>
+        <label>Date<input id="effDate" type="date"></label>
+      </div>
+      <div class="row"><button id="effGo">Look up</button><span id="effOut" class="hint"></span></div>
+    </section>
+    <section class="card">
+      <h2>Check pay rates</h2>
+      <p class="hint">Compares every hourly employee's pay rate with the minimum for their work state (and city, when set).</p>
+      <div class="row"><label>Date<input id="vioDate" type="date"></label><button id="vioGo">Check hourly employees</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>State / city</th><th>Pay rate</th><th>Minimum</th><th>Short by</th><th>Result</th></tr></thead><tbody id="vio"></tbody></table>
+      <h3>Set the city for a person</h3>
+      <div class="row"><select id="locUser"></select><input id="locCity" placeholder="City"><button class="ghost" id="locSave">Save city</button></div>
+    </section>
+    <section class="card"><h2>History of a rule</h2><div class="row"><select id="histPick"></select><button class="ghost" id="histGo">Show history</button></div><table style="margin-top:12px"><tbody id="hist"></tbody></table></section>
+  </div>
+
+  <div id="tab-tips" style="display:none;gap:20px">
+    <section class="card">
+      <h2>Tip settings and tipped employees</h2>
+      <div class="warn">Tip rules differ by state. Confirm with a US compliance advisor.</div>
+      <div class="row"><label>Monthly reporting threshold ($)<input id="threshold" type="number" step="0.01" min="0"></label><button id="saveThreshold">Save</button><span class="hint">The well-known IRS figure is the starting value; you can change it.</span></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Pay rate</th><th>State</th><th>Tipped</th><th></th></tr></thead><tbody id="tipPeople"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Enter card tips</h2>
+      <form id="cardForm"><div class="grid">
+        <label>Person<select name="userId" id="cardUser"></select></label>
+        <label>Date<input name="date" type="date" required></label>
+        <label>Card tips ($)<input name="cardTips" type="number" step="0.01" min="0.01" required></label>
+      </div><div class="row"><button type="submit">Save</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Monthly totals (cash + card)</h2>
+      <div class="row"><label>Month<input id="month" type="month"></label><button id="monthGo">Show</button><button class="ghost" id="monthCsv">Download CSV for payroll</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Cash</th><th>Card</th><th>Total</th><th>Days</th><th>Report to employer</th></tr></thead><tbody id="monthRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Tip credit check (cash wage plus tips against the minimum)</h2>
+      <div class="row"><label>Week starting (Monday)<input id="creditWeek" type="date"></label><button id="creditGo">Check tipped employees</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Hours</th><th>Tips</th><th>Cash wage</th><th>Effective hourly</th><th>Minimum</th><th>Result</th><th>Make-up owed</th></tr></thead><tbody id="creditRows"></tbody></table>
+      <p class="hint">Uses approved hours only. Shortfalls need to be made up by the employer.</p>
+    </section>
+    <section class="card">
+      <h2>Tip pools</h2>
+      <table><thead><tr><th>Pool</th><th>Method</th><th>People</th><th></th></tr></thead><tbody id="pools"></tbody></table>
+      <h3>New pool</h3>
+      <form id="poolForm"><div class="grid">
+        <label>Name<input name="name" required minlength="2"></label>
+        <label>Share by<select name="shareMethod" id="shareMethod"><option value="hours">Hours worked</option><option value="percentage">Percentage</option></select></label>
+        <label class="chk"><input type="checkbox" name="excludeManagers" checked> Leave managers out</label>
+      </div>
+      <div id="poolPeople" style="margin-top:10px"></div>
+      <div class="row"><button type="submit">Create pool</button></div></form>
+      <h3>Share out money</h3>
+      <form id="distForm"><div class="grid">
+        <label>Pool<select name="poolId" id="distPool"></select></label>
+        <label>Amount ($)<input name="amount" type="number" step="0.01" min="0.01" required></label>
+        <label>From<input name="from" type="date" required></label>
+        <label>To<input name="to" type="date" required></label>
+      </div><div class="row"><button type="submit">Calculate and save</button></div></form>
+      <table style="margin-top:12px"><tbody id="distOut"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Weekly or monthly tip report for payroll</h2>
+      <div class="row"><label>From<input id="repFrom" type="date"></label><label>To<input id="repTo" type="date"></label><button id="repCsv">Download CSV</button></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const money = (n) => (n === null || n === undefined ? '' : `$${Number(n).toFixed(2)}`);
+let rules = []; let editingId = null; let people = [];
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res.blob(); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+async function download(path, name) {
+  const blob = await req('GET', path, null, true);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+const placeOf = (r) => r.jurisdiction === 'federal' ? 'United States' : r.jurisdiction === 'state' ? r.state : `${r.name}, ${r.state}`;
+
+async function loadRules() {
+  const r = await req('GET', '/wages/rules');
+  rules = r.data;
+  $('rules').innerHTML = rules.map((x) => `<tr><td>${esc(x.jurisdiction)}</td><td>${esc(placeOf(x))}</td><td>${esc(x.effectiveDate)}</td><td>${money(x.hourlyMinimum)}</td><td>${money(x.tippedCashWage)}</td><td>${x.verified ? '<span class="tag good">confirmed</span>' : '<span class="tag warnTag">verify</span>'}</td><td>${esc(x.notes)}</td><td><button class="ghost" data-edit="${esc(x.id)}">Edit</button> <button class="no" data-arch="${esc(x.id)}">Archive</button></td></tr>`).join('') || '<tr><td colspan="8" class="hint">No rules.</td></tr>';
+  const scopes = [...new Map(rules.map((x) => [`${x.jurisdiction}|${x.state || ''}|${x.name || ''}`, x])).values()];
+  $('histPick').innerHTML = scopes.map((x) => `<option value="${esc(`${x.jurisdiction}|${x.state || ''}|${x.name || ''}`)}">${esc(x.jurisdiction)}: ${esc(placeOf(x))}</option>`).join('');
+}
+async function loadPeople() {
+  const r = await req('GET', '/tips/employees'); people = r.data;
+  const opts = people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  $('locUser').innerHTML = opts; $('cardUser').innerHTML = people.filter((p) => p.tipped).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('') || '<option value="">Mark someone as tipped first</option>';
+  $('tipPeople').innerHTML = people.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.payType === 'hourly' ? money(p.payRate) : esc(p.payType || '')}</td><td>${esc(p.workState || '')}${p.workCity ? ' / ' + esc(p.workCity) : ''}</td><td>${p.tipped ? '<span class="tag good">tipped</span>' : '-'}</td><td><button class="ghost" data-tip="${esc(p.id)}" data-val="${p.tipped ? 'false' : 'true'}">${p.tipped ? 'Not tipped' : 'Mark tipped'}</button></td></tr>`).join('');
+  $('poolPeople').innerHTML = `<div class="hint">People in the pool</div>` + people.map((p) => `<div class="row" style="margin-top:4px"><label class="chk"><input type="checkbox" data-pp="${esc(p.id)}" data-name="${esc(p.name)}"> ${esc(p.name)}</label><label class="chk"><input type="checkbox" data-pm="${esc(p.id)}"> manager</label><input data-pct="${esc(p.id)}" type="number" min="0" max="100" step="0.01" placeholder="%" style="width:80px"></label></div>`).join('');
+}
+async function loadPools() {
+  const r = await req('GET', '/tips/pools');
+  $('pools').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.shareMethod)}${p.excludeManagers ? ', managers excluded' : ''}</td><td>${p.participants.map((x) => esc(x.name)).join(', ')}</td><td><button class="no" data-poolx="${esc(p.id)}">Archive</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No pools yet.</td></tr>';
+  $('distPool').innerHTML = r.data.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+}
+
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  $('tab-wages').style.display = b.dataset.tab === 'wages' ? 'grid' : 'none'; $('tab-tips').style.display = b.dataset.tab === 'tips' ? 'grid' : 'none';
+}));
+
+$('ruleForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const body = { jurisdiction: f.get('jurisdiction'), state: f.get('state'), name: f.get('name'), effectiveDate: f.get('effectiveDate'), hourlyMinimum: f.get('hourlyMinimum'), tippedCashWage: f.get('tippedCashWage'), notes: f.get('notes'), verified: f.get('verified') === 'on' };
+  try {
+    if (editingId) await req('PUT', `/wages/rules/${editingId}`, body); else await req('POST', '/wages/rules', body);
+    say(editingId ? 'Rule updated. The old values are kept in its history.' : 'Rule added.'); editingId = null; e.target.reset(); $('formTitle').textContent = 'Add a rule'; $('cancelEdit').hidden = true; await loadRules();
+  } catch (err) { say(err.message, false); }
+});
+$('cancelEdit').addEventListener('click', () => { editingId = null; $('ruleForm').reset(); $('formTitle').textContent = 'Add a rule'; $('cancelEdit').hidden = true; });
+
+document.addEventListener('click', async (e) => {
+  const t = (s) => e.target.closest(s);
+  try {
+    if (t('[data-edit]')) {
+      const r = rules.find((x) => x.id === t('[data-edit]').dataset.edit); editingId = r.id; const f = $('ruleForm').elements;
+      f.jurisdiction.value = r.jurisdiction; f.state.value = r.state || ''; f.name.value = r.jurisdiction === 'state' || r.jurisdiction === 'federal' ? '' : r.name || ''; f.effectiveDate.value = r.effectiveDate; f.hourlyMinimum.value = r.hourlyMinimum ?? ''; f.tippedCashWage.value = r.tippedCashWage ?? ''; f.notes.value = r.notes || ''; f.verified.checked = r.verified;
+      $('formTitle').textContent = 'Edit rule'; $('cancelEdit').hidden = false; $('ruleForm').scrollIntoView({ behavior: 'smooth' });
+    }
+    if (t('[data-arch]') && window.confirm('Archive this rule? It stops applying but stays in the audit log.')) { await req('DELETE', `/wages/rules/${t('[data-arch]').dataset.arch}`); say('Archived.'); await loadRules(); }
+    if (t('[data-tip]')) { await req('PUT', `/tips/employees/${t('[data-tip]').dataset.tip}/tipped`, { tipped: t('[data-tip]').dataset.val === 'true' }); await loadPeople(); }
+    if (t('[data-poolx]') && window.confirm('Archive this pool?')) { await req('DELETE', `/tips/pools/${t('[data-poolx]').dataset.poolx}`); await loadPools(); }
+  } catch (err) { say(err.message, false); }
+});
+
+$('effGo').addEventListener('click', async () => {
+  try {
+    const q = new URLSearchParams({ state: $('effState').value, city: $('effCity').value, date: $('effDate').value }); if (!q.get('date')) q.delete('date');
+    const r = (await req('GET', `/wages/effective?${q}`)).data;
+    $('effOut').textContent = r.hourlyMinimum === null ? 'No rule applies on that date.' : `Hourly minimum ${money(r.hourlyMinimum)} (${r.hourlySource.jurisdiction} ${r.hourlySource.name}, effective ${r.hourlySource.effectiveDate}). Tipped cash wage ${money(r.tippedCashWage)}.${r.unverified ? ' Some rules used are not yet confirmed.' : ''}`;
+  } catch (err) { say(err.message, false); }
+});
+$('vioGo').addEventListener('click', async () => {
+  try {
+    const r = await req('GET', `/wages/violations${$('vioDate').value ? `?date=${$('vioDate').value}` : ''}`);
+    $('vio').innerHTML = r.rows.map((x) => `<tr><td>${esc(x.name)}</td><td>${esc(x.workState || '')}${x.workCity ? ' / ' + esc(x.workCity) : ''}</td><td>${money(x.payRate)}</td><td>${money(x.minimum)}</td><td>${x.shortfall ? money(x.shortfall) : ''}</td><td>${x.ok ? `<span class="tag good">OK</span> ${esc(x.note || '')}` : '<span class="tag badTag">Below minimum</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No hourly employees.</td></tr>';
+    say(`${r.violations.length} below the minimum out of ${r.checked} hourly employees checked.`, r.violations.length === 0);
+  } catch (err) { say(err.message, false); }
+});
+$('locSave').addEventListener('click', async () => { try { await req('PUT', `/wages/employees/${$('locUser').value}/location`, { workCity: $('locCity').value }); say('City saved.'); } catch (err) { say(err.message, false); } });
+$('histGo').addEventListener('click', async () => {
+  try {
+    const [j, s, n] = $('histPick').value.split('|'); const q = new URLSearchParams({ jurisdiction: j, state: s, name: n });
+    const r = await req('GET', `/wages/rules/history?${q}`);
+    $('hist').innerHTML = r.data.map((x) => `<tr><td>${esc(x.effectiveDate)}</td><td>${money(x.hourlyMinimum)}</td><td>${money(x.tippedCashWage)}</td><td>${(x.changeLog || []).map((c) => `edited ${esc(c.at.slice(0, 10))}: was ${money(c.before.hourlyMinimum)}`).join('; ')}</td></tr>`).join('');
+  } catch (err) { say(err.message, false); }
+});
+
+$('saveThreshold').addEventListener('click', async () => { try { await req('PUT', '/tips/settings', { monthlyReportingThreshold: Number($('threshold').value) }); say('Saved.'); } catch (err) { say(err.message, false); } });
+$('cardForm').addEventListener('submit', async (e) => { e.preventDefault(); const f = new FormData(e.target); try { await req('POST', '/tips/card', { userId: f.get('userId'), date: f.get('date'), cardTips: Number(f.get('cardTips')) }); say('Card tips saved.'); e.target.reset(); } catch (err) { say(err.message, false); } });
+async function showMonth() {
+  const m = $('month').value; const r = await req('GET', `/tips/monthly${m ? `?month=${m}` : ''}`);
+  $('monthRows').innerHTML = r.data.map((x) => `<tr><td>${esc(x.name)}</td><td>${money(x.cashTips)}</td><td>${money(x.cardTips)}</td><td>${money(x.total)}</td><td>${x.days}</td><td>${x.reportToEmployer ? '<span class="tag warnTag">Yes (over ' + money(r.threshold) + ')</span>' : 'No'}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No tips this month.</td></tr>';
+}
+$('monthGo').addEventListener('click', () => showMonth().catch((err) => say(err.message, false)));
+$('monthCsv').addEventListener('click', () => download(`/tips/report?format=csv&month=${$('month').value}`, `tips_${$('month').value}.csv`).catch((err) => say(err.message, false)));
+$('creditGo').addEventListener('click', async () => {
+  try {
+    const r = await req('GET', `/tips/credit-check${$('creditWeek').value ? `?weekStart=${$('creditWeek').value}` : ''}`);
+    $('creditRows').innerHTML = r.data.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.hours}</td><td>${money(x.tips)}</td><td>${money(x.cashWage)}</td><td>${x.effectiveHourly !== undefined ? money(x.effectiveHourly) : ''}</td><td>${money(x.minimum)}</td><td>${x.status === 'ok' ? '<span class="tag good">OK</span>' : x.status === 'shortfall' ? '<span class="tag badTag">Shortfall</span>' : `<span class="tag warnTag">${esc(x.status.replace(/_/g, ' '))}</span>`}</td><td>${x.makeUpAmount ? money(x.makeUpAmount) : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No tipped employees.</td></tr>';
+  } catch (err) { say(err.message, false); }
+});
+$('poolForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const participants = [...document.querySelectorAll('[data-pp]:checked')].map((c) => { const id = c.dataset.pp; const pct = document.querySelector(`[data-pct="${id}"]`).value; return { userId: id, name: c.dataset.name, manager: document.querySelector(`[data-pm="${id}"]`).checked, ...(pct !== '' ? { percent: Number(pct) } : {}) }; });
+  try { await req('POST', '/tips/pools', { name: f.get('name'), shareMethod: f.get('shareMethod'), excludeManagers: f.get('excludeManagers') === 'on', participants }); say('Pool created.'); e.target.reset(); await loadPools(); } catch (err) { say(err.message, false); }
+});
+$('distForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try {
+    const r = await req('POST', `/tips/pools/${f.get('poolId')}/distribute`, { amount: Number(f.get('amount')), from: f.get('from'), to: f.get('to') });
+    $('distOut').innerHTML = r.distribution.shares.map((s) => `<tr><td>${esc(s.name)}</td><td>${s.hours !== undefined ? s.hours + ' h' : s.percent !== undefined ? s.percent + '%' : ''}</td><td>${s.excluded ? 'left out (manager)' : money(s.amount)}</td></tr>`).join('');
+    say('Saved. The split is recorded in the audit log.');
+  } catch (err) { say(err.message, false); }
+});
+$('repCsv').addEventListener('click', () => download(`/tips/report?format=csv&from=${$('repFrom').value}&to=${$('repTo').value}`, 'tips_report.csv').catch((err) => say(err.message, false)));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    const today = new Date().toISOString().slice(0, 10); $('vioDate').value = today; $('effDate').value = today; $('month').value = today.slice(0, 7);
+    await Promise.all([loadRules(), loadPeople(), loadPools()]);
+    $('threshold').value = (await req('GET', '/tips/settings')).data.monthlyReportingThreshold;
+    await showMonth();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

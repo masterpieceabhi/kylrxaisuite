@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goals and reviews | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:80px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden;min-width:90px}.bar i{display:block;height:100%;background:var(--blue)}
+.pre{white-space:pre-wrap}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Goals and reviews</h1><div><a href="admin-us-review-cycles.html">Review rounds</a> &nbsp;|&nbsp; <a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="my-goals.html">My own goals</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+
+  <section class="card">
+    <h2>My team</h2>
+    <table><thead><tr><th>Person</th><th>Goals</th><th>Last review</th><th></th></tr></thead><tbody id="team"></tbody></table>
+  </section>
+
+  <section class="card" id="personCard" hidden>
+    <h2 id="pName"></h2>
+    <h3>Goals</h3>
+    <table><thead><tr><th>Goal</th><th>Due</th><th>Progress</th><th>Status</th><th></th></tr></thead><tbody id="goals"></tbody></table>
+    <form id="goalForm" class="canWrite"><div class="grid" style="margin-top:10px">
+      <label>New goal<input name="title" required minlength="3" maxlength="160" placeholder="Close the store alone by March"></label>
+      <label>Details (optional)<input name="detail" maxlength="1000"></label>
+      <label>Due date (optional)<input name="dueDate" type="date"></label>
+    </div><div class="row"><button type="submit" class="ghost">Add goal</button></div></form>
+
+    <h3>Reviews</h3>
+    <table><thead><tr><th>Period</th><th>Status</th><th>Overall</th><th>Written by</th><th></th></tr></thead><tbody id="reviews"></tbody></table>
+    <div class="row canWrite"><button id="newReview">Write a review</button></div>
+  </section>
+
+  <section class="card" id="reviewCard" hidden>
+    <h2 id="rTitle">Review</h2>
+    <div id="rRead" hidden></div>
+    <form id="reviewForm">
+      <div class="grid">
+        <label>Period from<input name="periodStart" type="date" required></label>
+        <label>Period to<input name="periodEnd" type="date" required></label>
+        <label>Overall<select name="overall" id="rOverall"></select></label>
+      </div>
+      <h3>Ratings (leave any empty)</h3>
+      <div class="grid" id="rAreas"></div>
+      <label style="margin-top:12px">What went well<textarea name="strengths" maxlength="3000"></textarea></label>
+      <label style="margin-top:12px">What to work on<textarea name="improvements" maxlength="3000"></textarea></label>
+      <label style="margin-top:12px">Next steps<textarea name="nextSteps" maxlength="3000"></textarea></label>
+      <label style="margin-top:12px">Private note (never shown to the employee)<textarea name="privateNote" maxlength="2000" style="min-height:50px"></textarea></label>
+      <p class="hint">The employee sees nothing until you share. After sharing, a review cannot be changed.</p>
+      <div class="row"><button type="submit">Save draft</button><button type="button" id="rShare">Share with the employee</button><button type="button" class="no" id="rDelete" hidden>Delete draft</button><button type="button" class="ghost" id="rClose">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="areasCard" hidden>
+    <h2>What reviews rate</h2>
+    <p class="hint">One per line, up to 12. Changing this affects reviews written from now on.</p>
+    <textarea id="areasText" rows="6"></textarea>
+    <div class="row"><button class="ghost" id="areasSave">Save</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const ST = { draft: ['draft, not shared', 'grey'], shared: ['shared, waiting for the employee', 'warnTag'], acknowledged: ['seen by the employee', 'good'] };
+let options = null; let person = null; let reviews = []; let editing = null; let canWrite = false;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/performance${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function loadTeam() {
+  const r = await req('GET', '/team'); canWrite = r.canWrite;
+  $('team').innerHTML = r.data.map((p) => `<tr><td><b>${esc(p.name)}</b><br><span class="hint">${esc(p.employeeId || '')} ${esc(p.jobTitle || '')}</span></td><td>${p.goals.open} open${p.goals.overdue ? ` <span class="tag badTag">${p.goals.overdue} late</span>` : ''}${p.goals.done ? `, ${p.goals.done} done` : ''}</td><td>${p.lastReview ? `${esc(day(p.lastReview.periodEnd))} <span class="tag ${ST[p.lastReview.status][1]}">${esc(ST[p.lastReview.status][0])}</span>` : '<span class="hint">none yet</span>'}</td><td><button class="ghost" data-open="${esc(p.userId)}" data-name="${esc(p.name)}">Open</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">Nobody reports to you yet. Managers are set on the Company structure page.</td></tr>';
+}
+async function openPerson(id, name) {
+  person = { id, name }; $('personCard').hidden = false; $('reviewCard').hidden = true; $('pName').textContent = name;
+  const [g, r] = await Promise.all([req('GET', `/goals?userId=${encodeURIComponent(id)}`), req('GET', `/reviews?userId=${encodeURIComponent(id)}`)]); reviews = r.data;
+  document.querySelectorAll('.canWrite').forEach((el) => { el.hidden = !r.canWrite; });
+  $('goals').innerHTML = g.data.map((x) => `<tr><td><b>${esc(x.title)}</b>${x.detail ? `<br><span class="hint">${esc(x.detail)}</span>` : ''}${x.notes.length ? `<br><span class="hint">Latest note: ${esc(x.notes[x.notes.length - 1].text)}</span>` : ''}</td><td>${esc(day(x.dueDate))}${x.overdue ? ' <span class="tag badTag">late</span>' : ''}</td><td><div class="bar"><i style="width:${Number(x.progress) || 0}%"></i></div><span class="hint">${esc(x.progress)}%</span></td><td><span class="tag ${x.status === 'done' ? 'good' : x.status === 'dropped' ? 'grey' : 'blueTag'}">${esc(x.status)}</span></td><td>${g.canEdit && x.status === 'open' ? `<button class="ghost" data-gdone="${esc(x.id)}">Done</button> <button class="ghost" data-gdrop="${esc(x.id)}">Drop</button>` : ''}${r.canWrite ? ` <button class="no" data-gdel="${esc(x.id)}">Remove</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No goals yet.</td></tr>';
+  $('reviews').innerHTML = reviews.map((x) => `<tr><td>${esc(day(x.periodStart))} to ${esc(day(x.periodEnd))}</td><td><span class="tag ${ST[x.status][1]}">${esc(ST[x.status][0])}</span></td><td>${x.overall ? `${esc(x.overall)} of 5` : x.average ? `${esc(x.average)} average` : ''}</td><td>${esc(x.reviewerName || '')}</td><td><button class="ghost" data-review="${esc(x.id)}">${x.status === 'draft' && r.canWrite ? 'Edit' : 'Read'}</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No reviews yet.</td></tr>';
+  $('personCard').scrollIntoView({ behavior: 'smooth' });
+}
+function openReview(x) {
+  editing = x && x.status === 'draft' ? x.id : null; const readOnly = Boolean(x && x.status !== 'draft');
+  $('reviewCard').hidden = false; $('rTitle').textContent = `${x ? 'Review' : 'New review'} for ${person.name}`;
+  $('reviewForm').hidden = readOnly; $('rRead').hidden = !readOnly; $('rDelete').hidden = !editing;
+  if (readOnly) {
+    $('rRead').innerHTML = `<p><span class="tag ${ST[x.status][1]}">${esc(ST[x.status][0])}</span> ${esc(day(x.periodStart))} to ${esc(day(x.periodEnd))}. Written by ${esc(x.reviewerName || '')}${x.sharedAt ? `, shared ${esc(day(x.sharedAt))}` : ''}.</p>${x.overall ? `<p><b>Overall:</b> ${esc(x.overall)} of 5 (${esc(options.ratingLabels[x.overall])})</p>` : ''}<table><tbody>${x.ratings.map((a) => `<tr><td>${esc(a.area)}</td><td>${esc(a.rating)} of 5</td><td class="hint">${esc(a.comment || '')}</td></tr>`).join('')}</tbody></table><h3>What went well</h3><p class="pre">${esc(x.strengths)}</p><h3>What to work on</h3><p class="pre">${esc(x.improvements)}</p><h3>Next steps</h3><p class="pre">${esc(x.nextSteps)}</p>${x.privateNote ? `<h3>Private note</h3><p class="pre hint">${esc(x.privateNote)}</p>` : ''}${x.status === 'acknowledged' ? `<h3>Employee</h3><p class="pre">Seen ${esc(day(x.acknowledgedAt))}.${x.employeeComment ? ` Their comment: ${esc(x.employeeComment)}` : ' No comment.'}</p>` : ''}<div class="row"><button class="ghost" id="rClose2">Close</button></div>`;
+    $('rClose2').addEventListener('click', () => { $('reviewCard').hidden = true; });
+  } else {
+    const f = $('reviewForm').elements; const v = x || {};
+    f.periodStart.value = v.periodStart || ''; f.periodEnd.value = v.periodEnd || ''; f.overall.value = v.overall || ''; f.strengths.value = v.strengths || ''; f.improvements.value = v.improvements || ''; f.nextSteps.value = v.nextSteps || ''; f.privateNote.value = v.privateNote || '';
+    const have = Object.fromEntries((v.ratings || []).map((a) => [a.area, a]));
+    $('rAreas').innerHTML = options.areas.map((a, i) => `<label>${esc(a)}<select data-area="${i}"><option value="">Not rated</option>${[1, 2, 3, 4, 5].map((n) => `<option value="${n}"${have[a] && have[a].rating === n ? ' selected' : ''}>${n} ${esc(options.ratingLabels[n])}</option>`).join('')}</select><input data-comment="${i}" maxlength="400" placeholder="Comment (optional)" value="${esc(have[a] ? have[a].comment || '' : '')}"></label>`).join('');
+  }
+  $('reviewCard').scrollIntoView({ behavior: 'smooth' });
+}
+function reviewBody() {
+  const f = $('reviewForm').elements; const ratings = {}; const comments = {};
+  options.areas.forEach((a, i) => { const r = document.querySelector(`[data-area="${i}"]`).value; if (r) ratings[a] = Number(r); const c = document.querySelector(`[data-comment="${i}"]`).value.trim(); if (c) comments[a] = c; });
+  return { userId: person.id, periodStart: f.periodStart.value, periodEnd: f.periodEnd.value, overall: f.overall.value, ratings, comments, strengths: f.strengths.value, improvements: f.improvements.value, nextSteps: f.nextSteps.value, privateNote: f.privateNote.value };
+}
+async function saveDraft() {
+  const r = editing ? await req('PUT', `/reviews/${editing}`, reviewBody()) : await req('POST', '/reviews', reviewBody());
+  editing = r.review.id; $('rDelete').hidden = false; return r.review;
+}
+$('reviewForm').addEventListener('submit', async (e) => { e.preventDefault(); try { await saveDraft(); say('Draft saved. The employee cannot see it yet.'); await openPerson(person.id, person.name); $('reviewCard').hidden = false; } catch (err) { say(err.message, false); } });
+$('rShare').addEventListener('click', async () => {
+  if (!$('reviewForm').reportValidity()) return;
+  try {
+    await saveDraft();
+    if (!window.confirm(`Share this review with ${person.name}? After sharing it cannot be changed.`)) { say('Draft saved. Not shared.'); return; }
+    await req('POST', `/reviews/${editing}/share`, {}); say(`Shared. ${person.name} can read it on their goals page.`); $('reviewCard').hidden = true; await openPerson(person.id, person.name); await loadTeam();
+  } catch (err) { say(err.message, false); }
+});
+$('rDelete').addEventListener('click', async () => { if (!window.confirm('Delete this draft?')) return; try { await req('DELETE', `/reviews/${editing}`); $('reviewCard').hidden = true; await openPerson(person.id, person.name); say('Draft deleted.'); } catch (err) { say(err.message, false); } });
+$('rClose').addEventListener('click', () => { $('reviewCard').hidden = true; });
+$('newReview').addEventListener('click', () => openReview(null));
+$('goalForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements;
+  try { await req('POST', '/goals', { userId: person.id, title: f.title.value, detail: f.detail.value, dueDate: f.dueDate.value || undefined }); e.target.reset(); await openPerson(person.id, person.name); await loadTeam(); } catch (err) { say(err.message, false); }
+});
+$('areasSave').addEventListener('click', async () => { try { options.areas = (await req('PUT', '/options', { areas: $('areasText').value.split('\n') })).areas; $('areasText').value = options.areas.join('\n'); say('Saved.'); } catch (err) { say(err.message, false); } });
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('open'))) await openPerson(t.dataset.open, t.dataset.name);
+    else if ((t = el('review'))) openReview(reviews.find((x) => x.id === t.dataset.review));
+    else if ((t = el('gdone'))) { await req('PUT', `/goals/${t.dataset.gdone}`, { status: 'done' }); await openPerson(person.id, person.name); await loadTeam(); } else if ((t = el('gdrop'))) { await req('PUT', `/goals/${t.dataset.gdrop}`, { status: 'dropped' }); await openPerson(person.id, person.name); await loadTeam(); } else if ((t = el('gdel'))) { if (window.confirm('Remove this goal for good?')) { await req('DELETE', `/goals/${t.dataset.gdel}`); await openPerson(person.id, person.name); await loadTeam(); } }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/options'); $('note').textContent = options.note;
+    $('rOverall').innerHTML = '<option value="">Not set</option>' + [1, 2, 3, 4, 5].map((n) => `<option value="${n}">${n} ${esc(options.ratingLabels[n])}</option>`).join('');
+    $('areasCard').hidden = !options.canEditAreas; $('areasText').value = options.areas.join('\n');
+    await loadTeam();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

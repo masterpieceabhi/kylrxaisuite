@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>News and thanks | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);font-weight:400}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:160px;line-height:1.5}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.acts button{margin:0 4px 4px 0}td.num,th.num{text-align:right}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.valRow{display:flex;gap:8px;margin-bottom:6px}.valRow input{flex:1}
+.msgText{white-space:pre-wrap;overflow-wrap:anywhere}.struck{opacity:.6}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>News and thanks</h1><div><a href="my-news.html">See it as an employee</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Announcements</h2>
+    <table><thead><tr><th>Announcement</th><th>Status</th><th>For</th><th>Read by</th><th></th></tr></thead><tbody id="annList"></tbody></table>
+    <div class="row" id="newRow" hidden><button id="newBtn" type="button">Write an announcement</button></div>
+  </section>
+
+  <section class="card" id="editCard" hidden>
+    <h2 id="eTitle">New announcement</h2>
+    <form id="editForm">
+      <div class="grid">
+        <label>Title<input name="title" required minlength="3" maxlength="150" placeholder="Holiday hours next week"></label>
+        <label>Who is it for<select name="audType"><option value="everyone">Everyone</option><option value="location">One location</option><option value="department">One department</option></select></label>
+        <label id="audIdLabel" hidden><span id="audIdText">Location</span><select name="audId"></select></label>
+        <label>Stop showing after (optional)<input name="endDate" type="date"></label>
+      </div>
+      <label style="margin-top:12px">Text <span class="hint" id="count"></span><textarea name="body" required></textarea></label>
+      <div class="row"><label class="check"><input type="checkbox" name="pinned"> Keep at the top of the list</label></div>
+      <p class="hint">Saving keeps a draft that only HR can see. People see it after you publish.</p>
+      <div class="row"><button type="submit" id="saveBtn">Save draft</button><button type="button" id="pubBtn">Save and publish</button><button type="button" class="ghost" data-hide="editCard">Close</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="readCard" hidden>
+    <h2 id="rTitle">Who has read it</h2>
+    <p id="rSummary"></p>
+    <table><thead><tr><th>Person</th><th>When</th></tr></thead><tbody id="reads"></tbody></table>
+    <div class="row"><button type="button" class="ghost" data-hide="readCard">Close</button></div>
+  </section>
+
+  <section class="card">
+    <h2>Thanks: counts</h2>
+    <form id="repForm" class="row" style="margin-top:0">
+      <label>From<input type="date" name="from" required></label><label>To<input type="date" name="to" required></label>
+      <button type="submit">Show</button><button type="button" class="ghost" id="repCsv" hidden>Download as CSV</button>
+    </form>
+    <p class="hint" id="repSummary"></p>
+    <div class="two">
+      <div><h3>By person</h3><table><thead><tr><th>Person</th><th class="num">Received</th><th class="num">Given</th></tr></thead><tbody id="byPerson"></tbody></table></div>
+      <div><h3>By value</h3><table><thead><tr><th>Value</th><th class="num">Times chosen</th></tr></thead><tbody id="byValue"></tbody></table></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Recent thanks</h2>
+    <p class="hint">Hide one that is not appropriate. It is kept on record, marked hidden, and no longer shown to employees.</p>
+    <table><thead><tr><th>When</th><th>From</th><th>To</th><th>For</th><th>Message</th><th></th></tr></thead><tbody id="thanksList"></tbody></table>
+  </section>
+
+  <section class="card" id="setCard" hidden>
+    <h2>Settings</h2>
+    <form id="setForm">
+      <h3 style="margin-top:0">What people can be thanked for</h3>
+      <div id="valList"></div>
+      <div class="row" style="margin-top:4px"><button type="button" class="ghost" id="addVal">Add another</button></div>
+      <label style="margin-top:14px;max-width:260px">Most thanks one person may send in a day<input name="dailyLimit" type="number" min="1" max="50" step="1" required></label>
+      <div class="row"><button type="submit">Save settings</button></div>
+    </form>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const when = (d) => (d ? new Date(d).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const ST = { draft: ['draft, not published', 'grey'], published: ['published', 'good'], archived: ['archived', 'warnTag'] };
+let options = null; let anns = []; let thanks = []; let canManage = false; let editing = null; let lastCsv = null;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+const hideCards = () => ['editCard', 'readCard'].forEach((id) => { $(id).hidden = true; });
+
+async function loadAnns() {
+  const r = await req('GET', '/announcements'); anns = r.data; canManage = r.canManage; $('newRow').hidden = !canManage;
+  $('annList').innerHTML = anns.map((a) => {
+    const acts = [];
+    if (canManage && a.status !== 'archived') acts.push(['edit', a.status === 'draft' ? 'Edit or publish' : 'Edit', '']);
+    if (a.status !== 'draft') acts.push(['reads', 'Who has read it', 'ghost']);
+    if (canManage && a.status === 'published') acts.push(['archive', 'Archive', 'ghost']);
+    if (canManage && a.status === 'draft') acts.push(['delete', 'Delete', 'no']);
+    return `<tr><td><b>${esc(a.title)}</b>${a.pinned ? ' <span class="tag grey">kept at the top</span>' : ''}<br><span class="hint">${a.publishedAt ? `published ${esc(day(a.publishedAt))}` : `written ${esc(day(a.createdAt))}`}${a.endDate ? `, shows until ${esc(day(a.endDate))}` : ''}</span></td>
+      <td><span class="tag ${ST[a.status][1]}">${esc(ST[a.status][0])}</span>${a.ended ? '<br><span class="tag warnTag">end date passed</span>' : ''}</td><td>${esc(a.audienceLabel)}</td>
+      <td>${a.status === 'draft' ? '' : `${esc(a.readCount)} of ${esc(a.audienceCount)}`}</td><td class="acts">${acts.map(([k, label, cls]) => `<button class="${cls}" data-act="${k}" data-id="${esc(a.id)}">${esc(label)}</button>`).join('')}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint">No announcements yet.</td></tr>';
+}
+async function loadThanks() {
+  thanks = (await req('GET', '/recognition/feed?all=1')).data;
+  $('thanksList').innerHTML = thanks.map((t) => `<tr class="${t.hidden ? 'struck' : ''}"><td>${esc(when(t.at))}</td><td>${esc(t.fromName)}</td><td>${esc(t.toName)}</td><td>${esc(t.valueName)}</td>
+    <td><span class="msgText">${esc(t.message)}</span>${t.hidden ? `<br><span class="tag badTag">hidden</span> <span class="hint">${esc(t.hiddenReason || '')}${t.hiddenByName ? ` (${esc(t.hiddenByName)})` : ''}</span>` : ''}</td>
+    <td class="acts">${canManage ? `<button class="${t.hidden ? 'ghost' : 'no'}" data-thanks="${t.hidden ? 'show' : 'hide'}" data-id="${esc(t.id)}">${t.hidden ? 'Show again' : 'Hide'}</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nobody has sent a thanks yet.</td></tr>';
+}
+async function loadReport() {
+  const f = $('repForm').elements;
+  const r = await req('GET', `/recognition/report?from=${encodeURIComponent(f.from.value)}&to=${encodeURIComponent(f.to.value)}`);
+  lastCsv = r.csv; $('repCsv').hidden = false;
+  $('repSummary').textContent = `${r.total} thanks from ${day(r.from)} to ${day(r.to)}.${r.hidden ? ` ${r.hidden} hidden, not counted.` : ''}`;
+  $('byPerson').innerHTML = r.byPerson.map((p) => `<tr><td>${esc(p.name)}</td><td class="num">${esc(p.received)}</td><td class="num">${esc(p.given)}</td></tr>`).join('') || '<tr><td colspan="3" class="hint">None in these dates.</td></tr>';
+  $('byValue').innerHTML = r.byValue.map((v) => `<tr><td>${esc(v.name)}</td><td class="num">${esc(v.count)}</td></tr>`).join('');
+}
+
+/* announcement editor */
+const count = () => { $('count').textContent = `(${$('editForm').elements.body.value.length.toLocaleString('en-US')} of ${options.bodyMax.toLocaleString('en-US')} characters)`; };
+function paintAudience(selected) {
+  const f = $('editForm').elements; const type = f.audType.value; const list = type === 'location' ? options.locations : type === 'department' ? options.departments : null;
+  $('audIdLabel').hidden = !list; if (!list) return;
+  $('audIdText').textContent = type === 'location' ? 'Location' : 'Department';
+  f.audId.innerHTML = list.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('') || '<option value="">None set up yet</option>';
+  if (selected && list.some((x) => x.id === selected)) f.audId.value = selected;
+}
+function openEditor(a) {
+  hideCards(); editing = a ? a.id : null; $('editCard').hidden = false;
+  const d = a || { title: '', body: '', audience: { type: 'everyone', id: null }, pinned: false, endDate: '' };
+  $('eTitle').textContent = a ? (a.status === 'published' ? `Edit (already published): ${a.title}` : `Edit draft: ${a.title}`) : 'New announcement';
+  const f = $('editForm').elements; f.title.value = d.title; f.body.value = d.body; f.audType.value = d.audience.type; f.pinned.checked = d.pinned; f.endDate.value = d.endDate || '';
+  paintAudience(d.audience.id);
+  const published = a && a.status === 'published'; $('saveBtn').textContent = published ? 'Save changes' : 'Save draft'; $('pubBtn').hidden = Boolean(published);
+  count(); $('editCard').scrollIntoView({ behavior: 'smooth' });
+}
+function body() { const f = $('editForm').elements; return { title: f.title.value, body: f.body.value, audience: { type: f.audType.value, id: f.audType.value === 'everyone' ? null : f.audId.value }, pinned: f.pinned.checked, endDate: f.endDate.value || null }; }
+async function save() { const r = editing ? await req('PUT', `/announcements/${editing}`, body()) : await req('POST', '/announcements', body()); editing = r.announcement.id; return r.announcement; }
+$('editForm').elements.audType.addEventListener('change', () => paintAudience(null));
+$('editForm').elements.body.addEventListener('input', count);
+$('editForm').addEventListener('submit', async (e) => { e.preventDefault(); try { const a = await save(); hideCards(); await loadAnns(); say(a.status === 'published' ? 'Changes saved. People see the new text now.' : 'Draft saved. People cannot see it until you publish.'); } catch (err) { say(err.message, false); } });
+$('pubBtn').addEventListener('click', async () => {
+  if (!$('editForm').reportValidity()) return;
+  try {
+    const a = await save();
+    if (!window.confirm(`Publish "${a.title}" to ${a.audienceLabel === 'Everyone' ? 'everyone in the company' : a.audienceLabel}?`)) { await loadAnns(); say('Draft saved. Not published.'); return; }
+    await req('POST', `/announcements/${a.id}/publish`, {}); hideCards(); await loadAnns(); say('Published. People find it under Company news.');
+  } catch (err) { await loadAnns().catch(() => {}); say(err.message, false); }
+});
+$('newBtn').addEventListener('click', () => openEditor(null));
+
+/* report */
+$('repForm').addEventListener('submit', async (e) => { e.preventDefault(); try { await loadReport(); } catch (err) { say(err.message, false); } });
+$('repCsv').addEventListener('click', () => {
+  if (!lastCsv) return;
+  const url = URL.createObjectURL(new Blob([lastCsv], { type: 'text/csv' }));
+  const link = document.createElement('a'); link.href = url; link.download = 'thanks-report.csv'; link.click(); URL.revokeObjectURL(url);
+});
+
+/* settings */
+const valRow = (v) => `<div class="valRow"><input maxlength="40" value="${esc(v.name)}" data-val-id="${esc(v.id || '')}" aria-label="Value name"><button type="button" class="no" data-val-remove>Remove</button></div>`;
+function paintSettings() { $('setCard').hidden = !canManage; $('valList').innerHTML = options.values.map(valRow).join(''); $('setForm').elements.dailyLimit.value = options.dailyLimit; }
+$('addVal').addEventListener('click', () => { $('valList').insertAdjacentHTML('beforeend', valRow({ id: '', name: '' })); $('valList').lastElementChild.querySelector('input').focus(); });
+$('setForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const values = [...$('valList').querySelectorAll('input')].filter((i) => i.value.trim()).map((i) => ({ id: i.dataset.valId || undefined, name: i.value }));
+  try { const r = await req('PUT', '/recognition/settings', { values, dailyLimit: Number($('setForm').elements.dailyLimit.value) }); options.values = r.values; options.dailyLimit = r.dailyLimit; paintSettings(); say('Settings saved.'); } catch (err) { say(err.message, false); }
+});
+
+document.addEventListener('click', async (e) => {
+  const h = e.target.closest('[data-hide]'); if (h) { $(h.dataset.hide).hidden = true; return; }
+  const rm = e.target.closest('[data-val-remove]'); if (rm) { rm.closest('.valRow').remove(); return; }
+  try {
+    const th = e.target.closest('[data-thanks]');
+    if (th) {
+      if (th.dataset.thanks === 'hide') {
+        const reason = window.prompt('Why is this being hidden? (kept on record, not shown to employees)'); if (reason === null) return;
+        await req('POST', `/recognition/thanks/${encodeURIComponent(th.dataset.id)}/hide`, { reason }); await loadThanks(); say('Hidden. Employees no longer see it.');
+      } else { await req('POST', `/recognition/thanks/${encodeURIComponent(th.dataset.id)}/show`, {}); await loadThanks(); say('Employees can see it again.'); }
+      return;
+    }
+    const t = e.target.closest('[data-act]'); if (!t) return;
+    const a = anns.find((x) => x.id === t.dataset.id); if (!a) return;
+    const act = t.dataset.act;
+    if (act === 'edit') openEditor(a);
+    else if (act === 'reads') {
+      const r = await req('GET', `/announcements/${a.id}/reads`); hideCards(); $('readCard').hidden = false; $('rTitle').textContent = `Who has read: ${a.title}`;
+      $('rSummary').textContent = `${r.readCount} of the ${r.audienceCount} people it is for have opened it.`;
+      $('reads').innerHTML = r.data.map((x) => `<tr><td>${esc(x.name || x.userId)}</td><td>${esc(when(x.at))}</td></tr>`).join('') || '<tr><td colspan="2" class="hint">Nobody yet.</td></tr>';
+      $('readCard').scrollIntoView({ behavior: 'smooth' });
+    } else if (act === 'archive') { if (!window.confirm(`Archive "${a.title}"? People will no longer see it. The record of who read it is kept.`)) return; await req('POST', `/announcements/${a.id}/archive`, {}); hideCards(); await loadAnns(); say('Archived.'); }
+    else if (act === 'delete') { if (!window.confirm(`Delete the draft "${a.title}"?`)) return; await req('DELETE', `/announcements/${a.id}`); hideCards(); await loadAnns(); say('Draft deleted.'); }
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/recognition/options');
+    $('editForm').elements.body.maxLength = options.bodyMax;
+    const f = $('repForm').elements; f.to.value = options.today; f.from.value = `${options.today.slice(0, 8)}01`;
+    await loadAnns(); paintSettings(); await loadThanks(); await loadReport();
+  } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Documents to sign | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:220px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}.blueTag{background:#dbeafe;color:#1d4ed8}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.pane{display:none;gap:20px}.pane.on{display:grid}
+.secret{background:#0f172a;color:#fff;border-radius:10px;padding:14px;margin-bottom:16px}.secret code{display:block;font-family:ui-monospace,Consolas,monospace;word-break:break-all;margin:8px 0}
+.secret button{background:#fff;color:var(--ink)}
+.doc{border:1px solid var(--line);border-radius:10px;padding:14px;max-height:360px;overflow:auto;overflow-wrap:anywhere}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips button{padding:3px 8px;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+</style>
+</head>
+<body>
+<header><h1>Documents to sign</h1><div><a href="admin-us-hiring.html">Hiring</a> &nbsp;|&nbsp; <a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+  <div class="secret" id="linkBox" hidden>
+    <b id="linkTitle"></b>
+    <code id="linkText"></code>
+    <button id="linkCopy">Copy link</button>
+    <p style="margin:8px 0 0;font-size:12px">This link is shown only once and works for one person. This system does not email it; send it to them yourself. If it is lost, use Resend to make a new one.</p>
+  </div>
+  <div class="tabs"><button data-tab="send" class="on">Send and track</button><button data-tab="templates">Templates</button></div>
+
+  <div id="tab-send" class="pane on">
+    <section class="card">
+      <h2>Send a document for signature</h2>
+      <form id="sendForm"><div class="grid">
+        <label>Template<select name="templateId" id="sTemplate" required></select></label>
+        <label>Who signs<select name="signerType" id="sType"><option value="employee">An employee</option><option value="candidate">A job candidate</option></select></label>
+        <label id="sEmpL">Employee<select name="userId" id="sEmp"></select></label>
+        <label id="sCandL" hidden>Candidate<select name="candidateId" id="sCand"></select></label>
+        <label>Link works for (days)<input name="expiresInDays" type="number" min="1" max="90"></label>
+      </div>
+      <div class="grid" id="sFields" style="margin-top:12px"></div>
+      <p class="hint" id="sHint"></p>
+      <div class="row"><button type="submit">Create the signing link</button></div></form>
+    </section>
+    <section class="card">
+      <h2>Sent documents</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="rStatus"><option value="">All</option><option value="pending">Not opened yet</option><option value="viewed">Opened, not signed</option><option value="signed">Signed</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="locked">Locked</option><option value="voided">Cancelled</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Document</th><th>Signer</th><th>Status</th><th>Sent</th><th>Sign by</th><th></th></tr></thead><tbody id="rRows"></tbody></table>
+    </section>
+    <section class="card" id="viewCard" hidden>
+      <h2 id="viewTitle"></h2>
+      <div class="doc" id="viewDoc"></div>
+      <h3>What happened</h3>
+      <table><tbody id="viewHistory"></tbody></table>
+      <p class="hint" id="viewHash" style="word-break:break-all"></p>
+    </section>
+  </div>
+
+  <div id="tab-templates" class="pane">
+    <section class="card">
+      <h2>Templates</h2>
+      <table><thead><tr><th>Name</th><th>Kind</th><th>Language</th><th>Fill-in fields</th><th>Status</th><th></th></tr></thead><tbody id="tRows"></tbody></table>
+      <div class="row"><button class="ghost" id="tSeed">Add the starter templates</button><span class="hint">Offer letter, handbook, non-disclosure and policy acknowledgement drafts. Have counsel review them before use.</span></div>
+    </section>
+    <section class="card">
+      <h2 id="tTitle">New template</h2>
+      <form id="tForm"><div class="grid">
+        <label>Name<input name="name" required maxlength="100"></label>
+        <label>Kind<select name="type" id="tType"></select></label>
+        <label>Language<select name="language"><option value="en">English</option><option value="es">Spanish</option></select></label>
+      </div>
+      <label style="margin-top:12px">Text<textarea name="body" required minlength="20" maxlength="30000"></textarea></label>
+      <p class="hint">Click a field to put it in the text. It is replaced with the person's details when you send.</p>
+      <div class="chips" id="tChips"></div>
+      <div class="row"><button type="submit">Save template</button><button type="button" class="ghost" id="tPreview">Preview</button><button type="button" class="ghost" id="tCancel" hidden>Cancel edit</button></div></form>
+      <div id="tPreviewBox" hidden><h3>Preview with sample details</h3><div class="doc" id="tPreviewDoc"></div><p class="hint" id="tPreviewNote"></p></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const when = (iso, time) => (iso ? new Date(iso).toLocaleString('en-US', time ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }) : '');
+const STATUS = { pending: ['Not opened yet', 'grey'], viewed: ['Opened, not signed', 'blueTag'], signed: ['Signed', 'good'], declined: ['Declined', 'badTag'], expired: ['Expired', 'warnTag'], locked: ['Locked', 'badTag'], voided: ['Cancelled', 'grey'] };
+// Fields the system fills in by itself; the rest are asked for when sending
+const AUTO = { employee: ['first_name', 'last_name', 'full_name', 'email', 'company_name', 'today'], candidate: ['first_name', 'last_name', 'full_name', 'email', 'company_name', 'today'] };
+const SAMPLE = { first_name: 'Maria', last_name: 'Gomez', full_name: 'Maria Gomez', email: 'maria@example.com', job_title: 'Cashier', department: 'Front counter', start_date: '2026-12-01', pay_rate: '$16.50', pay_unit: 'hour', work_state: 'TX', company_name: 'Your company', manager_name: 'Sam Lee', today: new Date().toISOString().slice(0, 10), policy_name: 'Attendance policy', custom_1: 'Custom 1', custom_2: 'Custom 2' };
+let options = null; let templates = []; let tEdit = null; let canManage = true;
+
+async function req(method, path, body, raw) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res.blob(); }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`); e.missing = json.missing; throw e; }
+  return json;
+}
+function showLink(title, url) {
+  $('linkTitle').textContent = title; $('linkText').textContent = new URL(url, window.location.href).href; $('linkBox').hidden = false; window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('linkCopy').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('linkText').textContent); $('linkCopy').textContent = 'Copied'; setTimeout(() => { $('linkCopy').textContent = 'Copy link'; }, 2000); } catch (_) { say('Could not copy. Select the link and copy it yourself.', false); } });
+
+// ------------------------------------------------------------------ templates
+async function loadTemplates() {
+  templates = (await req('GET', '/esign/templates?all=true')).data;
+  $('tRows').innerHTML = templates.map((t) => `<tr><td><b>${esc(t.name)}</b></td><td>${esc(t.typeLabel || t.type)}</td><td>${t.language === 'es' ? 'Spanish' : 'English'}</td><td>${esc(t.fields.join(', '))}${t.unknownFields.length ? `<br><span class="tag badTag">unknown: ${esc(t.unknownFields.join(', '))}</span>` : ''}</td><td>${t.active ? '<span class="tag good">in use</span>' : '<span class="tag grey">archived</span>'}</td><td><button class="ghost" data-tedit="${esc(t.id)}">Edit</button> ${t.active ? `<button class="no" data-toff="${esc(t.id)}">Archive</button>` : `<button class="ghost" data-ton="${esc(t.id)}">Use again</button>`}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No templates yet. Add the starter templates or write your own below.</td></tr>';
+  const keep = $('sTemplate').value;
+  $('sTemplate').innerHTML = templates.filter((t) => t.active).map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('') || '<option value="">Add a template first</option>';
+  if (keep) $('sTemplate').value = keep; paintFields();
+}
+function resetTemplateForm() { tEdit = null; $('tForm').reset(); $('tTitle').textContent = 'New template'; $('tCancel').hidden = true; $('tPreviewBox').hidden = true; }
+$('tCancel').addEventListener('click', resetTemplateForm);
+$('tForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements; const body = { name: el.name.value, type: el.type.value, language: el.language.value, body: el.body.value };
+  try {
+    const r = tEdit ? await req('PUT', `/esign/templates/${tEdit}`, body) : await req('POST', '/esign/templates', body);
+    say(r.warnings && r.warnings.length ? `Saved, but fix this before sending: ${r.warnings.join('; ')}` : 'Template saved. Documents already sent keep their original text.', !(r.warnings && r.warnings.length)); resetTemplateForm(); await loadTemplates();
+  } catch (err) { say(err.message, false); }
+});
+$('tPreview').addEventListener('click', async () => {
+  try {
+    const r = await req('POST', '/esign/templates/preview', { body: $('tForm').elements.body.value, values: SAMPLE });
+    $('tPreviewDoc').innerHTML = r.html; $('tPreviewBox').hidden = false; // the server escapes the text and adds only <br> and <mark>
+    $('tPreviewNote').textContent = r.unknown.length ? `Unknown fields (these block sending): ${r.unknown.join(', ')}` : '';
+  } catch (err) { say(err.message, false); }
+});
+$('tSeed').addEventListener('click', async () => { try { const r = await req('POST', '/esign/templates/seed-defaults', {}); say(r.created ? `${r.created} starter templates added. ${r.note}` : 'The starter templates are already there.'); await loadTemplates(); } catch (err) { say(err.message, false); } });
+
+// ----------------------------------------------------------------------- send
+function paintFields() {
+  const t = templates.find((x) => x.id === $('sTemplate').value); const type = $('sType').value;
+  $('sEmpL').hidden = type !== 'employee'; $('sCandL').hidden = type !== 'candidate';
+  const ask = t ? t.fields.filter((f) => options.mergeFields.includes(f) && !AUTO[type].includes(f)) : [];
+  $('sFields').innerHTML = ask.map((f) => `<label>${esc(words(f))}<input data-field="${esc(f)}" maxlength="300" placeholder="${type === 'candidate' && ['job_title', 'start_date', 'pay_rate', 'pay_unit', 'department'].includes(f) ? 'From the offer if left empty' : 'From the record if left empty'}"></label>`).join('');
+  $('sHint').textContent = ask.length ? 'Fill in a box only to override what is on file. If something is missing you will be told which box to fill.' : '';
+}
+$('sTemplate').addEventListener('change', paintFields); $('sType').addEventListener('change', paintFields);
+$('sendForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const el = e.target.elements; const fields = {};
+  document.querySelectorAll('[data-field]').forEach((i) => { if (i.value.trim()) fields[i.dataset.field] = i.value.trim(); });
+  const body = { templateId: el.templateId.value, signerType: el.signerType.value, userId: el.userId.value, candidateId: el.candidateId.value, fields };
+  if (el.expiresInDays.value) body.expiresInDays = Number(el.expiresInDays.value);
+  try {
+    const r = await req('POST', '/esign/requests', body);
+    showLink(`Signing link for ${r.request.signerName} (${r.request.templateName})`, r.signUrl); await loadRequests();
+  } catch (err) {
+    if (err.missing && err.missing.length) { say(`Fill in: ${err.missing.map(words).join(', ')}.`, false); const first = document.querySelector(`[data-field="${err.missing[0]}"]`); if (first) first.focus(); } else say(err.message, false);
+  }
+});
+
+// ------------------------------------------------------------------- requests
+async function loadRequests() {
+  const s = $('rStatus').value; const rows = (await req('GET', `/esign/requests${s ? `?status=${s}` : ''}`)).data;
+  $('rRows').innerHTML = rows.map((r) => {
+    const [t, c] = STATUS[r.status] || [r.status, 'grey']; const open = ['pending', 'viewed', 'expired', 'locked'].includes(r.status);
+    return `<tr><td><b>${esc(r.templateName)}</b></td><td>${esc(r.signerName)}<br><span class="hint">${esc(r.signerType)} · ${esc(r.signerEmail || '')}</span></td><td><span class="tag ${c}">${esc(t)}</span>${r.status === 'declined' && r.declineReason ? `<br><span class="hint">${esc(r.declineReason)}</span>` : ''}${r.signedAt ? `<br><span class="hint">${esc(when(r.signedAt, true))}</span>` : ''}${r.reminders ? `<br><span class="hint">${esc(r.reminders)} reminder${r.reminders === 1 ? '' : 's'}</span>` : ''}</td><td>${esc(when(r.sentAt))}</td><td>${r.status === 'signed' ? '' : esc(when(r.expiresAt))}</td><td><button class="ghost" data-rview="${esc(r.id)}">View</button> ${canManage && open ? `<button class="ghost" data-rresend="${esc(r.id)}" data-name="${esc(r.signerName)}">New link</button> <button class="no" data-rvoid="${esc(r.id)}">Cancel</button>` : ''}${canManage && ['pending', 'viewed'].includes(r.status) ? ` <button class="ghost" data-rremind="${esc(r.id)}">Log a reminder</button>` : ''}${r.status === 'signed' && r.vaultDocumentId ? ` <button class="ghost" data-rcert="${esc(r.id)}">Certificate</button>` : ''}</td></tr>`;
+  }).join('') || '<tr><td colspan="6" class="hint">Nothing sent yet.</td></tr>';
+}
+$('rStatus').addEventListener('change', () => loadRequests().catch((err) => say(err.message, false)));
+
+// --------------------------------------------------------------------- clicks
+document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+}));
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('chip'))) { const ta = $('tForm').elements.body; const ins = `{{${t.dataset.chip}}}`; const p = ta.selectionStart ?? ta.value.length; ta.value = ta.value.slice(0, p) + ins + ta.value.slice(ta.selectionEnd ?? p); ta.focus(); ta.selectionStart = ta.selectionEnd = p + ins.length; } else if ((t = el('tedit'))) {
+      const d = templates.find((x) => x.id === t.dataset.tedit); const f = $('tForm').elements; tEdit = d.id;
+      f.name.value = d.name; f.type.value = d.type; f.language.value = d.language; f.body.value = d.body;
+      $('tTitle').textContent = `Edit ${d.name}`; $('tCancel').hidden = false; $('tPreviewBox').hidden = true; $('tForm').scrollIntoView({ behavior: 'smooth' });
+    } else if ((t = el('toff'))) { if (window.confirm('Archive this template? Documents already sent are not affected.')) { await req('DELETE', `/esign/templates/${t.dataset.toff}`); await loadTemplates(); } } else if ((t = el('ton'))) { await req('PUT', `/esign/templates/${t.dataset.ton}`, { active: true }); await loadTemplates(); } else if ((t = el('rview'))) {
+      const r = await req('GET', `/esign/requests/${t.dataset.rview}`);
+      $('viewCard').hidden = false; $('viewTitle').textContent = `${r.request.templateName} for ${r.request.signerName}`; $('viewDoc').innerHTML = r.html; // escaped on the server when the document was created
+      $('viewHistory').innerHTML = r.history.map((h) => `<tr><td>${esc(when(h.at, true))}</td><td>${esc(words(h.event || h.type || ''))}</td><td class="hint">${esc(h.ip || '')}${h.reason ? ` · ${esc(h.reason)}` : ''}</td></tr>`).join('');
+      $('viewHash').textContent = `Document fingerprint (SHA-256): ${r.request.documentHash}`; $('viewCard').scrollIntoView({ behavior: 'smooth' });
+    } else if ((t = el('rresend'))) {
+      if (window.confirm('Make a new link? The old link stops working.')) { const r = await req('POST', `/esign/requests/${t.dataset.rresend}/resend`, {}); showLink(`New signing link for ${t.dataset.name}`, r.signUrl); await loadRequests(); }
+    } else if ((t = el('rvoid'))) {
+      const reason = window.prompt('Why are you cancelling this request? (optional)');
+      if (reason !== null) { await req('POST', `/esign/requests/${t.dataset.rvoid}/void`, { reason }); say('Request cancelled. The link no longer works.'); await loadRequests(); }
+    } else if ((t = el('rremind'))) { const r = await req('POST', `/esign/requests/${t.dataset.rremind}/remind`, {}); say(r.note); await loadRequests(); } else if ((t = el('rcert'))) {
+      const blob = await req('GET', `/esign/requests/${t.dataset.rcert}/certificate`, null, true); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `certificate-${t.dataset.rcert}.html`; document.body.appendChild(a); a.click(); a.remove();
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    options = await req('GET', '/esign/options'); $('note').textContent = options.note;
+    $('tType').innerHTML = options.types.map((t) => `<option value="${esc(t.key)}">${esc(t.label)}</option>`).join('');
+    $('tChips').innerHTML = options.mergeFields.map((f) => `<button type="button" class="ghost" data-chip="${esc(f)}">{{${esc(f)}}}</button>`).join('');
+    $('sendForm').elements.expiresInDays.placeholder = options.defaults.expiryDays;
+  } catch (err) { say(err.message, false); return; }
+  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
+  // Templates and sending are for HR; a read-only role still sees what was sent
+  try { await loadTemplates(); } catch (_) { canManage = false; document.querySelector('[data-tab=templates]').hidden = true; $('sendForm').closest('section').hidden = true; }
+  if (canManage) {
+    await step(async () => { const p = (await req('GET', '/employees')).data; $('sEmp').innerHTML = p.map((x) => `<option value="${esc(x.id)}">${esc(x.name)} ${esc(x.employeeId || '')}</option>`).join(''); });
+    await step(async () => { const c = (await req('GET', '/hiring/candidates')).data; $('sCand').innerHTML = c.filter((x) => !['hired', 'rejected', 'withdrawn'].includes(x.stage)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.requisitionTitle)})</option>`).join('') || '<option value="">No open candidates</option>'; });
+  }
+  await step(loadRequests);
+});
+</script>
+</body>
+</html>

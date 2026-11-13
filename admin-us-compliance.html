@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compliance | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--amber:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1150px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap}nav.tabs button{padding:8px 14px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}nav.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:14px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button.act{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}td.n,th.n{text-align:right}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.posted,.ok{background:#dcfce7;color:var(--ok)}.review_due,.warn{background:#fef3c7;color:var(--amber)}.not_posted,.bad{background:#fee2e2;color:var(--bad)}.not_applicable{background:#f1f5f9;color:var(--muted)}
+.note{background:#fffbeb;border:1px solid #fde68a;color:var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin:10px 0;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}.tile{border:1px solid var(--line);border-radius:10px;padding:10px}.tile b{display:block;font-size:22px}.tile span{color:var(--muted);font-size:12px}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12px}button[disabled]{opacity:.5;cursor:not-allowed}
+.m td,.m th{padding:5px 6px;font-size:12px;text-align:center}.m td:first-child,.m th:first-child{text-align:left;white-space:nowrap}
+</style>
+</head>
+<body>
+<header><h1>Compliance</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <nav class="tabs" id="tabs"><button data-t="docs" class="on">Documents</button><button data-t="notices">Workplace notices</button><button data-t="texts">Notice texts</button><button data-t="eeo">EEO-1 counts</button><button data-t="safety">Injury log (OSHA)</button></nav>
+  <div id="view"></div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; if (ok) setTimeout(() => { if (m.textContent === t) m.className = ''; }, 5000); };
+let tab = 'docs'; let people = []; let hoursOverride = ''; let texts = null; let openText = null;
+
+async function authed(path, opts = {}) { const token = await auth.currentUser.getIdToken(); return fetch(`/api/us${path}`, { ...opts, headers: { Authorization: `Bearer ${token}`, ...(opts.headers || {}) } }); }
+async function api(method, path, body) {
+  const res = await authed(path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+async function download(path, name) { const r = await authed(path); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not download'); const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = name; a.click(); }
+const size = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
+const views = {
+  async docs() {
+    const [cats, docs, exp, emps] = await Promise.all([api('GET', '/vault/categories'), api('GET', '/vault/documents'), api('GET', '/vault/expiring?days=90'), api('GET', '/employees')]);
+    people = emps.data;
+    const opts = (scope) => cats.data.filter((c) => c.scope === scope).map((c) => `<option value="${c.key}">${esc(c.label)}${c.confidential ? ' (confidential)' : ''}</option>`).join('');
+    return `<div class="note">Files are encrypted before they are saved. Retention periods are suggestions: confirm the right ones for your state with an advisor.</div>
+    <div class="card"><h2>Add a document</h2><form id="up"><div class="grid">
+      <label>Belongs to<select name="scope" id="scope"><option value="employee">An employee</option><option value="company">The company</option></select></label>
+      <label id="whoL">Employee<select name="userId">${people.map((p) => `<option value="${p.id}">${esc(p.name || '')} (${esc(p.employeeId)})</option>`).join('')}</select></label>
+      <label>Type<select name="category" id="cat">${opts('employee')}</select></label>
+      <label>Title<input name="title" required maxlength="120"></label>
+      <label>Expires on (optional)<input type="date" name="expiresOn"></label>
+      <label>Employee can see it<select name="shared"><option value="false">No, HR only</option><option value="true">Yes</option></select></label>
+      <label>File (PDF, image, Word, Excel or text, up to 10 MB)<input type="file" name="file" required></label>
+    </div><div class="row"><button class="act" type="submit">Upload</button></div></form></div>
+    ${exp.count ? `<div class="card"><h2>Expiring or expired (next 90 days)</h2><table><tbody>${exp.data.map((d) => `<tr><td>${esc(d.title)}</td><td>${esc(d.employeeName || 'Company')}</td><td>${esc(d.expiresOn)}</td><td><span class="tag ${d.daysLeft < 0 ? 'bad' : 'warn'}">${d.daysLeft < 0 ? `expired ${-d.daysLeft} days ago` : `${d.daysLeft} days left`}</span></td></tr>`).join('')}</tbody></table></div>` : ''}
+    <div class="card"><h2>All documents (${docs.count})</h2><table><thead><tr><th>Title</th><th>Type</th><th>Person</th><th>Size</th><th>Added</th><th>Keep until</th><th></th></tr></thead><tbody>${docs.data.map((d) => `<tr><td>${esc(d.title)}${d.confidential ? ' <span class="tag bad">confidential</span>' : ''}${d.shared ? ' <span class="tag ok">shared</span>' : ''}${d.legalHold ? ' <span class="tag warn">legal hold</span>' : ''}</td><td>${esc(d.categoryLabel)}</td><td>${esc(d.employeeName || 'Company')}</td><td>${size(d.size)}</td><td>${esc(String(d.uploadedAt).slice(0, 10))}</td><td>${esc(d.retainUntil || '-')}</td><td><button class="ghost act" data-dl="${d.id}" data-n="${esc(d.fileName)}">Download</button> <button class="ghost act" data-hold="${d.id}" data-on="${d.legalHold ? '0' : '1'}">${d.legalHold ? 'Release hold' : 'Legal hold'}</button> <button class="no act" data-del="${d.id}">Delete</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No documents yet.</td></tr>'}</tbody></table></div>`;
+  },
+  async notices() {
+    const [r, lib] = await Promise.all([api('GET', '/postings'), api('GET', '/notice-templates')]);
+    const label = { posted: 'Posted', review_due: 'Review due', not_posted: 'Not recorded', not_applicable: 'Does not apply yet' };
+    return `<div class="note">${esc(r.note)}</div><div class="tiles"><div class="tile"><b>${r.counts.posted}</b><span>Posted and current</span></div><div class="tile"><b>${r.counts.reviewDue}</b><span>Need a review soon</span></div><div class="tile"><b>${r.counts.notPosted}</b><span>Not recorded yet</span></div><div class="tile"><b>${r.headcount}</b><span>People (some notices depend on size)</span></div></div>
+    <div class="card"><table><thead><tr><th>Notice</th><th>Applies to</th><th>Status</th><th>Where and when</th><th>Notice text</th><th></th></tr></thead><tbody>${r.items.map((i) => `<tr><td><b>${esc(i.title)}</b></td><td class="hint">${esc(i.appliesWhen)}</td><td><span class="tag ${i.status}">${label[i.status]}</span></td><td>${i.entry ? `${esc(i.entry.location)}${i.entry.electronic ? ' (online)' : ''}<div class="hint">posted ${esc(i.entry.postedOn)}${i.entry.nextReviewOn ? `, review ${esc(i.entry.nextReviewOn)}` : ''}</div>` : '-'}</td><td><select data-attach="${i.key}"><option value="">None</option>${lib.data.map((t) => `<option value="${esc(t.key)}"${(lib.attachments[i.key] || {}).templateKey === t.key ? ' selected' : ''}>${esc(t.title.length > 44 ? `${t.title.slice(0, 42)}...` : t.title)}${t.draft ? ' (draft)' : ''}</option>`).join('')}</select></td><td>${i.status === 'not_applicable' ? '' : `<button class="ghost act" data-rec="${i.key}">Record</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  },
+  async texts() {
+    const [lib, emps] = await Promise.all([api('GET', '/notice-templates'), people.length ? Promise.resolve({ data: people }) : api('GET', '/employees')]);
+    people = emps.data; texts = lib;
+    const stateTag = (t) => (t.draft ? '<span class="tag warn">Starting draft: needs review</span>' : '<span class="tag ok">Reviewed</span>');
+    let editor = '';
+    if (openText) {
+      const t = (await api('GET', `/notice-templates/${encodeURIComponent(openText)}`)).template;
+      editor = `<div class="card" id="textEditor"><h2>${esc(t.title)} ${stateTag(t)}</h2>
+      ${t.draft ? `<div class="note"><b>${esc(lib.mark)}</b> Until a review is recorded for this version, that line is printed at the top of the notice.</div>` : `<p class="hint">Reviewed by ${esc(t.reviewed.reviewerName)} on ${esc(t.reviewed.reviewedOn)}${t.reviewed.note ? ` (${esc(t.reviewed.note)})` : ''}. Changing the text starts a new version that needs its own review.</p>`}
+      ${t.whenUsed ? `<p class="hint"><b>When it is used:</b> ${esc(t.whenUsed)}<br><b>Official source:</b> ${esc(t.source)}</p>` : ''}
+      <form id="textForm"><input type="hidden" name="key" value="${esc(t.key)}"><div class="grid"><label>Title<input name="title" required maxlength="120" value="${esc(t.title)}"></label><label>What changed (optional)<input name="changeNote" maxlength="200"></label></div>
+      <label style="margin-top:12px">Text<textarea name="body" rows="16" style="width:100%;font:13px/1.5 ui-monospace,Consolas,monospace">${esc(t.body)}</textarea></label>
+      <p class="hint">Fill-ins you can use: ${lib.fields.map((f) => `<code>{{${esc(f.key)}}}</code> ${esc(f.label)}`).join(' · ')}</p>
+      <div class="row"><button class="act" type="submit">Save as a new version</button><button class="ghost act" type="button" data-review="${esc(t.key)}"${t.version ? '' : ' disabled title="Save your own copy first"'}>Record an advisor's review</button>${t.version ? `<button class="no act" type="button" data-deltext="${esc(t.key)}" data-starter="${t.starter ? '1' : '0'}">${t.starter ? 'Go back to the starting draft' : 'Delete this text'}</button>` : ''}<button class="ghost act" type="button" data-closetext="1">Close</button></div></form>
+      <h3>Prepare this notice</h3><div class="row"><label>For<select id="prepWho"><option value="">Nobody in particular</option>${people.map((p) => `<option value="${esc(p.id)}">${esc(p.name || '')} (${esc(p.employeeId || '')})</option>`).join('')}</select></label><button class="act ghost" type="button" data-prep="${esc(t.key)}">Prepare</button></div>
+      <div id="prepOut" style="display:none"><p class="hint" id="prepHint"></p><textarea id="prepText" rows="14" readonly style="width:100%;font:13px/1.5 system-ui,sans-serif"></textarea><div class="row"><button class="act ghost" type="button" id="prepCopy">Copy</button><button class="act ghost" type="button" id="prepPrint">Print</button></div></div>
+      ${t.versions.length ? `<h3>Versions</h3><table><tbody>${t.versions.map((v) => `<tr><td>Version ${v.version}${v.current ? ' (current)' : ''}</td><td>${esc(String(v.savedAt || '').slice(0, 10))}</td><td>${esc(v.changeNote || '')}</td><td>${v.reviewed ? '<span class="tag ok">Reviewed</span>' : '<span class="tag warn">Not reviewed</span>'}</td><td>${v.current ? '' : `<button class="ghost act" type="button" data-back="${v.version}" data-key="${esc(t.key)}">Bring back</button>`}</td></tr>`).join('')}</tbody></table>` : '<p class="hint">You are looking at the starting draft. Saving makes your company\'s own copy.</p>'}</div>`;
+    }
+    return `<div class="note">${esc(lib.note)}</div>
+    <div class="card"><h2>Notice texts</h2><table><thead><tr><th>Notice</th><th>When it is used</th><th>Version</th><th>Attached to</th><th></th></tr></thead><tbody>${lib.data.map((t) => `<tr><td><b>${esc(t.title)}</b><div>${stateTag(t)} <span class="hint">${t.scope === 'federal' ? 'Federal' : 'Your own'}</span></div></td><td class="hint">${esc(t.whenUsed || '')}</td><td>${t.version ? `Version ${t.version}` : 'Starting draft'}</td><td>${t.attachedTo.map((k) => esc(k.replace(/^state_/, '') === k ? k.toUpperCase() : `${k.slice(6)} state notices`)).join(', ') || '-'}</td><td><button class="ghost act" data-opentext="${esc(t.key)}">Open</button></td></tr>`).join('')}</tbody></table></div>
+    ${editor}
+    <div class="card"><h2>Your standard fill-ins</h2><p class="hint">Used in every notice that has these fill-ins. The company name and the person's name are filled in for you.</p><form id="defaultsForm"><div class="grid"><label>Who to contact (name, phone or e-mail)<input name="hr_contact" maxlength="300" value="${esc(lib.defaults.hr_contact)}"></label><label>Health plan name<input name="plan_name" maxlength="300" value="${esc(lib.defaults.plan_name)}"></label><label>Plan administrator and how to reach them<input name="plan_administrator" maxlength="300" value="${esc(lib.defaults.plan_administrator)}"></label></div><div class="row"><button class="act" type="submit">Save fill-ins</button></div></form></div>
+    <div class="card"><h2>Add your own notice text</h2><p class="hint">For example a state or city notice your advisor gave you. We do not supply state texts because the rules differ by state and change.</p><form id="newTextForm"><div class="grid"><label>Title<input name="title" required minlength="3" maxlength="120"></label></div><label style="margin-top:12px">Text<textarea name="body" rows="8" required style="width:100%"></textarea></label><div class="row"><button class="act" type="submit">Add</button></div></form></div>`;
+  },
+  async eeo() {
+    const [r, opts] = await Promise.all([api('GET', '/eeo/report'), api('GET', '/eeo/options')]);
+    const cols = r.columns; const f = (n) => (n ? n : '·');
+    return `<div class="note">${esc(r.note)}</div><div class="tiles"><div class="tile"><b>${r.completenessPercent}%</b><span>People counted in the table</span></div><div class="tile"><b>${r.unanswered}</b><span>Have not answered (it is voluntary)</span></div><div class="tile"><b>${r.missingCategory.length}</b><span>Need a job category</span></div></div>
+    <div class="row"><button class="act" id="csv">Download CSV</button></div>
+    <div class="card"><table class="m"><thead><tr><th rowspan="2">Job category</th>${cols.map((c) => `<th colspan="2" title="${esc(c.label)}">${esc(c.label.length > 16 ? c.label.slice(0, 14) + '…' : c.label)}</th>`).join('')}<th rowspan="2">Total</th></tr><tr>${cols.map(() => '<th>M</th><th>F</th>').join('')}</tr></thead><tbody>${r.rows.map((row) => `<tr><td>${esc(row.label)}</td>${cols.map((c) => `<td>${f(row.cells[c.key + '_male'])}</td><td>${f(row.cells[c.key + '_female'])}</td>`).join('')}<td><b>${row.total}</b></td></tr>`).join('')}<tr><td><b>All</b></td>${cols.map((c) => `<td>${f(r.totals[c.key + '_male'])}</td><td>${f(r.totals[c.key + '_female'])}</td>`).join('')}<td><b>${r.grandTotal}</b></td></tr></tbody></table>
+    <p class="hint">Not in the table: ${r.notReported.noSelfId} did not answer, ${r.notReported.sexNotMaleFemale} chose non-binary or declined sex, ${r.notReported.noRaceOrEthnicity} gave no race or ethnicity, ${r.notReported.noJobCategory} have no job category.</p></div>
+    ${r.missingCategory.length ? `<div class="card"><h2>Choose a job category</h2><table><tbody>${r.missingCategory.map((p) => `<tr><td>${esc(p.name || '')} <span class="hint">${esc(p.jobTitle || '')}</span></td><td><select data-cat="${p.userId}"><option value="">Choose...</option>${opts.jobCategories.map((c) => `<option value="${c.key}">${esc(c.label)}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>` : ''}`;
+  },
+  async safety() {
+    const year = new Date().getFullYear(); const hours = hoursOverride;
+    const [inc, log, sum] = await Promise.all([api('GET', '/osha/incidents'), api('GET', `/osha/log?year=${year}`), api('GET', `/osha/summary?year=${year}${hours ? `&hoursWorked=${hours}` : ''}`)]);
+    const pending = inc.data.filter((i) => i.status === 'reported');
+    return `<div class="note">${esc(log.note)}</div>
+    <div class="card"><h2>Reported, waiting for you to decide (${pending.length})</h2><table><tbody>${pending.map((i) => `<tr><td><b>${esc(i.employeeName || '')}</b><div class="hint">${esc(i.dateOfIncident)} · ${esc(i.location)}</div></td><td>${esc(i.description)}<div class="hint">${i.receivedMedicalTreatment ? 'Got medical treatment. ' : ''}${i.missedWork ? 'Missed work.' : ''}</div></td><td><button class="act" data-cls="${i.id}">Decide</button></td></tr>`).join('') || '<tr><td class="hint">Nothing waiting.</td></tr>'}</tbody></table>
+    <form id="clsForm" style="display:none;margin-top:12px"><input type="hidden" name="id"><div class="grid">
+      <label>What kind of case is it?<select name="classification"><option value="not_recordable">Not recordable (first aid only)</option><option value="other_recordable">Recordable: other (medical treatment)</option><option value="restricted_or_transfer">Recordable: restricted work or transfer</option><option value="days_away">Recordable: days away from work</option><option value="death">Death</option></select></label>
+      <label>Injury or illness type<select name="injuryType"><option value="injury">Injury</option><option value="skin_disorder">Skin disorder</option><option value="respiratory">Respiratory condition</option><option value="poisoning">Poisoning</option><option value="hearing_loss">Hearing loss</option><option value="other_illness">All other illnesses</option></select></label>
+      <label>Days away from work<input type="number" name="daysAway" min="0" value="0"></label><label>Days of restricted work<input type="number" name="daysRestricted" min="0" value="0"></label>
+      <label>Date of death (if applicable)<input type="date" name="dateOfDeath"></label><label>Privacy case (hide the name on the log)<select name="privacyCase"><option value="false">No</option><option value="true">Yes</option></select></label>
+    </div><div class="row"><button class="act" type="submit">Save decision</button></div></form></div>
+    <div class="card"><h2>Form 300 log, ${year} <button class="act ghost" id="csv" style="margin-left:10px">Download CSV</button></h2><table><thead><tr><th>Case</th><th>Employee</th><th>Date</th><th>Where</th><th>What happened</th><th>Type</th><th class="n">Days away</th><th class="n">Restricted</th></tr></thead><tbody>${log.data.map((r) => `<tr><td>${r.caseNumber}</td><td>${esc(r.employeeName)}</td><td>${esc(r.dateOfIncident)}</td><td>${esc(r.location)}</td><td>${esc(r.description)}</td><td>${esc(r.injuryTypeLabel)}</td><td class="n">${r.daysAway}</td><td class="n">${r.daysRestricted}</td></tr>`).join('') || '<tr><td colspan="8" class="hint">No recordable cases this year.</td></tr>'}</tbody></table></div>
+    <div class="card"><h2>Form 300A summary, ${year}</h2><div class="tiles"><div class="tile"><b>${sum.totalRecordable}</b><span>Recordable cases</span></div><div class="tile"><b>${sum.daysAwayCases}</b><span>Cases with days away</span></div><div class="tile"><b>${sum.restrictedCases}</b><span>Restricted or transferred</span></div><div class="tile"><b>${sum.deaths}</b><span>Deaths</span></div><div class="tile"><b>${sum.tcir ?? '-'}</b><span>Total recordable case rate</span></div><div class="tile"><b>${sum.dartRate ?? '-'}</b><span>Days-away/restricted rate</span></div></div>
+    <div class="row"><label>Hours worked this year (leave empty to use approved timesheets)<input id="hrs" type="number" value="${esc(hours)}" placeholder="${sum.hoursWorked}"></label><button class="act ghost" id="recalc">Recalculate</button><span class="hint">Now using ${sum.hoursWorked} hours (${esc(sum.hoursSource)}), ${sum.averageEmployees} employees</span></div></div>`;
+  }
+};
+
+async function show(name) {
+  tab = name; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === name));
+  $('view').innerHTML = '<p class="hint">Loading...</p>';
+  try { $('view').innerHTML = await views[name](); } catch (e) { $('view').innerHTML = ''; say(e.message, false); return; }
+  const sc = $('scope'); if (sc) { sc.onchange = async () => { const c = await api('GET', '/vault/categories'); $('cat').innerHTML = c.data.filter((x) => x.scope === sc.value).map((x) => `<option value="${x.key}">${esc(x.label)}${x.confidential ? ' (confidential)' : ''}</option>`).join(''); $('whoL').style.display = sc.value === 'employee' ? 'grid' : 'none'; }; }
+  const csv = $('csv'); if (csv) csv.onclick = () => download(name === 'eeo' ? '/eeo/report?format=csv' : `/osha/log?year=${new Date().getFullYear()}&format=csv`, name === 'eeo' ? 'eeo1-counts.csv' : 'osha-300-log.csv').catch((e) => say(e.message, false));
+  const rc = $('recalc'); if (rc) rc.onclick = () => { hoursOverride = $('hrs').value; show('safety'); };
+}
+
+document.addEventListener('submit', async (e) => {
+  try {
+    if (e.target.id === 'up') {
+      e.preventDefault(); const fd = new FormData(e.target); if (fd.get('scope') === 'company') fd.delete('userId'); if (!fd.get('expiresOn')) fd.delete('expiresOn');
+      const res = await authed('/vault/documents', { method: 'POST', body: fd }); const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((j.errors && j.errors.join('; ')) || j.error || 'Upload failed');
+      say('Uploaded and encrypted.'); await show('docs');
+    }
+    if (e.target.id === 'textForm') {
+      e.preventDefault(); const f = e.target;
+      const r = await api('PUT', `/notice-templates/${encodeURIComponent(f.key.value)}`, { title: f.title.value, body: f.body.value, changeNote: f.changeNote.value });
+      say(r.changed ? `Saved as version ${r.template.version}. It is a draft until a review is recorded.` : 'Nothing changed, so no new version was made.'); await show('texts');
+    }
+    if (e.target.id === 'newTextForm') {
+      e.preventDefault(); const f = e.target;
+      const r = await api('POST', '/notice-templates', { title: f.title.value, body: f.body.value }); openText = r.template.key; say('Added.'); await show('texts');
+    }
+    if (e.target.id === 'defaultsForm') {
+      e.preventDefault(); const f = e.target;
+      await api('PUT', '/notice-defaults', { hr_contact: f.hr_contact.value, plan_name: f.plan_name.value, plan_administrator: f.plan_administrator.value }); say('Saved.');
+    }
+    if (e.target.id === 'clsForm') {
+      e.preventDefault(); const f = e.target; const body = { classification: f.classification.value, injuryType: f.injuryType.value, daysAway: Number(f.daysAway.value), daysRestricted: Number(f.daysRestricted.value), privacyCase: f.privacyCase.value === 'true' };
+      if (f.dateOfDeath.value) body.dateOfDeath = f.dateOfDeath.value;
+      await api('PUT', `/osha/incidents/${f.id.value}/classify`, body); say('Saved.'); await show('safety');
+    }
+  } catch (err) { say(err.message, false); }
+});
+document.addEventListener('click', async (e) => {
+  const dl = e.target.closest('[data-dl]'); const del = e.target.closest('[data-del]'); const hold = e.target.closest('[data-hold]'); const rec = e.target.closest('[data-rec]'); const cls = e.target.closest('[data-cls]');
+  try {
+    if (dl) await download(`/vault/documents/${dl.dataset.dl}/download`, dl.dataset.n);
+    if (del && window.confirm('Delete this document for good? This is only allowed after its keep-until date.')) { await api('DELETE', `/vault/documents/${del.dataset.del}`); say('Deleted.'); await show('docs'); }
+    if (hold) { await api('PUT', `/vault/documents/${hold.dataset.hold}`, { legalHold: hold.dataset.on === '1' }); await show('docs'); }
+    if (rec) {
+      const location = window.prompt('Where is it posted? (for example: break room board, or the staff intranet page)'); if (!location) return;
+      const postedOn = window.prompt('Date posted (YYYY-MM-DD)', new Date().toISOString().slice(0, 10)); if (!postedOn) return;
+      const nextReviewOn = window.prompt('Next review date (YYYY-MM-DD), or leave empty for one year', '') || undefined;
+      await api('PUT', `/postings/${rec.dataset.rec}`, { location, postedOn, nextReviewOn }); say('Recorded.'); await show('notices');
+    }
+    const ot = e.target.closest('[data-opentext]'); const ct = e.target.closest('[data-closetext]'); const rv = e.target.closest('[data-review]'); const dt = e.target.closest('[data-deltext]'); const pr = e.target.closest('[data-prep]'); const bk = e.target.closest('[data-back]');
+    if (ot) { openText = ot.dataset.opentext; await show('texts'); const ed = $('textEditor'); if (ed) ed.scrollIntoView({ behavior: 'smooth' }); }
+    if (ct) { openText = null; await show('texts'); }
+    if (rv) {
+      const reviewerName = window.prompt('Who reviewed this version? (name of your US compliance advisor or attorney)'); if (!reviewerName) return;
+      const reviewedOn = window.prompt('Date of the review (YYYY-MM-DD)', new Date().toISOString().slice(0, 10)); if (!reviewedOn) return;
+      await api('POST', `/notice-templates/${encodeURIComponent(rv.dataset.review)}/reviewed`, { reviewerName, reviewedOn }); say('Review recorded. This version is no longer marked as a draft.'); await show('texts');
+    }
+    if (dt && window.confirm(dt.dataset.starter === '1' ? 'Remove your company\'s copy and go back to the starting draft? Your versions of it are removed.' : 'Delete this notice text and its versions?')) {
+      await api('DELETE', `/notice-templates/${encodeURIComponent(dt.dataset.deltext)}`); if (dt.dataset.starter !== '1') openText = null; say('Done.'); await show('texts');
+    }
+    if (bk) { await api('POST', `/notice-templates/${encodeURIComponent(bk.dataset.key)}/restore`, { version: Number(bk.dataset.back) }); say('That version is now the current one, as a new draft version.'); await show('texts'); }
+    if (pr) {
+      const r = await api('POST', `/notice-templates/${encodeURIComponent(pr.dataset.prep)}/render`, { userId: $('prepWho').value || undefined });
+      $('prepOut').style.display = 'block'; $('prepText').value = r.text;
+      $('prepHint').textContent = `${r.draft ? 'This is still a draft: the first line says so. ' : ''}${r.missing.length ? `Not filled in yet (shown in [brackets]): ${r.missing.join(', ')}.` : 'All fill-ins are filled.'}`;
+    }
+    if (e.target.id === 'prepCopy') { try { await navigator.clipboard.writeText($('prepText').value); say('Copied.'); } catch (_) { say('Could not copy. Select the text and copy it yourself.', false); } }
+    if (e.target.id === 'prepPrint') { const w = window.open('', '_blank'); if (w) { const pre = w.document.createElement('pre'); pre.style.cssText = 'white-space:pre-wrap;font:14px/1.5 system-ui,sans-serif;max-width:700px;margin:24px auto'; pre.textContent = $('prepText').value; w.document.body.appendChild(pre); w.document.title = 'Notice'; w.print(); } else say('Allow pop-ups to print, or copy the text instead.', false); }
+    if (cls) { const f = $('clsForm'); f.style.display = 'block'; f.id.value = cls.dataset.cls; f.scrollIntoView({ behavior: 'smooth' }); }
+  } catch (err) { say(err.message, false); }
+});
+document.addEventListener('change', async (e) => { const at = e.target.closest('[data-attach]'); if (at) { try { await api('PUT', `/postings/${at.dataset.attach}/template`, { templateKey: at.value || null }); say(at.value ? 'Notice text attached.' : 'Notice text removed from this notice.'); } catch (err) { say(err.message, false); } return; }
+  const s = e.target.closest('[data-cat]'); if (s && s.value) { try { await api('PUT', `/eeo/job-category/${s.dataset.cat}`, { jobCategory: s.value }); say('Saved.'); await show('eeo'); } catch (err) { say(err.message, false); } } });
+$('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) show(b.dataset.t); });
+onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } show(tab); });
+</script>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pay schedule | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1000px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;color:var(--ink);background:#fff;max-width:100%}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+tr.now td{background:#eff6ff}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.tag.now{background:#dbeafe;color:#1e40af}.tag.moved{background:#fef3c7;color:#92400e}.tag.off{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+.facts div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}.facts b{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.errs{color:var(--bad);margin:8px 0 0;padding-left:18px}
+</style>
+</head>
+<body>
+<header><h1>Pay schedule</h1><div><a href="admin-us-org.html">Company structure</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="card" id="blocked" hidden><h2>Not available</h2><p id="blockedText">This page is for US companies.</p></div>
+
+  <div id="page" hidden>
+    <div class="warn">States set how often and how soon after the work people must be paid, and the rules differ by state. Confirm your schedule with a US compliance advisor. If you run payroll through a payroll provider, the schedule set up there is the one that actually pays people: keep the two the same.</div>
+    <div id="list" style="display:grid;gap:20px;margin-top:20px"></div>
+
+    <section class="card" id="editCard" hidden style="margin-top:20px">
+      <h2 id="formTitle">Add a pay schedule</h2>
+      <form id="form" novalidate><div class="grid">
+        <label>Name<input name="name" maxlength="60" placeholder="Every two weeks"></label>
+        <label>How often people are paid<select name="frequency" id="freq"><option value="weekly">Every week</option><option value="biweekly" selected>Every two weeks</option><option value="semimonthly">Twice a month</option><option value="monthly">Once a month</option></select></label>
+        <label id="anchorL">A pay date to count from<input name="anchorPayDate" type="date"></label>
+        <label id="day1L" hidden><span id="day1Text">First pay day of the month</span><input name="day1" placeholder="15" maxlength="4"></label>
+        <label id="day2L" hidden>Second pay day of the month<input name="day2" placeholder="last" maxlength="4"></label>
+        <label>Days from the end of the pay period to pay day<input name="payDayLag" type="number" min="0" max="31" step="1" value="5"></label>
+        <label>If pay day is a holiday or weekend<select name="holidayAdjustment"><option value="previous_business_day">Pay the business day before</option><option value="next_business_day">Pay the next business day</option><option value="none">Do not move it</option></select></label>
+        <label>In use<select name="active"><option value="true">Yes</option><option value="false">No (kept, but nobody new can be put on it)</option></select></label>
+      </div>
+      <p class="hint" id="anchorHint">Pick any real pay date, past or future. Every other pay date is counted from it in steps of one or two weeks.</p>
+      <p class="hint" id="dayHint" hidden>For a day of the month, type a number from 1 to 31 or the word "last". In a short month, 29, 30 and 31 mean the last day.</p>
+      <ul class="errs" id="formErrs" hidden></ul>
+      <div class="row"><button type="button" class="ghost" id="checkBtn">Show the pay dates this gives</button><button type="submit" id="saveBtn">Save schedule</button><button type="button" class="ghost" id="cancelBtn" hidden>Cancel edit</button></div></form>
+      <div id="draft" style="margin-top:12px"></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const FREQ = { weekly: 'Every week', biweekly: 'Every two weeks', semimonthly: 'Twice a month', monthly: 'Once a month' };
+const ADJ = { previous_business_day: 'Paid the business day before', next_business_day: 'Paid the next business day', none: 'Not moved' };
+let schedules = []; let canEdit = false; let editing = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`); e.status = res.status; e.errors = json.errors || null; throw e; }
+  return json;
+}
+
+// Dates are plain calendar days (YYYY-MM-DD): show them without shifting by the viewer's time zone
+const day = (iso) => (iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
+const dayOfMonth = (d) => (Number(d) >= 31 ? 'the last day' : `day ${d}`);
+function payDayText(s) {
+  if (s.frequency === 'monthly') return `${dayOfMonth((s.paydays || [31])[0])} of each month`;
+  if (s.frequency === 'semimonthly') return `${(s.paydays || [15, 31]).map(dayOfMonth).join(' and ')} of each month`;
+  return `Counted from ${day(s.anchorPayDate)}`;
+}
+function periodRows(next, containing) {
+  return next.map((p) => {
+    const isNow = containing && containing.start === p.start && containing.end === p.end;
+    const moved = p.payDate !== p.nominalPayDate ? ` <span class="tag moved">moved from ${esc(day(p.nominalPayDate))}</span>` : '';
+    return `<tr class="${isNow ? 'now' : ''}"><td>${esc(day(p.start))}</td><td>${esc(day(p.end))}${isNow ? ' <span class="tag now">current period</span>' : ''}</td><td><b>${esc(day(p.payDate))}</b>${moved}</td></tr>`;
+  }).join('') || '<tr><td colspan="3" class="hint">No pay dates could be worked out.</td></tr>';
+}
+const periodTable = (next, containing) => `<table><thead><tr><th>Pay period starts</th><th>Pay period ends</th><th>Pay date</th></tr></thead><tbody>${periodRows(next, containing)}</tbody></table>`;
+
+async function load() {
+  const list = await req('GET', '/pay-schedules');
+  schedules = list.data.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const previews = await Promise.all(schedules.map((s) => req('GET', `/pay-schedules/${encodeURIComponent(s.id)}/preview?n=6`).catch(() => null)));
+  $('list').innerHTML = schedules.map((s, i) => {
+    const p = previews[i];
+    const buttons = canEdit ? `<div class="row"><button class="ghost" data-edit="${esc(s.id)}">Edit</button>${s.members ? '' : `<button class="no" data-del="${esc(s.id)}">Delete</button>`}</div>` : '';
+    return `<section class="card"><h2>${esc(s.name)}${s.active === false ? ' <span class="tag off">not in use</span>' : ''}</h2>
+      <div class="facts"><div><b>How often</b>${esc(FREQ[s.frequency] || s.frequency)}</div><div><b>Pay day</b>${esc(payDayText(s))}</div><div><b>Pay day comes</b>${esc(s.payDayLag ?? 5)} days after the pay period ends</div><div><b>Holiday or weekend</b>${esc(ADJ[s.holidayAdjustment] || '')}</div><div><b>People on it</b>${esc(s.members)}</div></div>
+      <h3>Next 6 pay periods and pay dates</h3>${p ? periodTable(p.next, p.containing) : '<p class="hint">The pay dates could not be loaded.</p>'}${buttons}</section>`;
+  }).join('') || `<section class="card"><h2>No pay schedule yet</h2><p class="hint">${canEdit ? 'Add one below. Most companies need only one.' : 'Ask HR or payroll to set one up.'}</p></section>`;
+  if (list.unassigned && schedules.length) $('list').insertAdjacentHTML('beforeend', `<p class="hint">${esc(list.unassigned)} ${list.unassigned === 1 ? 'person is' : 'people are'} not on any pay schedule yet. Put people on a schedule on the <a href="admin-us-org.html">Company structure</a> page.</p>`);
+}
+
+function showFreqFields() {
+  const f = $('freq').value; const weekly = f === 'weekly' || f === 'biweekly';
+  $('anchorL').hidden = !weekly; $('anchorHint').hidden = !weekly; $('day1L').hidden = weekly; $('dayHint').hidden = weekly; $('day2L').hidden = f !== 'semimonthly';
+  $('day1Text').textContent = f === 'monthly' ? 'Pay day of the month' : 'First pay day of the month';
+}
+function resetForm() {
+  editing = null; $('form').reset(); showFreqFields(); $('formTitle').textContent = 'Add a pay schedule'; $('cancelBtn').hidden = true; $('draft').innerHTML = ''; showErrors([]);
+  $('freq').disabled = false;
+}
+function showErrors(list) { const el = $('formErrs'); el.hidden = !list.length; el.innerHTML = list.map((e) => `<li>${esc(e)}</li>`).join(''); }
+
+// The same checks the server makes, in plain words, so mistakes show before anything is sent. The server checks again.
+function readForm() {
+  const el = $('form').elements; const errors = [];
+  const f = el.frequency.value; const weekly = f === 'weekly' || f === 'biweekly';
+  const body = { name: el.name.value.trim(), frequency: f, holidayAdjustment: el.holidayAdjustment.value, active: el.active.value === 'true' };
+  if (!body.name) errors.push('Give the schedule a name.');
+  const lag = Number(el.payDayLag.value);
+  if (el.payDayLag.value === '' || !Number.isInteger(lag) || lag < 0 || lag > 31) errors.push('Days from the end of the pay period to pay day must be a whole number from 0 to 31.'); else body.payDayLag = lag;
+  const dayOf = (raw, what) => { const t = String(raw || '').trim().toLowerCase(); if (t === 'last') return 31; const n = Number(t); if (!t || !Number.isInteger(n) || n < 1 || n > 31) { errors.push(`${what} must be a number from 1 to 31 or the word "last".`); return null; } return n; };
+  if (weekly) {
+    if (!el.anchorPayDate.value) errors.push('Pick a pay date to count from.'); else body.anchorPayDate = el.anchorPayDate.value;
+  } else if (f === 'semimonthly') {
+    const a = dayOf(el.day1.value || '15', 'The first pay day'); const b = dayOf(el.day2.value || 'last', 'The second pay day');
+    if (a && b && a === b) errors.push('The two pay days must be different days.');
+    if (a && b) body.paydays = [a, b];
+  } else {
+    const a = dayOf(el.day1.value || 'last', 'The pay day'); if (a) body.paydays = [a];
+  }
+  return { errors, body };
+}
+
+function fillForm(s) {
+  const el = $('form').elements;
+  el.name.value = s.name || ''; el.frequency.value = s.frequency; el.anchorPayDate.value = s.anchorPayDate || '';
+  const d = s.paydays || []; const txt = (n) => (n === undefined ? '' : Number(n) >= 31 ? 'last' : String(n));
+  el.day1.value = txt(d[0]); el.day2.value = txt(d[1]);
+  el.payDayLag.value = s.payDayLag ?? 5; el.holidayAdjustment.value = s.holidayAdjustment || 'previous_business_day'; el.active.value = s.active === false ? 'false' : 'true';
+  $('freq').disabled = Boolean(s.members); // people are on it: how often cannot change (make a new schedule instead)
+  showFreqFields();
+}
+
+$('freq').addEventListener('change', () => { showFreqFields(); $('draft').innerHTML = ''; });
+$('cancelBtn').addEventListener('click', resetForm);
+$('checkBtn').addEventListener('click', async () => {
+  const { errors, body } = readForm(); showErrors(errors); $('draft').innerHTML = '';
+  if (errors.length) return;
+  try {
+    const r = await req('POST', '/pay-schedules/preview', { ...body, n: 6 });
+    $('draft').innerHTML = `<h3>With these settings, the next 6 pay periods and pay dates would be</h3>${periodTable(r.next, r.containing)}<p class="hint">Nothing is saved yet.</p>`;
+  } catch (err) { showErrors(err.errors || [err.message]); }
+});
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const { errors, body } = readForm(); showErrors(errors);
+  if (errors.length) return;
+  $('saveBtn').disabled = true;
+  try {
+    if (editing) await req('PUT', `/pay-schedules/${encodeURIComponent(editing.id)}`, { ...body, expectedUpdatedAt: editing.updatedAt || editing.createdAt || undefined });
+    else await req('POST', '/pay-schedules', body);
+    const was = editing; resetForm(); await load(); say(was ? 'Pay schedule saved.' : 'Pay schedule added.');
+  } catch (err) {
+    if (err.status === 409 && /Someone else/.test(err.message)) { await load().catch(() => {}); resetForm(); say(err.message, false); }
+    else showErrors(err.errors || [err.message]);
+  } finally { $('saveBtn').disabled = false; }
+});
+document.addEventListener('click', async (e) => {
+  const ed = e.target.closest('[data-edit]'); const del = e.target.closest('[data-del]');
+  try {
+    if (ed) {
+      editing = schedules.find((s) => s.id === ed.dataset.edit); if (!editing) return;
+      fillForm(editing); showErrors([]); $('draft').innerHTML = ''; $('formTitle').textContent = `Edit ${editing.name}`; $('cancelBtn').hidden = false; $('editCard').scrollIntoView({ behavior: 'smooth' });
+    }
+    if (del) {
+      const s = schedules.find((x) => x.id === del.dataset.del);
+      if (s && window.confirm(`Delete the pay schedule "${s.name}"?`)) { await req('DELETE', `/pay-schedules/${encodeURIComponent(s.id)}`); if (editing && editing.id === s.id) resetForm(); await load(); say('Pay schedule deleted.'); }
+    }
+  } catch (err) { say(err.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    const me = await req('GET', '/me/permissions');
+    const has = (p) => me.permissions.includes(p);
+    if (!has('payroll.view') && !has('org.settings')) { $('blockedText').textContent = 'You do not have permission to see the pay schedule. Ask HR or payroll.'; $('blocked').hidden = false; return; }
+    canEdit = has('org.settings') || has('payroll.run');
+    await load();
+    $('page').hidden = false; $('editCard').hidden = !canEdit; showFreqFields();
+  } catch (err) {
+    if (err.status === 409) { $('blocked').hidden = false; return; }
+    say(err.message, false);
+  }
+});
+</script>
+</body>
+</html>

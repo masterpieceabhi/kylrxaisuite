@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--amber:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line)}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:980px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 6px;font-size:16px}p.s{margin:0 0 12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.ok{background:#dcfce7;color:var(--ok)}.off{background:#f1f5f9;color:var(--muted)}
+.note{background:#fffbeb;border:1px solid #fde68a;color:var(--amber);border-radius:8px;padding:10px 12px;margin:8px 0 12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header><h1>Security</h1><div><a href="admin-us-roles.html">Roles</a> &nbsp;|&nbsp; <a href="admin-us-audit.html">Audit log</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card">
+    <h2>Single sign-on (SSO)</h2>
+    <p class="s">Let people sign in with your company account (Microsoft Entra, Okta, Google Workspace and others) instead of a password.</p>
+    <div class="note">First create the OIDC or SAML provider in Firebase Authentication (Identity Platform) and note its provider id, for example <code>oidc.entra</code> or <code>saml.okta</code>. Then enter it here.</div>
+    <form id="sso"><div class="grid">
+      <label>Single sign-on<select name="enabled"><option value="false">Off</option><option value="true">On</option></select></label>
+      <label>Provider id<input name="providerId" placeholder="oidc.entra"></label>
+      <label>Company email domains (comma separated)<input name="allowedDomains" placeholder="example.com, corp.example.com"></label>
+      <label>Require SSO for everyone<select name="enforce"><option value="false">No, passwords still work</option><option value="true">Yes, no passwords</option></select></label>
+      <label>Break-glass emails that can still use a password<input name="breakGlassEmails" placeholder="owner@example.com"></label>
+    </div>
+    <div class="note">Keep at least one break-glass account. If your identity provider has an outage, only those accounts can sign in. Your own email is added automatically when you require SSO.</div>
+    <div class="row"><button type="submit">Save</button></div></form>
+  </section>
+
+  <section class="card">
+    <h2>Support access</h2>
+    <p class="s">If you ask our support team for help, you can let them look at your data, read-only, for a limited time. Every request they make is written to your audit log, and you can switch the access off at any time.</p>
+    <form id="grant"><div class="grid"><label>For how many hours (1 to 72)<input name="hours" type="number" min="1" max="72" value="4" required></label><label>Why do they need access?<input name="reason" required minlength="5" placeholder="Help with a timesheet question"></label></div>
+    <div class="row"><button type="submit">Allow support access</button></div></form>
+    <table style="margin-top:14px"><thead><tr><th>Reason</th><th>Granted</th><th>Ends</th><th>Status</th><th></th></tr></thead><tbody id="grants"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Other protections that are always on</h2>
+    <table><tbody>
+      <tr><td>Email one-time code at sign-in</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Account locks after repeated wrong passwords</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Social Security numbers and bank numbers are encrypted</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>People who leave lose access at the end of their last day</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Managers see only the people who report to them</td><td><span class="tag ok">On</span></td></tr>
+    </tbody></table>
+  </section>
+</main>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; };
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`);
+  return json;
+}
+const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
+async function load() {
+  const s = (await api('GET', '/sso/settings')).settings; const f = $('sso');
+  f.enabled.value = String(Boolean(s.enabled)); f.providerId.value = s.providerId || ''; f.allowedDomains.value = (s.allowedDomains || []).join(', ');
+  f.enforce.value = String(Boolean(s.enforce)); f.breakGlassEmails.value = (s.breakGlassEmails || []).join(', ');
+  const g = (await api('GET', '/support/grants')).data;
+  $('grants').innerHTML = g.map((x) => `<tr><td>${esc(x.reason)}</td><td>${esc(String(x.createdAt).slice(0, 16).replace('T', ' '))}</td><td>${esc(String(x.expiresAt).slice(0, 16).replace('T', ' '))}</td><td><span class="tag ${x.active ? 'ok' : 'off'}">${x.active ? 'Active' : (x.revokedAt ? 'Revoked' : 'Ended')}</span></td><td>${x.active ? `<button class="no" data-rev="${x.id}">Turn off now</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No support access has been given.</td></tr>';
+}
+$('sso').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  try { await api('PUT', '/sso/settings', { enabled: f.enabled.value === 'true', providerId: f.providerId.value, allowedDomains: list(f.allowedDomains.value), enforce: f.enforce.value === 'true', breakGlassEmails: list(f.breakGlassEmails.value) }); say('Saved.'); await load(); }
+  catch (err) { say(err.message, false); }
+});
+$('grant').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target;
+  try { await api('POST', '/support/grants', { hours: Number(f.hours.value), reason: f.reason.value }); say('Support access is on. It ends automatically.'); f.reset(); await load(); } catch (err) { say(err.message, false); }
+});
+$('grants').addEventListener('click', async (e) => { const b = e.target.closest('[data-rev]'); if (!b) return; try { await api('DELETE', `/support/grants/${b.dataset.rev}`); say('Support access turned off.'); await load(); } catch (err) { say(err.message, false); } });
+onAuthStateChanged(auth, async (user) => { if (!user) { window.location.replace('login.html'); return; } try { await load(); } catch (err) { say(err.message, false); } });
+</script>
+</body>
+</html>

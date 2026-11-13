@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surveys | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:18px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+textarea{width:100%;min-height:60px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.q{display:grid;grid-template-columns:210px 1fr auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.q label.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);font-weight:400}.q input[type=text]{width:100%}
+@media(max-width:700px){.q{grid-template-columns:1fr}}
+.bars{display:grid;grid-template-columns:minmax(120px,max-content) 1fr 40px;gap:6px 10px;align-items:center;max-width:620px}
+.bar{height:12px;background:#e2e8f0;border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;background:var(--blue)}
+.big{font-size:26px;font-weight:700}.pre{white-space:pre-wrap}
+ul.comments{margin:6px 0;padding-left:18px}ul.comments li{margin:4px 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Surveys</h1><div><a href="my-surveys.html">Answer a survey myself</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note"></div>
+
+  <section class="card">
+    <h2>All surveys</h2>
+    <table><thead><tr><th>Survey</th><th>Status</th><th>Answers</th><th>Closes</th><th></th></tr></thead><tbody id="list"></tbody></table>
+    <div class="row" id="newRow" hidden><button data-new="blank">New survey</button><button class="ghost" data-new="pulse">Start from: quick pulse (5 questions)</button><button class="ghost" data-new="enps">Start from: would you recommend us (eNPS)</button></div>
+    <p class="hint" id="privacy"></p>
+  </section>
+
+  <section class="card" id="editCard" hidden>
+    <h2 id="eTitle">New survey</h2>
+    <form id="editForm">
+      <div class="grid">
+        <label>Title<input name="title" required minlength="3" maxlength="120"></label>
+        <label>Last day to answer (optional)<input name="closesOn" type="date"></label>
+        <label>Show results after this many answers<input name="minResponses" type="number" min="3" max="50" step="1" required></label>
+      </div>
+      <label style="margin-top:12px">Short introduction people see first (optional)<textarea name="intro" maxlength="600"></textarea></label>
+      <h3>Questions</h3>
+      <div id="questions"></div>
+      <div class="row"><button type="button" class="ghost" id="addQ">Add a question</button></div>
+      <p class="hint">Once a survey is open its questions cannot be changed. Results show after the survey is closed, and only if the number of answers above was reached; the lowest allowed is 3.</p>
+      <div class="row"><button type="submit">Save draft</button><button type="button" class="ghost" id="eClose">Close without saving</button></div>
+    </form>
+  </section>
+
+  <section class="card" id="resultCard" hidden>
+    <h2 id="rTitle">Results</h2>
+    <div id="results"></div>
+    <div class="row"><button type="button" class="ghost" id="rClose">Close</button></div>
+  </section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+// A plain date (2026-11-01) is shown as that day; a full timestamp is shown as the viewer's local day, not the UTC day
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const TYPE = { scale: 'Agree or disagree (1 to 5)', enps: 'Recommend score (0 to 10)', yesno: 'Yes or no', text: 'Comment box' };
+const ST = { draft: ['draft, not open', 'grey'], open: ['open', 'good'], closed: ['closed', 'warnTag'] };
+let options = null; let surveys = []; let editing = null; let canManage = false;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/surveys${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  return json;
+}
+async function loadList() {
+  const r = await req('GET', ''); surveys = r.data; canManage = r.canManage; $('newRow').hidden = !canManage;
+  $('list').innerHTML = surveys.map((s) => {
+    const st = s.status === 'open' && !s.accepting ? ['open, last day has passed', 'warnTag'] : ST[s.status];
+    const acts = [];
+    if (canManage && s.status === 'draft') acts.push(`<button class="ghost" data-edit="${esc(s.id)}">Edit</button>`, `<button data-open="${esc(s.id)}">Open it</button>`, `<button class="no" data-del="${esc(s.id)}">Delete</button>`);
+    if (s.status !== 'draft') acts.push(`<button class="ghost" data-results="${esc(s.id)}">${s.accepting ? 'Progress' : 'Results'}</button>`);
+    if (canManage && s.status === 'open') acts.push(`<button class="no" data-close="${esc(s.id)}">Close it</button>`);
+    return `<tr><td><b>${esc(s.title)}</b><br><span class="hint">${s.questions.length} question${s.questions.length === 1 ? '' : 's'}${s.createdByName ? `, by ${esc(s.createdByName)}` : ''}</span></td><td><span class="tag ${st[1]}">${esc(st[0])}</span></td><td>${s.status === 'draft' ? '' : `${s.responses} of ${Math.max(r.audience, s.responses)} people`}</td><td>${esc(day(s.closesOn))}</td><td>${acts.join(' ')}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint">No surveys yet.</td></tr>';
+}
+function questionRow(q) {
+  const d = document.createElement('div'); d.className = 'q'; d.dataset.id = q.id || '';
+  d.innerHTML = `<select aria-label="Kind of question">${options.types.map((t) => `<option value="${t}"${t === q.type ? ' selected' : ''}>${esc(TYPE[t])}</option>`).join('')}</select><input type="text" aria-label="Question" maxlength="200" required minlength="5" placeholder="Write the question" value="${esc(q.text || '')}"><label class="check"><input type="checkbox"${q.required === false ? '' : ' checked'}> must answer</label><button type="button" class="no" data-rmq>Remove</button>`;
+  return d;
+}
+function openEditor(s) {
+  editing = s.id || null; $('editCard').hidden = false; $('resultCard').hidden = true; $('eTitle').textContent = editing ? `Edit: ${s.title}` : 'New survey';
+  const f = $('editForm').elements; f.title.value = s.title || ''; f.intro.value = s.intro || ''; f.closesOn.value = s.closesOn || ''; f.minResponses.value = s.minResponses || options.minDefault;
+  $('questions').replaceChildren(...(s.questions && s.questions.length ? s.questions : [{ type: 'scale', text: '' }]).map(questionRow));
+  $('editCard').scrollIntoView({ behavior: 'smooth' });
+}
+function editorBody() {
+  const f = $('editForm').elements;
+  const questions = [...document.querySelectorAll('#questions .q')].map((d) => ({ id: d.dataset.id || undefined, type: d.querySelector('select').value, text: d.querySelector('input[type=text]').value, required: d.querySelector('input[type=checkbox]').checked }));
+  return { title: f.title.value, intro: f.intro.value, closesOn: f.closesOn.value || null, minResponses: Number(f.minResponses.value), questions };
+}
+const pct = (n, of) => (of ? Math.round((n / of) * 100) : 0);
+const barRow = (label, n, of) => `<span>${esc(label)}</span><div class="bar"><i style="width:${pct(n, of)}%"></i></div><span>${n}</span>`;
+function showResults(r) {
+  const s = r.survey; const x = r.results;
+  $('resultCard').hidden = false; $('editCard').hidden = true; $('rTitle').textContent = `Results: ${s.title}`;
+  let html = `<p><b>${x.responses}</b> ${x.responses === 1 ? 'person has' : 'people have'} answered${x.audience ? ` out of ${Math.max(x.audience, x.responses)} (${Math.min(100, pct(x.responses, Math.max(x.audience, x.responses)))}%)` : ''}. ${s.status === 'open' ? (s.accepting ? 'The survey is still open.' : 'The last day to answer has passed.') : 'The survey is closed.'}</p>`;
+  if (x.stillOpen) html += `<p class="warn">Results show after the survey is closed. While it is open you see only how many people answered, so that nobody's answer can be worked out from the numbers changing.${x.needed ? ` It also needs ${x.needed} more answer${x.needed === 1 ? '' : 's'} to reach the minimum of ${x.minResponses}.` : ''}</p>`;
+  else if (x.hidden) html += `<p class="warn">Results are hidden until ${x.minResponses} people have answered, so that nobody's answer can be picked out. ${x.needed} more needed.</p>`;
+  else {
+    html += x.questions.map((q, i) => {
+      let body;
+      if (q.hidden) body = `<p class="hint">Only ${q.answered} ${q.answered === 1 ? 'person' : 'people'} answered this one. It stays hidden below ${x.minResponses} answers.</p>`;
+      else if (q.type === 'scale') body = `<p><span class="big">${esc(q.average)}</span> of 5 on average. ${q.favorable}% agree or strongly agree.</p><div class="bars">${[5, 4, 3, 2, 1].map((n) => barRow(`${n} ${r.scaleLabels[n]}`, q.counts[n], q.answered)).join('')}</div>`;
+      else if (q.type === 'enps') body = `<p><span class="big">${q.score > 0 ? '+' : ''}${esc(q.score)}</span> eNPS (from -100 to +100).</p><div class="bars">${barRow('Promoters (9 or 10)', q.promoters, q.answered)}${barRow('Passives (7 or 8)', q.passives, q.answered)}${barRow('Detractors (0 to 6)', q.detractors, q.answered)}</div><p class="hint">eNPS is the share of promoters minus the share of detractors.</p>`;
+      else if (q.type === 'yesno') body = `<p><span class="big">${q.yesPercent}%</span> said yes.</p><div class="bars">${barRow('Yes', q.yes, q.answered)}${barRow('No', q.no, q.answered)}</div>`;
+      else body = `<ul class="comments">${q.comments.map((c) => `<li class="pre">${esc(c)}</li>`).join('')}</ul><p class="hint">Comments are listed in alphabetical order, not in the order they were written.</p>`;
+      return `<h3>${i + 1}. ${esc(q.text)}</h3><p class="hint">${esc(TYPE[q.type])}, ${q.answered} answer${q.answered === 1 ? '' : 's'}</p>${body}`;
+    }).join('');
+  }
+  $('results').innerHTML = html; $('resultCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('editForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { const r = editing ? await req('PUT', `/${editing}`, editorBody()) : await req('POST', '', editorBody()); editing = r.survey.id; $('editCard').hidden = true; await loadList(); say('Draft saved. Nobody can see it until you open it.'); } catch (err) { say(err.message, false); }
+});
+$('addQ').addEventListener('click', () => { if (document.querySelectorAll('#questions .q').length >= options.maxQuestions) { say(`A survey can have at most ${options.maxQuestions} questions.`, false); return; } $('questions').append(questionRow({ type: 'scale', text: '' })); });
+$('eClose').addEventListener('click', () => { $('editCard').hidden = true; });
+$('rClose').addEventListener('click', () => { $('resultCard').hidden = true; });
+document.addEventListener('change', (e) => { const sel = e.target.closest('#questions select'); if (sel) sel.parentElement.querySelector('input[type=checkbox]').checked = sel.value !== 'text'; });
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  const find = (id) => surveys.find((s) => s.id === id);
+  let t;
+  try {
+    if ((t = el('new'))) { const tpl = options.templates[t.dataset.new]; openEditor(tpl ? { ...tpl, questions: tpl.questions.map((q) => ({ ...q })) } : {}); }
+    else if ((t = el('rmq'))) { if (document.querySelectorAll('#questions .q').length > 1) t.closest('.q').remove(); else say('A survey needs at least one question.', false); }
+    else if ((t = el('edit'))) openEditor(find(t.dataset.edit));
+    else if ((t = el('open'))) { const s = find(t.dataset.open); if (!window.confirm(`Open "${s.title}" to everyone in the company? Its questions cannot be changed after this.`)) return; await req('POST', `/${s.id}/open`, {}); await loadList(); say('The survey is open. People find it under Surveys on their home page and clock page.'); }
+    else if ((t = el('close'))) { const s = find(t.dataset.close); if (!window.confirm(`Close "${s.title}"? Nobody can answer after this, and it cannot be opened again.`)) return; await req('POST', `/${s.id}/close`, {}); await loadList(); say('The survey is closed.'); }
+    else if ((t = el('del'))) { const s = find(t.dataset.del); if (!window.confirm(`Delete the draft "${s.title}"?`)) return; await req('DELETE', `/${s.id}`); $('editCard').hidden = true; await loadList(); say('Draft deleted.'); }
+    else if ((t = el('results'))) showResults(await req('GET', `/${t.dataset.results}/results`));
+  } catch (err) { say(err.message, false); }
+});
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try { options = await req('GET', '/options'); $('note').textContent = options.noteHr; $('privacy').textContent = options.notePrivacy; await loadList(); } catch (err) { say(err.message, false); }
+});
+</script>
+</body>
+</html>
