@@ -145,7 +145,7 @@ test('contractors: send, pay once into the real ledger collection, cancel voids 
     assert.ok(!JSON.stringify(list.body).includes('987654321') && !JSON.stringify(list.body).includes('tinEncrypted'));
 
     assert.equal((await call('pay', 'POST', '/contractor-payments', { contractorId: 'c1', date: addDays(today(), 3), amount: 10 })).status, 400);
-    assert.equal((await call('pay', 'POST', '/contractor-payments', { contractorId: 'nope', date: today(), amount: 10 })).status, 404);
+    assert.equal((await call('pay', 'POST', '/contractor-payments', { contractorId: 'nope', date: addDays(today(), -1), amount: 10 })).status, 404); // yesterday: the company's own day can be a day behind UTC
     const body = { contractorId: 'c1', date: addDays(today(), -1), hours: 4, rate: 50, reimbursement: 15, memo: 'Repairs', requestId: 'route-test-0001' };
     const p1 = await call('pay', 'POST', '/contractor-payments', body);
     assert.equal(p1.status, 201, JSON.stringify(p1.body)); assert.equal(p1.body.payment.amount, 200); assert.equal(p1.body.payment.inLedger, true);
