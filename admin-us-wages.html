@@ -94,21 +94,21 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     </section>
     <section class="card">
       <h2>Tip credit check (cash wage plus tips against the minimum)</h2>
-      <div class="row"><label>Week starting (Monday)<input id="creditWeek" type="date"></label><button id="creditGo">Check tipped employees</button></div>
+      <div class="row"><label>Week starting (the first day of your workweek; leave empty for this week)<input id="creditWeek" type="date"></label><button id="creditGo">Check tipped employees</button></div>
       <table style="margin-top:12px"><thead><tr><th>Person</th><th>Hours</th><th>Tips</th><th>Cash wage</th><th>Effective hourly</th><th>Minimum</th><th>Result</th><th>Make-up owed</th></tr></thead><tbody id="creditRows"></tbody></table>
       <p class="hint">Uses approved hours only. Shortfalls need to be made up by the employer.</p>
     </section>
     <section class="card">
       <h2>Tip pools</h2>
       <table><thead><tr><th>Pool</th><th>Method</th><th>People</th><th></th></tr></thead><tbody id="pools"></tbody></table>
-      <h3>New pool</h3>
+      <h3 id="poolFormTitle">New pool</h3>
       <form id="poolForm"><div class="grid">
         <label>Name<input name="name" required minlength="2"></label>
         <label>Share by<select name="shareMethod" id="shareMethod"><option value="hours">Hours worked</option><option value="percentage">Percentage</option></select></label>
         <label class="chk"><input type="checkbox" name="excludeManagers" checked> Leave managers out</label>
       </div>
       <div id="poolPeople" style="margin-top:10px"></div>
-      <div class="row"><button type="submit">Create pool</button></div></form>
+      <div class="row"><button type="submit" id="poolSave">Create pool</button><button type="button" class="ghost" id="poolCancel" hidden>Stop changing</button></div></form>
       <h3>Share out money</h3>
       <form id="distForm"><div class="grid">
         <label>Pool<select name="poolId" id="distPool"></select></label>
@@ -117,10 +117,22 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
         <label>To<input name="to" type="date" required></label>
       </div><div class="row"><button type="submit">Calculate and save</button></div></form>
       <table style="margin-top:12px"><tbody id="distOut"></tbody></table>
+      <h3>Money shared out before</h3>
+      <p class="hint">The newest 100. A saved share-out is a record of what was worked out; it does not pay anyone and cannot be changed here.</p>
+      <table><thead><tr><th>Saved</th><th>Pool</th><th>Dates</th><th>Amount</th><th></th></tr></thead><tbody id="distHistory"></tbody></table>
+      <table style="margin-top:12px"><tbody id="distDetail"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Tips written down, day by day</h2>
+      <p class="hint">Cash tips are written down by each person; card tips are entered above. Shows up to 500 days, newest first.</p>
+      <div class="row"><label>From<input id="recFrom" type="date"></label><label>To<input id="recTo" type="date"></label><label>Person<select id="recUser"><option value="">Everyone</option></select></label><button id="recGo">Show</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Day</th><th>Person</th><th>Cash</th><th>Card</th><th>Total</th><th>Note</th></tr></thead><tbody id="recRows"></tbody></table>
     </section>
     <section class="card">
       <h2>Weekly or monthly tip report for payroll</h2>
-      <div class="row"><label>From<input id="repFrom" type="date"></label><label>To<input id="repTo" type="date"></label><button id="repCsv">Download CSV</button></div>
+      <div class="row"><label>From<input id="repFrom" type="date"></label><label>To<input id="repTo" type="date"></label><button id="repShow">Show on screen</button><button class="ghost" id="repCsv">Download CSV</button></div>
+      <p class="hint" id="repNote">Leave both dates empty for this week. Each look and each download is written to the audit log.</p>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Dates</th><th>Days</th><th>Cash</th><th>Card</th><th>Total</th><th>Over the monthly reporting amount</th></tr></thead><tbody id="repRows"></tbody></table>
     </section>
   </div>
 </main>
@@ -163,8 +175,47 @@ async function loadPeople() {
 }
 async function loadPools() {
   const r = await req('GET', '/tips/pools');
-  $('pools').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.shareMethod)}${p.excludeManagers ? ', managers excluded' : ''}</td><td>${p.participants.map((x) => esc(x.name)).join(', ')}</td><td><button class="no" data-poolx="${esc(p.id)}">Archive</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No pools yet.</td></tr>';
+  poolList = r.data;
+  $('pools').innerHTML = r.data.map((p) => `<tr><td>${esc(p.name)}</td><td>${esc(p.shareMethod)}${p.excludeManagers ? ', managers excluded' : ''}</td><td>${p.participants.map((x) => esc(x.name)).join(', ')}</td><td><button class="ghost" data-pooledit="${esc(p.id)}">Change</button> <button class="no" data-poolx="${esc(p.id)}">Archive</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No pools yet.</td></tr>';
   $('distPool').innerHTML = r.data.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+}
+let poolList = []; let poolEditing = null; let distList = [];
+const when = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
+const shareRows = (shares) => (shares || []).map((s) => `<tr><td>${esc(s.name)}</td><td>${s.hours !== undefined && s.hours !== null ? esc(s.hours) + ' h' : s.percent !== undefined && s.percent !== null ? esc(s.percent) + '%' : ''}</td><td>${s.excluded ? 'left out (manager)' : money(s.amount)}</td></tr>`).join('');
+function stopPoolEdit() {
+  poolEditing = null; $('poolForm').reset(); $('poolFormTitle').textContent = 'New pool'; $('poolSave').textContent = 'Create pool'; $('poolCancel').hidden = true;
+}
+function startPoolEdit(id) {
+  const p = poolList.find((x) => x.id === id); if (!p) return;
+  poolEditing = id; const f = $('poolForm'); f.reset();
+  f.elements.name.value = p.name; f.elements.shareMethod.value = p.shareMethod; f.elements.excludeManagers.checked = p.excludeManagers !== false;
+  const missing = [];
+  for (const x of p.participants) {
+    const box = [...document.querySelectorAll('[data-pp]')].find((c) => c.dataset.pp === x.userId);
+    if (!box) { missing.push(x.name || x.userId); continue; }
+    box.checked = true;
+    [...document.querySelectorAll('[data-pm]')].find((c) => c.dataset.pm === x.userId).checked = x.manager === true;
+    [...document.querySelectorAll('[data-pct]')].find((c) => c.dataset.pct === x.userId).value = x.percent ?? '';
+  }
+  $('poolFormTitle').textContent = `Change the pool "${p.name}"`; $('poolSave').textContent = 'Save changes'; $('poolCancel').hidden = false;
+  if (missing.length) say(`${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} no longer active and will be taken out of the pool when you save.`, false);
+  $('poolForm').scrollIntoView({ behavior: 'smooth' });
+}
+async function loadDistributions() {
+  const r = await req('GET', '/tips/distributions'); distList = r.data;
+  $('distHistory').innerHTML = distList.map((d, i) => `<tr><td>${esc(when(d.createdAt))}</td><td>${esc(d.poolName || '')}</td><td>${esc(d.from)} to ${esc(d.to)}</td><td>${money(d.amount)}</td><td><button class="ghost" data-dist="${i}">Who got what</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing has been shared out yet.</td></tr>';
+  $('distDetail').innerHTML = '';
+}
+async function showRecords() {
+  const q = new URLSearchParams(); if ($('recFrom').value) q.set('from', $('recFrom').value); if ($('recTo').value) q.set('to', $('recTo').value); if ($('recUser').value) q.set('userId', $('recUser').value);
+  const r = await req('GET', `/tips/records?${q}`);
+  $('recRows').innerHTML = r.data.map((x) => `<tr><td>${esc(x.date)}</td><td>${esc(x.name || x.userId)}</td><td>${money(x.cashTips)}</td><td>${money(x.cardTips)}</td><td><b>${money(x.total)}</b></td><td>${esc(x.note)}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No tips written down in these dates.</td></tr>';
+}
+async function showReport() {
+  const q = new URLSearchParams(); if ($('repFrom').value) q.set('from', $('repFrom').value); if ($('repTo').value) q.set('to', $('repTo').value);
+  const r = await req('GET', `/tips/report?${q}`);
+  $('repNote').textContent = `${r.from} to ${r.to}. The monthly reporting amount is ${money(r.threshold)}. ${r.note}`;
+  $('repRows').innerHTML = r.data.map((x) => `<tr><td>${esc(x.name || x.userId)}${x.employeeId ? ` <span class="hint">${esc(x.employeeId)}</span>` : ''}</td><td>${esc(x.from)} to ${esc(x.to)}</td><td>${esc(x.days)}</td><td>${money(x.cashTips)}</td><td>${money(x.cardTips)}</td><td><b>${money(x.totalTips)}</b></td><td>${x.reportable === 'yes' ? '<span class="tag warnTag">Yes</span>' : 'No'}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">No tips in these dates.</td></tr>';
 }
 
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
@@ -192,7 +243,12 @@ document.addEventListener('click', async (e) => {
     }
     if (t('[data-arch]') && window.confirm('Archive this rule? It stops applying but stays in the audit log.')) { await req('DELETE', `/wages/rules/${t('[data-arch]').dataset.arch}`); say('Archived.'); await loadRules(); }
     if (t('[data-tip]')) { await req('PUT', `/tips/employees/${t('[data-tip]').dataset.tip}/tipped`, { tipped: t('[data-tip]').dataset.val === 'true' }); await loadPeople(); }
-    if (t('[data-poolx]') && window.confirm('Archive this pool?')) { await req('DELETE', `/tips/pools/${t('[data-poolx]').dataset.poolx}`); await loadPools(); }
+    if (t('[data-poolx]') && window.confirm('Archive this pool?')) { await req('DELETE', `/tips/pools/${t('[data-poolx]').dataset.poolx}`); if (poolEditing === t('[data-poolx]').dataset.poolx) stopPoolEdit(); await loadPools(); }
+    if (t('[data-pooledit]')) startPoolEdit(t('[data-pooledit]').dataset.pooledit);
+    if (t('#poolCancel')) stopPoolEdit();
+    if (t('[data-dist]')) { const d = distList[Number(t('[data-dist]').dataset.dist)]; if (d) $('distDetail').innerHTML = `<tr><th colspan="3">${esc(d.poolName || '')}: ${money(d.amount)} for ${esc(d.from)} to ${esc(d.to)}, shared by ${d.shareMethod === 'hours' ? 'hours worked' : 'percentage'}</th></tr>${shareRows(d.shares)}`; }
+    if (t('#recGo')) await showRecords();
+    if (t('#repShow')) await showReport();
   } catch (err) { say(err.message, false); }
 });
 
@@ -236,14 +292,18 @@ $('creditGo').addEventListener('click', async () => {
 $('poolForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target);
   const participants = [...document.querySelectorAll('[data-pp]:checked')].map((c) => { const id = c.dataset.pp; const pct = document.querySelector(`[data-pct="${id}"]`).value; return { userId: id, name: c.dataset.name, manager: document.querySelector(`[data-pm="${id}"]`).checked, ...(pct !== '' ? { percent: Number(pct) } : {}) }; });
-  try { await req('POST', '/tips/pools', { name: f.get('name'), shareMethod: f.get('shareMethod'), excludeManagers: f.get('excludeManagers') === 'on', participants }); say('Pool created.'); e.target.reset(); await loadPools(); } catch (err) { say(err.message, false); }
+  const body = { name: f.get('name'), shareMethod: f.get('shareMethod'), excludeManagers: f.get('excludeManagers') === 'on', participants };
+  try {
+    if (poolEditing) { await req('PUT', `/tips/pools/${poolEditing}`, body); say('Pool changed. Money already shared out stays as it was recorded.'); stopPoolEdit(); } else { await req('POST', '/tips/pools', body); say('Pool created.'); e.target.reset(); }
+    await loadPools();
+  } catch (err) { say(err.message, false); }
 });
 $('distForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target);
   try {
     const r = await req('POST', `/tips/pools/${f.get('poolId')}/distribute`, { amount: Number(f.get('amount')), from: f.get('from'), to: f.get('to') });
     $('distOut').innerHTML = r.distribution.shares.map((s) => `<tr><td>${esc(s.name)}</td><td>${s.hours !== undefined ? s.hours + ' h' : s.percent !== undefined ? s.percent + '%' : ''}</td><td>${s.excluded ? 'left out (manager)' : money(s.amount)}</td></tr>`).join('');
-    say('Saved. The split is recorded in the audit log.');
+    say('Saved. The split is recorded in the audit log.'); await loadDistributions();
   } catch (err) { say(err.message, false); }
 });
 $('repCsv').addEventListener('click', () => download(`/tips/report?format=csv&from=${$('repFrom').value}&to=${$('repTo').value}`, 'tips_report.csv').catch((err) => say(err.message, false)));
@@ -255,6 +315,9 @@ onAuthStateChanged(auth, async (user) => {
     await Promise.all([loadRules(), loadPeople(), loadPools()]);
     $('threshold').value = (await req('GET', '/tips/settings')).data.monthlyReportingThreshold;
     await showMonth();
+    $('recUser').insertAdjacentHTML('beforeend', people.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''));
+    $('recFrom').value = `${today.slice(0, 7)}-01`; $('recTo').value = today;
+    await loadDistributions();
   } catch (err) { say(err.message, false); }
 });
 </script>

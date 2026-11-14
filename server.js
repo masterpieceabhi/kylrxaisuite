@@ -300,11 +300,13 @@ app.use("/api/us", require("./routes/us-esign"));
 // PUBLIC (no login): careers page and e-signature page APIs, rate limited inside the router
 app.use("/api/public", require("./routes/public-recruiting"));
 app.use("/api/us", require("./routes/us-clock-policy"));
+app.use("/api/us", require("./routes/us-approvals")); // what is waiting for this person to approve
 app.use("/api/us", require("./routes/us-schedule"));
 app.use("/api/us", require("./routes/us-performance")); // goals and reviews
 app.use("/api/us", require("./routes/us-surveys")); // pulse surveys and eNPS
 app.use("/api/us", require("./routes/us-assets")); // company equipment
 app.use("/api/us", require("./routes/us-policies")); // policy library with versions
+app.use("/api/us", require("./routes/us-training")); // training records
 app.use("/api/us", require("./routes/us-report-builder")); // custom reports and scheduled copies
 app.use("/api/us", require("./routes/us-review-cycles")); // review cycles and 360 feedback
 app.use("/api/us", require("./routes/us-recognition")); // announcements and thanks

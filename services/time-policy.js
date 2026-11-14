@@ -7,7 +7,11 @@
  * needs to be confirmed by a US compliance advisor. Rounding is not calculated here.
  */
 
+const T = require('./time-rules');
+
 const DEFAULT_RULES = {
+    // The workweek: a fixed, recurring 168-hour period. A list so that weeks before a change keep the start day they had.
+    workweek: T.DEFAULT_WORKWEEK.map((e) => ({ ...e })),
     overtimeWeeklyHours: 40,
     dailyOvertime: { enabled: false, thresholdHours: 8, doubleTimeThresholdHours: null },
     meal: { enabled: false, requiredAfterHours: 5, minimumMinutes: 30 },
@@ -20,10 +24,61 @@ const DEFAULT_RULES = {
 };
 const HOLIDAY_WHO = ['everyone', 'full_time'];
 
-function validateTimeRules(input) {
+const MAX_WORKWEEK_HISTORY = 12;
+
+/**
+ * Works out the company's workweek list after a request to change the day the workweek starts on.
+ *   current: the stored list (see time-rules.normalizeWorkweek)
+ *   input:   { workweekStartDay: 0 Sunday ... 6 Saturday, workweekEffectiveFrom: 'YYYY-MM-DD' }
+ *   todayIso: today in the company's time zone
+ * The safe rule: a change never reaches back. It starts on a chosen FUTURE date that falls on the new start day, so every
+ * week up to then (sent, approved or still open) keeps the start day it had. The week running at the changeover is cut short.
+ * Choosing the start day already in use cancels a change that has not started yet.
+ * Returns { errors, value, changed, pending } where pending is the change that has not started yet (or null).
+ */
+function planWorkweek(current, input, todayIso) {
+    const b = input || {};
+    const today = todayIso || new Date().toISOString().slice(0, 10);
+    const cur = T.normalizeWorkweek(current);
+    const started = cur.filter((e) => !e.effectiveFrom || e.effectiveFrom <= today);
+    const waiting = cur.filter((e) => e.effectiveFrom && e.effectiveFrom > today);
+    const same = { errors: [], value: cur, changed: false, pending: waiting[waiting.length - 1] || null };
+    if (b.workweekStartDay === undefined || b.workweekStartDay === null || b.workweekStartDay === '') return same;
+    const day = Number(b.workweekStartDay);
+    if (!Number.isInteger(day) || day < 0 || day > 6) return { ...same, errors: ['workweekStartDay must be a day of the week (0 Sunday to 6 Saturday)'] };
+    const from = b.workweekEffectiveFrom ? String(b.workweekEffectiveFrom) : null;
+    const active = started[started.length - 1];
+    const last = waiting[waiting.length - 1];
+    if (last && last.startDay === day && (!from || from === last.effectiveFrom)) return same;
+    if (day === active.startDay) return { errors: [], value: started, changed: waiting.length > 0, pending: null };
+    if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !T.isRealDate(from)) {
+        return { ...same, errors: ['Choose the date the new workweek starts (workweekEffectiveFrom, YYYY-MM-DD)'] };
+    }
+    if (from <= today) return { ...same, errors: ['The new workweek must start on a future date, so weeks already worked keep their start day'] };
+    if (T.weekdayOf(from) !== day) return { ...same, errors: [`The new workweek starts on a ${T.WEEKDAYS[day]}, so the start date must be a ${T.WEEKDAYS[day]}`] };
+    let value = [...started, { startDay: day, effectiveFrom: from }];
+    if (value.length > MAX_WORKWEEK_HISTORY) { value = value.slice(-MAX_WORKWEEK_HISTORY); value[0] = { startDay: value[0].startDay, effectiveFrom: null }; }
+    return { errors: [], value, changed: true, pending: value[value.length - 1] };
+}
+
+/** The first date after `todayIso` that falls on `startDay` (the earliest a workweek change may start) */
+function earliestWorkweekChange(todayIso, startDay) {
+    let d = T.addDaysIso(todayIso, 1);
+    while (T.weekdayOf(d) !== startDay) d = T.addDaysIso(d, 1);
+    return d;
+}
+
+/**
+ * Validates the rules a company saves. `current` (the rules stored now) and `todayIso` are only needed for the workweek:
+ * without a workweekStartDay in the input the stored workweek is kept as it is.
+ */
+function validateTimeRules(input, current, todayIso) {
     const errors = [];
     const b = input || {};
     const value = JSON.parse(JSON.stringify(DEFAULT_RULES));
+    const ww = planWorkweek(current && current.workweek, b, todayIso);
+    errors.push(...ww.errors);
+    value.workweek = ww.value;
 
     if (b.overtimeWeeklyHours !== undefined) {
         const n = Number(b.overtimeWeeklyHours);
@@ -68,7 +123,7 @@ function validateTimeRules(input) {
         if (p.hours !== undefined) { const n = Number(p.hours); if (!(n > 0 && n <= 8)) errors.push('breakPremium.hours must be between 0 and 8'); else value.breakPremium.hours = n; }
     }
     if (value.breakPremium.enabled && !value.meal.enabled && !value.restBreak.enabled) errors.push('Turn on the meal-break check or rest breaks before turning on premium hours for missed breaks');
-    return { errors, value };
+    return { errors, value, workweekChanged: ww.changed, workweekPending: ww.pending };
 }
 
 /** Does the company's holiday pay cover this person? person: { exempt, employmentType } */
@@ -146,4 +201,4 @@ function computeWeek(days, rules, opts = {}) {
 
 const toHours = (min) => Math.round((min / 60) * 100) / 100;
 
-module.exports = { DEFAULT_RULES, HOLIDAY_WHO, validateTimeRules, holidayPayApplies, computeWeek, toHours };
+module.exports = { DEFAULT_RULES, HOLIDAY_WHO, planWorkweek, earliestWorkweekChange, validateTimeRules, holidayPayApplies, computeWeek, toHours };

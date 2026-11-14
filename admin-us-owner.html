@@ -30,7 +30,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 </style>
 </head>
 <body>
-<header><h1>Owner settings</h1><div><a href="admin-us-security.html">Security and sign-in</a> &nbsp;|&nbsp; <a href="admin-us-integrations.html">Integrations</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<header><h1>Owner settings</h1><div><a href="admin-us-security.html">Security and sign-in</a> &nbsp;|&nbsp; <a href="admin-us-integrations.html">Integrations</a> &nbsp;|&nbsp; <span id="supportLink" hidden><a href="admin-support.html">Support access</a> &nbsp;|&nbsp; </span><a href="admin-dashboard.html">Back to dashboard</a></div></header>
 <main>
   <div id="msg" role="status"></div>
   <div class="tabs">
@@ -189,7 +189,9 @@ document.addEventListener('click', async (e) => {
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   myId = user.uid;
-  const step = async (fn, tab) => { try { await fn(); } catch (err) { if (err.status === 403 && tab) { document.querySelector(`[data-tab=${tab}]`).hidden = true; $(`tab-${tab}`).innerHTML = ''; } else say(err.message, false); } };
+  // The link to Support access shows only when the support grants route answers 200 for this person
+  user.getIdToken().then((token) => fetch('/api/support/grants', { headers: { Authorization: `Bearer ${token}` } })).then((res) => { if (res.status === 200) $('supportLink').hidden = false; }).catch(() => {});
+  const step =async (fn, tab) => { try { await fn(); } catch (err) { if (err.status === 403 && tab) { document.querySelector(`[data-tab=${tab}]`).hidden = true; $(`tab-${tab}`).innerHTML = ''; } else say(err.message, false); } };
   await step(async () => { const a = (await req('GET', '/audit/actions')).data; $('lAction').innerHTML = '<option value="">Any action</option>' + a.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join(''); await loadLog(false); }, 'log');
   await step(loadRoles, 'roles'); await step(loadBilling, 'bill');
   const first = [...document.querySelectorAll('[data-tab]')].find((b) => !b.hidden); if (first && document.querySelector('[data-tab].on').hidden) first.click();

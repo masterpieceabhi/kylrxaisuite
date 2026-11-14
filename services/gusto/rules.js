@@ -4,6 +4,7 @@
  * and are listed in docs/GUSTO.md under "verify against sandbox".
  */
 const crypto = require('crypto');
+const timeRules = require('../time-rules');
 
 /* ------------------------------ signatures (webhooks) ------------------------------ */
 
@@ -152,9 +153,13 @@ function cutoffInfo({ nowIso, checkDate, gustoDeadlineIso = null, achBusinessDay
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const hoursStr = (n) => (Math.round((Number(n) || 0) * 1000) / 1000).toFixed(3);
 
-/** Does the Monday-start week lie entirely inside [start, end]? Is it partly inside? */
-function weekPlacement(weekStart, start, end) {
-    const weekEnd = addDays(weekStart, 6);
+/**
+ * Does the workweek lie entirely inside [start, end]? Is it partly inside?
+ * storedWeekEnd is the week's own last day when it is known (a saved timesheet week carries it; the one week cut
+ * short by a change of workweek start day is shorter than 7 days). Without it the week is weekStart + 6 days.
+ */
+function weekPlacement(weekStart, start, end, storedWeekEnd) {
+    const weekEnd = storedWeekEnd && parseIso(storedWeekEnd) && storedWeekEnd >= weekStart ? storedWeekEnd : addDays(weekStart, 6);
     if (weekStart >= start && weekEnd <= end) return 'inside';
     if (weekEnd < start || weekStart > end) return 'outside';
     return 'partial';
@@ -162,39 +167,42 @@ function weekPlacement(weekStart, start, end) {
 
 /**
  * Builds the hours to send to Gusto for one pay period.
- *  weeks:  timesheet_weeks docs { userId, weekStart, status, totals{regularHours,overtimeHours,doubleTimeHours}, name? }
+ *  weeks:  timesheet_weeks docs { userId, weekStart, weekEnd?, status, totals{regularHours,overtimeHours,doubleTimeHours}, name? }
+ *  workweek: the company's workweek setting (time-rules.weekRange); Monday to Sunday when not given
  *  people: [{ id, name, payType:'hourly'|'salary', flsa, active }]   (our people)
  *  links:  Map or object: userId -> { gustoUuid, meta:{ jobUuid } }
  *  leave:  approved leave requests [{ userId, type, dates:[iso], hoursPerDay }]
  * Output: rows (one per linked hourly person), issues [{severity:'blocker'|'warning', code, userId?, message}], totals.
  */
-function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], periodStart, periodEnd, includePto = true }) {
+function buildHoursFeed({ weeks = [], people = [], links = {}, leave = [], periodStart, periodEnd, includePto = true, workweek }) {
     const issues = [];
     if (!parseIso(periodStart) || !parseIso(periodEnd) || periodEnd < periodStart) {
         return { rows: [], issues: [{ severity: 'blocker', code: 'bad_period', message: 'The pay period dates are not valid.' }], totals: { regularHours: 0, overtimeHours: 0, doubleTimeHours: 0, ptoHours: 0, people: 0 }, ready: false };
     }
     const linkOf = (id) => (links instanceof Map ? links.get(id) : links[id]);
-    // every Monday whose week overlaps the period
-    const mondays = [];
+    // every workweek that overlaps the period, by its first day (the company's workweek may start on any day)
+    const weekStarts = [];
+    const weekEnds = new Map();
     let cursor = periodStart;
     while (cursor <= periodEnd) {
-        const dow = parseIso(cursor).getUTCDay();
-        if (dow === 1 || cursor === periodStart) {
-            const ws = dow === 1 ? cursor : addDays(cursor, -((dow + 6) % 7));
-            if (!mondays.includes(ws)) mondays.push(ws);
-        }
-        cursor = addDays(cursor, 1);
+        const range = timeRules.weekRange(cursor, workweek);
+        if (!weekStarts.includes(range.start)) { weekStarts.push(range.start); weekEnds.set(range.start, range.end); }
+        cursor = addDays(range.end, 1);
     }
+    // a saved week knows its own last day: that wins over the calculated one
+    for (const w of weeks) if (w && w.weekEnd && weekEnds.has(w.weekStart)) weekEnds.set(w.weekStart, w.weekEnd);
+    const placement = (ws) => weekPlacement(ws, periodStart, periodEnd, weekEnds.get(ws));
+    const mondayWeeks = weekStarts.every((ws) => timeRules.weekdayOf(ws) === 1);
     const byUser = new Map();
     for (const w of weeks) {
         if (!byUser.has(w.userId)) byUser.set(w.userId, []);
         byUser.get(w.userId).push(w);
     }
-    const partial = mondays.filter((m) => weekPlacement(m, periodStart, periodEnd) === 'partial');
+    const partial = weekStarts.filter((m) => placement(m) === 'partial');
     if (partial.length) {
-        issues.push({ severity: 'warning', code: 'partial_week', message: `The week starting ${partial.join(', ')} is only partly inside this pay period. Weekly time totals cannot be split by day, so that week is not included. Align the pay period to Monday to Sunday weeks, or add those hours by hand in Gusto.` });
+        issues.push({ severity: 'warning', code: 'partial_week', message: `The week starting ${partial.join(', ')} is only partly inside this pay period. Weekly time totals cannot be split by day, so that week is not included. Align the pay period to ${mondayWeeks ? 'Monday to Sunday weeks' : 'your workweeks'}, or add those hours by hand in Gusto.` });
     }
-    const full = mondays.filter((m) => weekPlacement(m, periodStart, periodEnd) === 'inside');
+    const full = weekStarts.filter((m) => placement(m) === 'inside');
 
     const rows = [];
     const totals = { regularHours: 0, overtimeHours: 0, doubleTimeHours: 0, ptoHours: 0, holidayHours: 0, premiumHours: 0, people: 0 };

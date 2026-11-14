@@ -20,6 +20,16 @@ async function companyCountry() {
     } catch (_) { return null; }
 }
 
+/** Did the signed-in person come in with a temporary password that they still have to replace? (asked from the server) */
+async function mustChooseNewPassword() {
+    try {
+        if (!auth.currentUser) return false;
+        const res = await fetch('/api/auth/password-status', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, cache: 'no-store' });
+        if (!res.ok) return false;
+        return (await res.json()).mustChangePassword === true;
+    } catch (_) { return false; }
+}
+
 const US_STAFF_ROLES = ['hradmin', 'hrms', 'hr', 'payrolladmin', 'manager', 'accountant', 'auditor', 'executive'];
 
 async function getRedirectUrl(userData, role) {
@@ -466,6 +476,14 @@ loginForm?.addEventListener('submit', async (e) => {
       localStorage.setItem('hrms_manager_name', 'Savitha Balraju');
       localStorage.setItem('hrms_manager_role', 'Strategic Operations');
       localStorage.setItem('hrms_name', 'Savitha Balraju');
+    }
+
+    // A temporary password (given out by HR) only opens the "choose a new password" page. The server refuses
+    // everything else for this person until they have chosen their own password, so send them there first.
+    if (await mustChooseNewPassword()) {
+      if (btnText) btnText.textContent = 'Choose a new password...';
+      window.location.href = 'set-password.html';
+      return;
     }
 
     const redirectUrl = await getRedirectUrl(userData, role);

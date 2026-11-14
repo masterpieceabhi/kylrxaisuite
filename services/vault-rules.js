@@ -15,6 +15,7 @@ const CATEGORIES = [
     { key: 'leave_paperwork', label: 'Leave paperwork', scope: 'employee', retentionYears: 4 },
     { key: 'payroll_record', label: 'Payroll record', scope: 'employee', retentionYears: 4 },
     { key: 'medical_confidential', label: 'Medical or confidential', scope: 'employee', retentionYears: 4, confidential: true },
+    { key: 'i9_document', label: 'Form I-9 document copy', scope: 'employee', retentionYears: null, confidential: true },
     { key: 'employee_other', label: 'Other (employee)', scope: 'employee', retentionYears: 4 },
     { key: 'handbook', label: 'Employee handbook', scope: 'company', retentionYears: null },
     { key: 'insurance', label: 'Insurance certificate', scope: 'company', retentionYears: null, tracksExpiry: true },

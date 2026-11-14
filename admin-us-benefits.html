@@ -103,6 +103,12 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <div class="row" style="margin-top:0"><label>Show<select id="enStatus"><option value="active">Current</option><option value="terminated">Ended</option><option value="">All</option></select></label></div>
       <table style="margin-top:12px"><thead><tr><th>Person</th><th>Choices</th><th>From</th><th>How</th><th></th></tr></thead><tbody id="enRows"></tbody></table>
     </section>
+    <section class="card" id="enCard" hidden>
+      <h2 id="enTitle">Enrollment</h2>
+      <p class="hint">Opening this is written to the activity log. A family member's Social Security number stays hidden; showing it asks for a reason, is written to the activity log, and it hides again after 30 seconds.</p>
+      <div id="enBody"></div>
+      <div class="row"><button class="ghost" id="enClose">Close</button></div>
+    </section>
     <section class="card">
       <h2>Enroll someone yourself</h2>
       <p class="hint">Use this for a correction or a paper form. The reason is kept in the record.</p>
@@ -264,7 +270,36 @@ $('limSave').addEventListener('click', async () => {
 async function loadEnrollments() {
   const s = $('enStatus').value; const rows = (await req('GET', `/enrollments${s ? `?status=${s}` : ''}`)).data;
   const HOW = { open_enrollment: 'Open enrollment', new_hire: 'New hire', life_event: 'Life event', hr_entered: 'Entered by HR' };
-  $('enRows').innerHTML = rows.map((e) => `<tr><td><b>${esc(e.name)}</b></td><td>${e.elections.map((x) => esc(electionText(x))).join('<br>')}</td><td>${esc(day(e.effectiveDate))}${e.endDate ? `<br><span class="hint">ended ${esc(day(e.endDate))}</span>` : ''}</td><td>${esc(HOW[e.windowType] || e.windowType)}</td><td>${canManage && e.status === 'active' ? `<button class="no" data-enend="${esc(e.id)}" data-name="${esc(e.name)}">End coverage</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody here.</td></tr>';
+  $('enRows').innerHTML = rows.map((e) => `<tr><td><b>${esc(e.name)}</b></td><td>${e.elections.map((x) => esc(electionText(x))).join('<br>')}</td><td>${esc(day(e.effectiveDate))}${e.endDate ? `<br><span class="hint">ended ${esc(day(e.endDate))}</span>` : ''}</td><td>${esc(HOW[e.windowType] || e.windowType)}</td><td><button class="ghost" data-enview="${esc(e.id)}">Details</button> ${canManage && e.status === 'active' ? `<button class="no" data-enend="${esc(e.id)}" data-name="${esc(e.name)}">End coverage</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody here.</td></tr>';
+}
+// One enrollment in full, with family members. A Social Security number is only ever shown for 30 seconds.
+const HOW_WORDS = { open_enrollment: 'Open enrollment', new_hire: 'New hire', life_event: 'Life event', hr_entered: 'Entered by HR' };
+const REL = { spouse: 'Spouse', child: 'Child', domestic_partner: 'Domestic partner' };
+const ssnTimers = new Map();
+function hideSsn(depId) {
+  clearTimeout(ssnTimers.get(depId)); ssnTimers.delete(depId);
+  const out = document.querySelector(`[data-ssnout="${CSS.escape(depId)}"]`); if (out) out.textContent = out.dataset.masked;
+}
+function closeEnrollment() { [...ssnTimers.keys()].forEach(hideSsn); $('enCard').hidden = true; $('enBody').innerHTML = ''; }
+async function openEnrollment(id) {
+  [...ssnTimers.keys()].forEach(hideSsn);
+  const e = (await req('GET', `/enrollments/${encodeURIComponent(id)}`)).enrollment;
+  $('enTitle').textContent = `Enrollment: ${e.name || e.userId}`;
+  const choice = (x) => `<tr><td><b>${esc(x.planName)}</b><br><span class="hint">${esc(KIND[x.type] || x.type || '')}</span></td><td>${x.waived ? `Declined${x.waiveReason ? `: ${esc(x.waiveReason)}` : ''}` : esc(x.tier ? TIER[x.tier] || x.tier : x.deferralPercent !== null ? `${x.deferralPercent}% of pay${x.contributionType === 'roth' ? ' (Roth)' : ''}` : x.annualAmount !== null ? `${money(x.annualAmount)} a year` : 'Enrolled')}</td><td>${x.dependents.length ? x.dependents.map((d) => `<div style="margin-bottom:6px"><b>${esc(d.firstName)} ${esc(d.lastName)}</b> <span class="hint">${esc(REL[d.relationship] || d.relationship || '')}${d.dateOfBirth ? `, born ${esc(day(d.dateOfBirth))}` : ''}${d.student ? ', student' : ''}</span><br>${d.ssnMasked ? `Social Security number: <b data-ssnout="${esc(d.id)}" data-masked="${esc(d.ssnMasked)}">${esc(d.ssnMasked)}</b> <button type="button" class="ghost" data-ssnshow="${esc(d.id)}" data-enid="${esc(e.id)}" data-name="${esc(`${d.firstName} ${d.lastName}`)}" style="padding:2px 8px">Show</button>` : '<span class="hint">No Social Security number on file</span>'}</div>`).join('') : '<span class="hint">Nobody else covered</span>'}</td></tr>`;
+  $('enBody').innerHTML = `<p>${esc(HOW_WORDS[e.windowType] || e.windowType || '')}. Starts ${esc(day(e.effectiveDate))}${e.endDate ? `, ended ${esc(day(e.endDate))}` : ''}. Status: <b>${esc(e.status === 'active' ? 'current' : e.status === 'terminated' ? 'ended' : e.status)}</b>.</p>
+    <table><thead><tr><th>Plan</th><th>Choice</th><th>Family members covered</th></tr></thead><tbody>${e.elections.map(choice).join('') || '<tr><td colspan="3" class="hint">No choices recorded.</td></tr>'}</tbody></table>
+    <h3>History</h3><table><tbody>${(e.statusHistory || []).map((h) => `<tr><td>${esc(h.at ? new Date(h.at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '')}</td><td>${esc(String(h.status || '').replace(/_/g, ' '))}</td><td class="hint">${esc(h.note || '')}</td></tr>`).join('') || '<tr><td class="hint">No history.</td></tr>'}</tbody></table>`;
+  $('enCard').hidden = false; $('enCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function showSsn(btn) {
+  const depId = btn.dataset.ssnshow;
+  const reason = window.prompt(`Why do you need to see the Social Security number of ${btn.dataset.name}? The reason is recorded in the activity log.`);
+  if (!reason) return;
+  if (reason.trim().length < 5) throw new Error('Give a reason of at least 5 characters.');
+  const r = await req('POST', `/enrollments/${encodeURIComponent(btn.dataset.enid)}/dependents/${encodeURIComponent(depId)}/ssn/reveal`, { reason: reason.trim() });
+  const out = document.querySelector(`[data-ssnout="${CSS.escape(depId)}"]`); if (!out) return;
+  out.textContent = String(r.ssn); say('Shown for 30 seconds. This was recorded in the activity log.');
+  clearTimeout(ssnTimers.get(depId)); ssnTimers.set(depId, setTimeout(() => hideSsn(depId), 30000)); // not left on screen
 }
 $('enStatus').addEventListener('change', () => loadEnrollments().catch((err) => say(err.message, false)));
 function paintHrPlans() {
@@ -360,6 +395,9 @@ document.addEventListener('click', async (e) => {
   const el = (k) => e.target.closest(`[data-${k}]`);
   let t;
   try {
+    if ((t = el('enview'))) { await openEnrollment(t.dataset.enview); return; }
+    if ((t = el('ssnshow'))) { await showSsn(t); return; }
+    if (e.target.closest('#enClose')) { closeEnrollment(); return; }
     if ((t = el('pedit'))) {
       const p = plans.find((x) => x.id === t.dataset.pedit); const f = $('planForm').elements; resetPlanForm(); planEdit = p.id;
       f.name.value = p.name; f.type.value = p.type; f.type.disabled = true; f.carrier.value = p.carrier; f.planYear.value = p.planYear; f.payPeriodsPerYear.value = p.payPeriodsPerYear; f.preTax.checked = p.preTax; f.notes.value = p.notes;

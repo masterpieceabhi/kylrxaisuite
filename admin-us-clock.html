@@ -47,7 +47,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <section class="card">
       <h2>Rules in use</h2>
       <p class="hint">With no rule, people clock in and out with nothing extra. The most specific rule wins: a location rule over a state rule over the company rule.</p>
-      <table><thead><tr><th>Applies to</th><th>Photo</th><th>Work site area</th><th>Photos kept</th><th>Checks</th><th></th></tr></thead><tbody id="polRows"></tbody></table>
+      <table><thead><tr><th>Applies to</th><th>Photo</th><th>Work site area</th><th>Work network</th><th>Photos kept</th><th>Checks</th><th></th></tr></thead><tbody id="polRows"></tbody></table>
     </section>
     <section class="card">
       <h2 id="polTitle">Add or change a rule</h2>
@@ -62,7 +62,14 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
         <label>Location must be exact to within (meters)<input name="accuracyMeters" type="number" min="10" max="5000" value="100"></label>
         <label class="chk"><input type="checkbox" name="requireNotice"> Show the photo and location notices even where no state rule needs them</label>
       </div>
-      <h3>Which punches the photo and area apply to</h3>
+      <h3>Clock in only from the work network</h3>
+      <p class="hint" style="margin-top:0">Limits the clock to devices on your own internet connection, for example the shop Wi-Fi. It works for the phone clock and for shared tablets. The check is made on the server, from the network address each punch arrives from. Phones on mobile data are outside the list.</p>
+      <div class="grid">
+        <label>When a punch comes from another network<select name="netMode"><option value="off">Do nothing (limit is off)</option><option value="warn">Record the punch and flag it for review</option><option value="block">Do not allow the punch</option></select></label>
+        <label style="grid-column:span 2">Allowed networks, one on each line<textarea name="netAllowed" style="min-height:90px" placeholder="203.0.113.7&#10;203.0.113.0/24&#10;2001:db8:abcd::/48" spellcheck="false"></textarea></label>
+      </div>
+      <p class="hint">Write a single address (203.0.113.7) or a range (203.0.113.0/24). Both kinds of internet address are accepted (IPv4 and IPv6). <span id="netMine"></span> <button type="button" class="ghost" id="netAddMine" hidden>Add my address to the list</button></p>
+      <h3>Which punches the photo, area and network apply to</h3>
       <div class="row" style="margin-top:0"><label class="chk"><input type="checkbox" data-pt="in" checked> Clock in</label><label class="chk"><input type="checkbox" data-pt="out" checked> Clock out</label><label class="chk"><input type="checkbox" data-pt="break_start"> Start break</label><label class="chk"><input type="checkbox" data-pt="break_end"> End break</label></div>
       <h3>Flag a punch for review when</h3>
       <div class="row" style="margin-top:0"><label class="chk"><input type="checkbox" data-an="sharedDevice"> One phone is used by several people</label><label class="chk"><input type="checkbox" data-an="impossibleTravel"> The place is too far from the last punch</label><label class="chk"><input type="checkbox" data-an="outsideSchedule"> It is outside the planned shift</label><label class="chk"><input type="checkbox" data-an="repeatedTimestamps"> The same time is punched again and again</label><label class="chk"><input type="checkbox" data-an="newDevice"> A new phone is used</label></div>
@@ -132,6 +139,7 @@ const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.classNa
 const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 const when = (i) => (i ? new Date(i).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const SELFIE = { off: 'Not used', optional: 'Asked for', required: 'Required' }; const GEO = { off: 'Not used', record: 'Recorded', flag: 'Flags outside', block: 'Blocks outside' };
+const NET = { off: 'Not used', warn: 'Flags other networks', block: 'Blocks other networks' }; let myAddress = null;
 const METHOD = { web: 'the web clock', kiosk_pin: 'the shared kiosk', selfie_photo: 'photos', geofence: 'phone location', biometric: 'fingerprint or face' };
 const AN = { sharedDevice: 'shared phone', impossibleTravel: 'too far', outsideSchedule: 'outside shift', repeatedTimestamps: 'repeated time', newDevice: 'new phone' };
 let policies = []; let locs = []; let notices = []; let laws = []; let canEditLaws = false;
@@ -150,21 +158,37 @@ const scopeText = (p) => (p.scope === 'org' ? 'The whole company' : p.scope === 
 // ---------------------------------------------------------------------- rules
 async function loadPolicies() {
   policies = (await req('GET', '/clock/policies')).data;
-  $('polRows').innerHTML = policies.map((p) => `<tr><td><b>${esc(scopeText(p))}</b></td><td>${esc(SELFIE[p.selfie])}</td><td>${esc(GEO[p.geofence.mode])}${p.geofence.mode !== 'off' ? `<br><span class="hint">within ${esc(p.geofence.accuracyMeters)} m accuracy</span>` : ''}</td><td>${p.selfie === 'off' ? '' : `${esc(p.photoRetentionDays)} days`}</td><td class="hint">${esc(Object.entries(p.anomaly || {}).filter(([, v]) => v).map(([k]) => AN[k]).join(', '))}</td><td><button class="ghost" data-poledit="${esc(p.id)}">Edit</button> <button class="no" data-poldel="${esc(p.id)}">Remove</button></td></tr>`).join('') || '<tr><td colspan="6" class="hint">No rules. People clock in and out with nothing extra.</td></tr>';
+  $('polRows').innerHTML = policies.map((p) => `<tr><td><b>${esc(scopeText(p))}</b></td><td>${esc(SELFIE[p.selfie])}</td><td>${esc(GEO[p.geofence.mode])}${p.geofence.mode !== 'off' ? `<br><span class="hint">within ${esc(p.geofence.accuracyMeters)} m accuracy</span>` : ''}</td><td>${esc(NET[(p.network || {}).mode || 'off'])}${(p.network || {}).mode && p.network.mode !== 'off' ? `<br><span class="hint">${esc(p.network.allowed.length)} allowed</span>` : ''}</td><td>${p.selfie === 'off' ? '' : `${esc(p.photoRetentionDays)} days`}</td><td class="hint">${esc(Object.entries(p.anomaly || {}).filter(([, v]) => v).map(([k]) => AN[k]).join(', '))}</td><td><button class="ghost" data-poledit="${esc(p.id)}">Edit</button> <button class="no" data-poldel="${esc(p.id)}">Remove</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No rules. People clock in and out with nothing extra.</td></tr>';
 }
 function paintScope() { const s = $('pScope').value; $('pStateL').hidden = s !== 'state'; $('pLocL').hidden = s !== 'location'; }
 $('pScope').addEventListener('change', paintScope);
 function fillPolicy(p) {
   const f = $('polForm').elements; f.scope.value = p.scope; f.state.value = p.state || ''; f.locationId.value = p.locationId || ''; f.selfie.value = p.selfie; f.photoRetentionDays.value = p.photoRetentionDays; f.geoMode.value = p.geofence.mode; f.accuracyMeters.value = p.geofence.accuracyMeters; f.requireNotice.checked = Boolean(p.requireNotice);
+  f.netMode.value = (p.network && p.network.mode) || 'off'; f.netAllowed.value = ((p.network && p.network.allowed) || []).join('\n');
   document.querySelectorAll('[data-pt]').forEach((c) => { c.checked = (p.punchTypes || []).includes(c.dataset.pt); }); document.querySelectorAll('[data-an]').forEach((c) => { c.checked = Boolean((p.anomaly || {})[c.dataset.an]); }); paintScope();
 }
-const DEFAULT_POLICY = { scope: 'org', selfie: 'off', photoRetentionDays: 30, geofence: { mode: 'off', accuracyMeters: 100 }, punchTypes: ['in', 'out'], anomaly: { sharedDevice: true, impossibleTravel: true, outsideSchedule: true, repeatedTimestamps: true, newDevice: false } };
+const DEFAULT_POLICY = { scope: 'org', selfie: 'off', photoRetentionDays: 30, network: { mode: 'off', allowed: [] }, geofence: { mode: 'off', accuracyMeters: 100 }, punchTypes: ['in', 'out'], anomaly: { sharedDevice: true, impossibleTravel: true, outsideSchedule: true, repeatedTimestamps: true, newDevice: false } };
 $('polForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target.elements;
   const body = { scope: f.scope.value, state: f.state.value, locationId: f.locationId.value, selfie: f.selfie.value, photoRetentionDays: Number(f.photoRetentionDays.value), geofence: { mode: f.geoMode.value, accuracyMeters: Number(f.accuracyMeters.value) }, requireNotice: f.requireNotice.checked,
+    network: { mode: f.netMode.value, allowed: f.netAllowed.value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) },
     punchTypes: [...document.querySelectorAll('[data-pt]:checked')].map((c) => c.dataset.pt), anomaly: Object.fromEntries([...document.querySelectorAll('[data-an]')].map((c) => [c.dataset.an, c.checked])) };
   if (body.geofence.mode !== 'off' && !locs.some((l) => l.lat !== null && l.lat !== undefined)) { say('No location has a map point yet. Add the latitude and longitude of a location on the Company structure page first.', false); return; }
-  try { await req('PUT', '/clock/policies', body); say('Rule saved. Staff are asked to accept any needed notice the next time they clock.'); fillPolicy(DEFAULT_POLICY); $('polTitle').textContent = 'Add or change a rule'; await loadPolicies(); await loadPeople(); } catch (err) { say(err.message, false); }
+  if (body.network.mode === 'block' && !window.confirm('Punches from any other network will be refused, on phones and on shared tablets. Save this?')) return;
+  try { const saved = await req('PUT', '/clock/policies', body);
+    if (saved.yourAddressAllowed === false) say(`Rule saved. Note: the address you are on now (${saved.yourAddress || 'unknown'}) is NOT in the allowed list, so a punch from here would be ${body.network.mode === 'block' ? 'refused' : 'flagged'}. Check the list.`, false);
+    else say('Rule saved. Staff are asked to accept any needed notice the next time they clock.');
+    fillPolicy(DEFAULT_POLICY); $('polTitle').textContent = 'Add or change a rule'; await loadPolicies(); await loadPeople(); } catch (err) { say(err.message, false); }
+});
+async function loadMyNetwork() {
+  const r = await req('GET', '/clock/my-network'); myAddress = r.address;
+  $('netMine').textContent = myAddress ? `The address you are on right now is ${myAddress}.` : 'The server could not read the address you are on.';
+  $('netAddMine').hidden = !myAddress;
+}
+$('netAddMine').addEventListener('click', () => {
+  const box = $('polForm').elements.netAllowed; const lines = box.value.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
+  if (myAddress && !lines.includes(myAddress)) lines.push(myAddress);
+  box.value = lines.join('\n');
 });
 $('rqGo').addEventListener('click', async () => {
   try {
@@ -178,7 +202,7 @@ $('rqGo').addEventListener('click', async () => {
 async function loadFlags() {
   const r = await req('GET', `/clock/exceptions?status=${$('exStatus').value}`);
   if ($('exStatus').value === 'open') $('flagCount').textContent = r.count ? `(${r.count})` : '';
-  $('exRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.name || '')}</b></td><td>${esc(when(x.createdAt))}<br><span class="hint">${esc(words(x.punchType || x.type || ''))} ${esc(x.source || '')}</span></td><td>${(x.reasons || []).map((y) => esc(y.en || words(y.code))).join('<br>') || esc((x.codes || []).map(words).join(', '))}</td><td>${x.blocked || x.decision === 'block' ? '<span class="tag badTag">punch was blocked</span>' : '<span class="tag warnTag">punch was recorded</span>'}${x.status === 'resolved' ? `<br><span class="hint">${esc(x.resolution || 'looked at')}</span>` : ''}</td><td>${x.status === 'open' ? `<button class="ghost" data-exdone="${esc(x.id)}">Mark as looked at</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing here.</td></tr>';
+  $('exRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.name || '')}</b></td><td>${esc(when(x.createdAt))}<br><span class="hint">${esc(words(x.punchType || x.type || ''))} ${esc(x.source || '')}</span></td><td>${(x.reasons || []).map((y) => esc(y.en || words(y.code))).join('<br>') || esc((x.codes || []).map(words).join(', '))}${x.kind === 'late_punch' ? `<br><span class="hint">Time on the phone: ${esc(when(x.punchAt))}. Reached the server: ${esc(when(x.receivedAt))} (${esc(x.delayMinutes)} min later).</span>` : ''}${x.ip ? `<br><span class="hint">Came from ${esc(x.ip)}</span>` : ''}</td><td>${x.blocked || x.decision === 'block' ? '<span class="tag badTag">punch was blocked</span>' : '<span class="tag warnTag">punch was recorded</span>'}${x.status === 'resolved' ? `<br><span class="hint">${esc(x.resolution || 'looked at')}</span>` : ''}</td><td>${x.status === 'open' ? `<button class="ghost" data-exdone="${esc(x.id)}">Mark as looked at</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nothing here.</td></tr>';
 }
 $('exStatus').addEventListener('change', () => loadFlags().catch((err) => say(err.message, false)));
 async function loadPhotos() {
@@ -237,7 +261,7 @@ onAuthStateChanged(auth, async (user) => {
   const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
   await step(async () => { locs = (await req('GET', '/locations')).data; $('pLoc').innerHTML = locs.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join(''); });
   fillPolicy(DEFAULT_POLICY);
-  await step(loadNotices); await step(loadPolicies); await step(loadFlags); await step(loadPhotos); await step(loadPeople); await step(loadLaws);
+  await step(loadNotices); await step(loadPolicies); await step(loadMyNetwork); await step(loadFlags); await step(loadPhotos); await step(loadPeople); await step(loadLaws);
 });
 </script>
 </body>

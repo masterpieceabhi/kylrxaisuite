@@ -34,6 +34,18 @@ async function loadApprovedLeave(ctx, start, end) {
     return rows.filter((r) => r.orgId === ctx.orgId && r.status === 'approved' && (r.dates || []).some((d) => d >= start && d <= end));
 }
 
+/** The company's workweek setting (which day the week starts on, and any change of it); Monday to Sunday when none is saved */
+async function loadWorkweek(ctx) {
+    let org = ctx.org;
+    if (!org) {
+        const { rawCollection } = require('../../config/firebase');
+        const s = await rawCollection('organizations').doc(ctx.orgId).get();
+        org = (typeof s.exists === 'function' ? s.exists() : s.exists) ? s.data() : {};
+    }
+    const timeRules = require('../time-rules');
+    return timeRules.normalizeWorkweek(org && org.usProfile && org.usProfile.timeRules && org.usProfile.timeRules.workweek);
+}
+
 function checkPeriod(start, end) {
     if (!rules.parseIso(start) || !rules.parseIso(end)) throw fail(400, 'validation', 'start and end must be dates (YYYY-MM-DD)');
     if (end < start) throw fail(400, 'validation', 'The end of the pay period is before the start');
@@ -43,10 +55,10 @@ function checkPeriod(start, end) {
 /** The hours that would be sent to Gusto, with issues. No Gusto calls except none: reads our data only. */
 async function buildFeed(ctx, start, end) {
     checkPeriod(start, end);
-    const [people, weeks, leave, links] = await Promise.all([sync.loadPeople(ctx), loadWeeks(ctx, start, end), loadApprovedLeave(ctx, start, end), ctx.store.listLinks(ctx.orgId, 'employee')]);
+    const [people, weeks, leave, links, workweek] = await Promise.all([sync.loadPeople(ctx), loadWeeks(ctx, start, end), loadApprovedLeave(ctx, start, end), ctx.store.listLinks(ctx.orgId, 'employee'), loadWorkweek(ctx)]);
     const linkMap = new Map(links.filter((l) => l.gustoUuid).map((l) => [l.ourId, l]));
     const feed = rules.buildHoursFeed({
-        weeks: weeks.filter((w) => w.orgId === ctx.orgId), leave, periodStart: start, periodEnd: end,
+        weeks: weeks.filter((w) => w.orgId === ctx.orgId), leave, periodStart: start, periodEnd: end, workweek,
         links: linkMap, people: people.filter((p) => p.classification === 'W2' || !p.classification).map((p) => ({ id: p.id, name: p.name, payType: p.payType, flsa: p.flsa, active: p.active }))
     });
     return { ...feed, hash: rules.feedHash(feed.rows), periodStart: start, periodEnd: end };

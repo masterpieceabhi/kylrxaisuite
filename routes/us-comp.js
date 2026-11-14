@@ -8,6 +8,7 @@ const { requireUsOrg, findEmployee, audit } = require('./us-hr').helpers;
 const { requirePermission, requireAnyPermission, can } = require('../services/permissions');
 const { encryptField } = require('../services/pii-crypto');
 const CH = require('../services/comp-history-rules');
+const DUE = require('../services/comp-due-rules');
 const DD = require('../services/direct-deposit-rules');
 const O = require('../services/org-rules');
 const store = require('../services/people-data-store');
@@ -51,31 +52,38 @@ async function applyDueFor(orgId, emp) {
     return records;
 }
 
-/** The daily job: applies every approved record whose effective date has come, in all organizations */
+/** The job has no signed-in person, so its audit entries name the system as the actor */
+const SYSTEM_ACTOR = { user: { id: 'system', role: 'system' } };
+
+/**
+ * The hourly job: applies every approved record whose effective date has come, for every US company, each judged by
+ * its own calendar day. Safe to repeat (an applied record is no longer due). One audit entry per company that changed.
+ */
 async function applyDueAll() {
     const snap = await rawCollection('comp_history').where('applied', '==', false).get();
-    const byPerson = new Map();
-    snap.docs.forEach((d) => { const r = d.data(); if (r.status === 'approved' && r.orgId && r.userId) byPerson.set(`${r.orgId}|${r.userId}`, [r.orgId, r.userId]); });
+    const waiting = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     let applied = 0;
-    for (const [orgId, userId] of byPerson.values()) {
+    for (const orgId of DUE.companiesWaiting(waiting)) {
         try {
-            const today = await store.todayFor(orgId);
-            const records = await recordsFor(orgId, userId);
-            if (!records.some((r) => (r.status || 'approved') === 'approved' && !r.applied && r.effectiveDate <= today)) continue;
-            const emp = await findEmployee(orgId, userId);
-            if (!emp) continue;
-            applied += (await syncPerson(orgId, emp, records, today)).applied;
-        } catch (e) { logger.error(`Comp history job failed for ${userId}: ${e.message}`); }
+            if ((await require('./time').helpers.orgInfo(orgId)).country !== 'US') continue;
+            const n = await applyDueForOrg(orgId);
+            if (n) { applied += n; await audit(orgId, SYSTEM_ACTOR, 'comp_history_apply_due', null, { applied: n, by: 'system', trigger: 'hourly_job' }); }
+        } catch (e) { logger.error(`Comp history job failed for company ${orgId}: ${e.message}`); }
     }
     return applied;
 }
 
+/** Applies what is due in one company today. Returns how many records took effect. */
 async function applyDueForOrg(orgId) {
     const today = await store.todayFor(orgId);
     const all = await store.listByOrg('comp_history', orgId);
-    const ids = [...new Set(all.filter((r) => !r.applied && (r.status || 'approved') === 'approved' && r.effectiveDate <= today).map((r) => r.userId))];
     let applied = 0;
-    for (const id of ids) { const emp = await findEmployee(orgId, id); if (emp) applied += (await syncPerson(orgId, emp, all.filter((r) => r.userId === id), today)).applied; }
+    for (const { userId } of DUE.duePeople(all, today)) {
+        try {
+            const emp = await findEmployee(orgId, userId);
+            if (emp) applied += (await syncPerson(orgId, emp, all.filter((r) => r.userId === userId), today)).applied;
+        } catch (e) { logger.error(`Comp history: could not apply due changes for ${userId}: ${e.message}`); }
+    }
     return applied;
 }
 
@@ -182,18 +190,26 @@ router.get('/comp-history/queue', requirePermission('people.read_pay'), requireP
 
 router.post('/comp-history/apply-due', requirePermission('people.write'), requireUsOrg, async (req, res) => {
     const applied = await applyDueForOrg(req.orgId);
-    audit(req.orgId, req, 'comp_history_apply_due', null, { applied });
-    res.json({ success: true, applied });
+    audit(req.orgId, req, 'comp_history_apply_due', null, { applied, trigger: 'button' });
+    res.json({ success: true, applied, today: await store.todayFor(req.orgId) });
 });
 
-let jobTimer = null;
-function startDailyJob() {
-    if (jobTimer || process.env.COMP_HISTORY_JOB === 'off') return;
-    const run = () => applyDueAll().then((n) => n && logger.info(`Comp history job applied ${n} change(s)`)).catch((e) => logger.error(`Comp history job failed: ${e.message}`));
-    jobTimer = setInterval(run, 24 * 60 * 60 * 1000); jobTimer.unref();
-    setTimeout(run, 90 * 1000).unref();
+// Once shortly after the server starts, then every hour. One run at a time in this server copy; a second server copy
+// would only repeat work that finds nothing left to do. Set COMP_HISTORY_JOB=off to switch it off.
+let jobTimer = null; let jobRunning = false;
+async function runDue() {
+    if (jobRunning) return 0;
+    jobRunning = true;
+    try { const n = await applyDueAll(); if (n) logger.info(`Comp history job applied ${n} change(s)`); return n; } catch (e) { logger.error(`Comp history job failed: ${e.message}`); return 0; } finally { jobRunning = false; }
 }
-startDailyJob();
+function startJobs() {
+    if (jobTimer || process.env.COMP_HISTORY_JOB === 'off') return false;
+    setTimeout(runDue, 90 * 1000).unref();
+    jobTimer = setInterval(runDue, 60 * 60 * 1000); jobTimer.unref();
+    return true;
+}
+// Started when this file loads (as before), so it runs even if nothing else calls startJobs().
+startJobs();
 
 // -------------------------------------------------- direct deposit splits
 const canRead = (req, emp) => emp.id === req.user.id || can(req.user, 'people.write') || can(req.user, 'people.read_pay');
@@ -264,3 +280,5 @@ router.get('/employees/:id/direct-deposit/splits/preview', requireUsOrg, async (
 
 router.helpers = { applyDueAll, applyDueForOrg, syncPerson };
 module.exports = router;
+module.exports.startJobs = startJobs;
+module.exports.runDue = runDue;

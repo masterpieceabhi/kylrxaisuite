@@ -3,7 +3,7 @@
  * overtime warnings, predictive-scheduling premium flags, schedule vs actual, job time allocation.
  * Predictive-scheduling law differs by state/city and changes: the rules table is DATA, seeded empty.
  */
-const { zonedToUtcIso, localDate } = require('./time-rules');
+const { zonedToUtcIso, localDate, weekRange } = require('./time-rules');
 
 const DEFAULT_SETTINGS = {
     minRestHours: 8, maxDailyHours: 12, maxWeeklyHours: 60, overtimeWeeklyHours: 40,
@@ -15,7 +15,14 @@ const HHMM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const pad = (t) => { const m = HHMM.exec(String(t)); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null; };
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const weekDates = (weekStart) => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+/**
+ * The days of the workweek that starts on weekStart. Seven days; with the company's workweek setting the one week
+ * cut short by a change of start day has fewer (time-rules.weekRange). Without the setting: Monday-style 7 days.
+ */
+const weekDates = (weekStart, workweek) => {
+    const n = workweek ? weekRange(weekStart, workweek).days : 7;
+    return Array.from({ length: n }, (_, i) => addDays(weekStart, i));
+};
 const dow = (iso) => new Date(`${iso}T00:00:00Z`).getUTCDay();
 
 function validateSettings(body) {
@@ -81,7 +88,7 @@ function availabilityIssue(avail, shift, tz) {
  * Conflicts for putting `shift` (must have userId) on a person.
  * others: the person's other shifts; leaves: leave_requests docs; avail: availability doc.
  */
-function conflictsFor({ shift, others, leaves, settings, avail, tz }) {
+function conflictsFor({ shift, others, leaves, settings, avail, tz, workweek }) {
     const st = { ...DEFAULT_SETTINGS, ...(settings || {}) };
     const out = [];
     const mine = (others || []).filter((o) => o.id !== shift.id && o.status !== 'cancelled' && o.userId === shift.userId);
@@ -99,7 +106,7 @@ function conflictsFor({ shift, others, leaves, settings, avail, tz }) {
     }
     const sameDay = mine.filter((o) => o.date === shift.date).reduce((s, o) => s + (o.hours || 0), 0) + (shift.hours || 0);
     if (sameDay > st.maxDailyHours) out.push({ code: 'over_daily_hours', severity: st.enforceMax ? 'block' : 'warn', message: `More than ${st.maxDailyHours} scheduled hours on this day (${Math.round(sameDay * 10) / 10})` });
-    const wk = weeklyHours(weekStartOf(shift.date), [...mine, shift]);
+    const wk = weeklyHours(weekStartOf(shift.date, workweek), [...mine, shift], workweek);
     if (wk > st.maxWeeklyHours) out.push({ code: 'over_weekly_hours', severity: st.enforceMax ? 'block' : 'warn', message: `More than ${st.maxWeeklyHours} hours this week (${wk})` });
     else if (wk > st.overtimeWeeklyHours) out.push({ code: 'overtime_risk', severity: 'warn', message: `Over ${st.overtimeWeeklyHours} hours this week (${wk}): overtime likely` });
     const av = availabilityIssue(avail, shift, tz);
@@ -107,15 +114,14 @@ function conflictsFor({ shift, others, leaves, settings, avail, tz }) {
     return out;
 }
 
-function weekStartOf(dateIso) {
-    const d = new Date(`${dateIso}T00:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
-    return d.toISOString().slice(0, 10);
+/** First day of the workweek a date falls in. workweek is the company's setting (time-rules.weekRange); Monday when not given. */
+function weekStartOf(dateIso, workweek) {
+    return weekRange(dateIso, workweek).start;
 }
 
 /** Scheduled hours of a person in a week */
-function weeklyHours(weekStart, shifts) {
-    const days = new Set(weekDates(weekStart));
+function weeklyHours(weekStart, shifts, workweek) {
+    const days = new Set(weekDates(weekStart, workweek));
     const h = (shifts || []).filter((s) => days.has(s.date) && s.status !== 'cancelled').reduce((sum, s) => sum + (s.hours || 0), 0);
     return Math.round(h * 100) / 100;
 }
@@ -124,9 +130,9 @@ function weeklyHours(weekStart, shifts) {
  * Hours for the overtime warning: what was actually worked on days before today plus what is
  * scheduled from today on. workedByDate: { 'YYYY-MM-DD': hours }
  */
-function projectedWeekHours(weekStart, shifts, workedByDate, today) {
+function projectedWeekHours(weekStart, shifts, workedByDate, today, workweek) {
     let total = 0;
-    for (const d of weekDates(weekStart)) {
+    for (const d of weekDates(weekStart, workweek)) {
         if (d < today) total += Number((workedByDate || {})[d] || 0);
         else total += (shifts || []).filter((s) => s.date === d && s.status !== 'cancelled').reduce((s, x) => s + (x.hours || 0), 0);
     }

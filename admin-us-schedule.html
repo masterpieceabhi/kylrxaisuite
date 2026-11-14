@@ -155,13 +155,16 @@ const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.classNa
 const words = (s) => String(s || '').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const addDays = (s, n) => { const d = new Date(`${s}T12:00:00`); d.setDate(d.getDate() + n); return iso(d); };
-const mondayOf = (s) => { const d = new Date(`${s}T12:00:00`); return addDays(s, -((d.getDay() + 6) % 7)); };
 const dayLabel = (s, long) => new Date(`${s}T12:00:00`).toLocaleDateString('en-US', long ? { weekday: 'long', month: 'short', day: 'numeric' } : { weekday: 'short', month: 'numeric', day: 'numeric' });
 const t12 = (t) => { const [h, m] = String(t || '').split(':').map(Number); if (Number.isNaN(h)) return ''; return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`; };
 const hm = (min) => `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
 const stamp = (i) => (i ? new Date(i).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '');
 const clock = (i) => (i ? new Date(i).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '');
-let weekStart = mondayOf(iso(new Date())); let week = null; let editing = null; let canRules = true;
+// The week shown follows the company's workweek (it may start on any day): the server names the week running now
+// ("current"), the days in it and the weeks before and after, so this page never works out a week start itself.
+let weekStart = 'current'; let week = null; let editing = null; let canRules = true;
+const daysOfWeek = () => Array.from({ length: (week && week.weekDays) || 7 }, (_, n) => addDays(weekStart, n));
+const stepWeek = (dir) => { if (!week) return false; weekStart = (dir < 0 ? week.prevWeekStart : week.nextWeekStart) || addDays(weekStart, 7 * dir); return true; };
 
 async function req(method, path, body) {
   const token = await auth.currentUser.getIdToken();
@@ -175,8 +178,9 @@ const warnText = (list) => (list || []).map((c) => c.message || words(c.type || 
 // ----------------------------------------------------------------------- week
 async function loadWeek() {
   week = await req('GET', `/week?weekStart=${weekStart}`);
-  const days = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(weekStart, n));
-  $('wLabel').textContent = `${dayLabel(days[0], true)} to ${dayLabel(days[6], true)}`;
+  weekStart = week.weekStart;
+  const days = daysOfWeek();
+  $('wLabel').textContent = `${dayLabel(days[0], true)} to ${dayLabel(days[days.length - 1], true)}`;
   const drafts = week.shifts.filter((s) => s.status === 'draft').length;
   $('wState').innerHTML = !week.shifts.length ? '<span class="tag grey">nothing planned</span>' : drafts ? `<span class="tag warnTag">${drafts} draft shift${drafts === 1 ? '' : 's'} not published</span>` : '<span class="tag good">published</span>';
   $('wPublish').disabled = drafts === 0; $('wPublish').style.opacity = drafts ? '1' : '.5';
@@ -195,7 +199,7 @@ function openShiftForm(shift, userId, date) {
   f.userId.value = shift ? shift.userId || '' : userId; f.date.value = shift ? shift.date : date; f.startTime.value = shift ? shift.startTime : '09:00'; f.endTime.value = shift ? shift.endTime : '17:00';
   f.breakMinutes.value = shift ? shift.breakMinutes || 0 : 30; f.role.value = shift ? shift.role || '' : ''; f.notes.value = shift ? shift.notes || '' : '';
   $('shiftDelete').hidden = !shift; $('repeatRow').hidden = Boolean(shift);
-  $('repeatDays').innerHTML = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(weekStart, n)).filter((d) => d !== f.date.value).map((d) => `<label class="chk" style="display:inline-flex;margin-right:10px"><input type="checkbox" data-repeat="${d}"> ${esc(dayLabel(d))}</label>`).join('');
+  $('repeatDays').innerHTML = daysOfWeek().filter((d) => d !== f.date.value).map((d) => `<label class="chk" style="display:inline-flex;margin-right:10px"><input type="checkbox" data-repeat="${d}"> ${esc(dayLabel(d))}</label>`).join('');
   $('shiftCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 $('shiftCancel').addEventListener('click', () => { $('shiftCard').hidden = true; });
@@ -221,14 +225,14 @@ $('shiftDelete').addEventListener('click', async () => {
   if (s.status === 'published' && !window.confirm('This shift is published. Cancel it and tell the person?')) return;
   try { const r = await req('DELETE', `/shifts/${editing}`); $('shiftCard').hidden = true; await loadWeek(); say(r.cancelled ? `Shift cancelled.${(r.premiumOwed || []).length ? ' A notice rule applies: extra pay may be owed.' : ''}` : 'Draft shift removed.'); } catch (err) { say(err.message, false); }
 });
-$('wPrev').addEventListener('click', () => { weekStart = addDays(weekStart, -7); $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
-$('wNext').addEventListener('click', () => { weekStart = addDays(weekStart, 7); $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
+$('wPrev').addEventListener('click', () => { if (!stepWeek(-1)) return; $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
+$('wNext').addEventListener('click', () => { if (!stepWeek(1)) return; $('shiftCard').hidden = true; loadWeek().catch((err) => say(err.message, false)); });
 $('wCopy').addEventListener('click', async () => {
-  if (!window.confirm('Copy every shift from last week into this week as drafts?')) return;
-  try { const r = await req('POST', '/copy', { fromWeek: addDays(weekStart, -7), toWeek: weekStart }); await loadWeek(); say(`${r.created} shifts copied as drafts.${r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped[0].reason}` : ''}`, r.skipped.length === 0); } catch (err) { say(err.message, false); }
+  if (!week || !window.confirm('Copy every shift from last week into this week as drafts?')) return;
+  try { const r = await req('POST', '/copy', { fromWeek: week.prevWeekStart || addDays(weekStart, -7), toWeek: weekStart }); await loadWeek(); say(`${r.created} shifts copied as drafts.${r.skipped.length ? ` ${r.skipped.length} skipped: ${r.skipped[0].reason}` : ''}`, r.skipped.length === 0); } catch (err) { say(err.message, false); }
 });
 $('wPublish').addEventListener('click', async () => {
-  if (!window.confirm('Publish this week? Staff will see their shifts and get a notice.')) return;
+  if (!week || !window.confirm('Publish this week? Staff will see their shifts and get a notice.')) return;
   try { const r = await req('POST', '/publish', { weekStart }); await loadWeek(); say(`${r.published} shifts published. ${r.notified} ${r.notified === 1 ? 'person' : 'people'} told.`); } catch (err) { say(err.message, false); }
 });
 

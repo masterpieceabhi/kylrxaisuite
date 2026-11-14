@@ -2,24 +2,26 @@ const express = require('express');
 const router = express.Router();
 const { rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
-const { orgInfo, punchesSince, weekIsLocked } = require('./time').helpers;
+const { verifyToken } = require('../middleware/authMiddleware');
+const { orgInfo, personInfo, punchesSince, weekIsLocked, audit } = require('./time').helpers;
 const rules = require('../services/time-rules');
 const policy = require('../services/time-policy');
 const { parseIsoDate, isoDate } = require('../services/us-forms');
 const perms = require('../services/permissions');
 const teamScope = require('../services/team-scope');
+// Who may do what here (services/permissions.js decides which roles hold each permission):
+//   decide hours and punch fixes       time.approve (everyone) or time.approve_team (a manager's direct reports only)
+//   see the lists without deciding     time.view_all (auditors)
+//   reopen a week                      time.approve
+//   change the company's time rules    time.manage_rules
+//   download approved hours            time.export
 const APPROVER = perms.requireAnyPermission('time.approve', 'time.approve_team');
-
-const MANAGER_ROLES = [...ADMIN_HR_ROLES, 'Manager', 'manager'];
-const RULE_ROLES = ['Super Admin', 'super_admin', 'hr_admin', 'Admin'];
+const APPROVAL_VIEWER = perms.requireAnyPermission('time.approve', 'time.approve_team', 'time.view_all');
 const MAX_CORRECTION_AGE_DAYS = 60;
 
 router.use(verifyToken);
 
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
-const norm = (r) => String(r || '').toLowerCase().replace(/[\s_-]+/g, '');
-const hasRole = (user, list) => list.some((r) => norm(r) === norm(user.role));
 const hours = policy.toHours;
 
 function requireOrg(req, res, next) {
@@ -30,7 +32,16 @@ function requireOrg(req, res, next) {
 }
 
 const addDays = (iso, n) => { const d = parseIsoDate(iso); d.setUTCDate(d.getUTCDate() + n); return isoDate(d); };
-const isMonday = (iso) => Boolean(parseIsoDate(iso)) && rules.weekStart(iso) === iso;
+/** The message for a date that is not the first day of one of the company's workweeks */
+function notAWeekStart(res, iso, info) {
+    const real = parseIsoDate(iso) ? rules.weekRange(iso, info.workweek) : null;
+    return res.status(400).json({
+        success: false, error: real ? `weekStart must be the first day of a workweek (YYYY-MM-DD). That week starts on ${rules.WEEKDAYS[real.startDay]} ${real.start}.` : 'weekStart must be a date (YYYY-MM-DD)',
+        ...(real ? { expectedWeekStart: real.start } : {})
+    });
+}
+/** A stored week's last day (weeks saved before the workweek setting existed are 7 days) */
+const weekEndOf = (w) => w.weekEnd || addDays(w.weekStart, 6);
 const weekDocRef = (userId, weekStart) => rawCollection('timesheet_weeks').doc(`${userId}_${weekStart}`);
 const localTimeOf = (iso, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));
 
@@ -59,13 +70,19 @@ async function holidaysInWeek(orgId, user, weekStart, weekEnd, info) {
     } catch (_) { return []; }
 }
 
-/** Everything about one person's workweek: pay-hour split, flags, each day's punches */
+/**
+ * Everything about one person's workweek: pay-hour split, flags, each day's punches.
+ * `info` is the person's own (personInfo): days are cut in the time zone of their work location, and the week runs
+ * from the company's workweek start day (the one week cut short by a workweek change is shorter than 7 days).
+ */
 async function weekView(orgId, user, weekStart, info, attest = null) {
-    const weekEnd = addDays(weekStart, 6);
+    const range = rules.weekRange(weekStart, info.workweek);
+    const weekEnd = range.end;
     const sinceIso = new Date(new Date(`${weekStart}T00:00:00Z`).getTime() - 86400000).toISOString();
     const nowIso = new Date().toISOString();
-    const punches = (await punchesSince(orgId, user.id, sinceIso)).filter((p) => p.localDate <= addDays(weekEnd, 1));
-    const sheet = rules.timesheet(punches, info.tz, nowIso, null);
+    // each punch's day is worked out from its time in this person's zone (the day saved on older punches used the company zone)
+    const punches = (await punchesSince(orgId, user.id, sinceIso)).map((p) => ({ ...p, localDate: rules.localDate(p.at, info.tz) })).filter((p) => p.localDate <= addDays(weekEnd, 1));
+    const sheet = rules.timesheet(punches, info.tz, nowIso, null, info.workweek);
     const dayRows = sheet.days.filter((d) => d.date >= weekStart && d.date <= weekEnd);
     const exempt = Boolean(user.data.usProfile && user.data.usProfile.flsaStatus === 'exempt');
     // Paid company holidays add hours where the company turned holiday pay on; a reported missed rest break is flagged (see services/time-policy.js)
@@ -85,7 +102,7 @@ async function weekView(orgId, user, weekStart, info, attest = null) {
     const rest = info.rules.restBreak || policy.DEFAULT_RULES.restBreak;
     days.forEach((d) => { const h = holidays.find((x) => x.date === d.date); if (h) d.holiday = { name: h.name, paid: h.paid }; });
     return {
-        weekStart, weekEnd, exempt, openShift: open, holidays,
+        weekStart, weekEnd, weekDays: range.days, shortWeek: range.days < 7, exempt, openShift: open, holidays,
         holidayPay: pay.holidayPay.map((h) => ({ date: h.date, hours: hours(h.minutes) })),
         restBreak: { asked: Boolean(rest.enabled) && days.some((d) => d.restBreaksDue > 0), everyHours: rest.everyHours, minutes: rest.minutes }, restAttest: attest || null,
         forgottenClockOut: rules.isForgottenClockOut(punches, nowIso),
@@ -110,39 +127,77 @@ async function targetUser(req, res) {
 
 /* -------------------------------- company rules -------------------------------- */
 
+/** The workweek setting as the pages show it: the start day in use today, and a change that has not started yet */
+function workweekView(workweek, today) {
+    const list = rules.normalizeWorkweek(workweek);
+    const started = list.filter((e) => !e.effectiveFrom || e.effectiveFrom <= today);
+    const waiting = list.filter((e) => e.effectiveFrom && e.effectiveFrom > today);
+    const active = started[started.length - 1];
+    const range = rules.weekRange(today, list);
+    return {
+        startDay: active.startDay, startDayName: rules.WEEKDAYS[active.startDay], since: active.effectiveFrom,
+        pending: waiting.length ? { startDay: waiting[waiting.length - 1].startDay, startDayName: rules.WEEKDAYS[waiting[waiting.length - 1].startDay], effectiveFrom: waiting[waiting.length - 1].effectiveFrom } : null,
+        currentWeek: { start: range.start, end: range.end }, history: list, weekdays: rules.WEEKDAYS,
+        earliestChange: rules.WEEKDAYS.map((_, day) => policy.earliestWorkweekChange(today, day))
+    };
+}
+const WORKWEEK_NOTE = 'The workweek is a fixed, recurring period of 168 hours (seven days in a row). Overtime is worked out one workweek at a time. A change starts on a future date you choose; weeks before that keep the start day they had, and the week running at the changeover is cut short. Confirm with a US compliance advisor before you change it, and how overtime should be paid for the changeover week.';
+
 router.get('/rules', requireOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
-    res.json({ success: true, country: info.country, timeZone: info.tz, rules: info.rules, note: 'Daily overtime, double time, meal and rest breaks, premium pay for missed breaks and holiday pay depend on your state and on your own company policy. Confirm each setting with a US compliance advisor.' });
+    const today = rules.localDate(new Date().toISOString(), info.tz);
+    res.json({ success: true, country: info.country, timeZone: info.tz, today, rules: info.rules, workweek: workweekView(info.workweek, today), workweekNote: WORKWEEK_NOTE,
+        note: 'Daily overtime, double time, meal and rest breaks, premium pay for missed breaks and holiday pay depend on your state and on your own company policy. Confirm each setting with a US compliance advisor.' });
 });
 
 router.put('/rules', perms.requirePermission('time.manage_rules'), requireOrg, async (req, res) => {
-    const { errors, value } = policy.validateTimeRules(req.body);
+    const info = await orgInfo(req.orgId);
+    const today = rules.localDate(new Date().toISOString(), info.tz);
+    const { errors, value, workweekChanged, workweekPending } = policy.validateTimeRules(req.body, info.rules, today);
     if (errors.length) return res.status(400).json({ success: false, errors });
+    if (workweekChanged && workweekPending) {
+        // Safe rule: a workweek change may not cut into a week whose hours were already sent or approved
+        const snap = await rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get();
+        const hit = snap.docs.map((d) => d.data()).filter((w) => ['submitted', 'approved'].includes(w.status) && w.weekStart < workweekPending.effectiveFrom && weekEndOf(w) >= workweekPending.effectiveFrom)
+            .sort((a, b) => weekEndOf(b).localeCompare(weekEndOf(a)))[0];
+        if (hit) {
+            const day = workweekPending.startDay; let next = addDays(weekEndOf(hit), 1);
+            while (rules.weekdayOf(next) !== day) next = addDays(next, 1);
+            return res.status(409).json({ success: false, error: `Hours for the week of ${hit.weekStart} are already sent or approved, and this change would cut that week short. Choose ${next} or a later ${rules.WEEKDAYS[day]}.`, earliest: next });
+        }
+    }
     await rawCollection('organizations').doc(req.orgId).set({ usProfile: { timeRules: value } }, { merge: true });
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: 'time_rules_updated', targetId: req.orgId, actorId: req.user.id, at: new Date().toISOString(), rules: value }).catch(() => {});
-    res.json({ success: true, rules: value });
+    audit(req.orgId, req, 'time_rules_updated', req.orgId, { rules: value, workweekChanged: Boolean(workweekChanged) });
+    res.json({ success: true, rules: value, workweek: workweekView(value.workweek, today) });
 });
 
 /* -------------------------------- weekly timesheets -------------------------------- */
 
+/** One person's week. :weekStart is the first day of a workweek, or the word "current" for the week running now. */
 router.get('/weeks/:weekStart', requireOrg, async (req, res) => {
-    if (!isMonday(req.params.weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
     const user = await targetUser(req, res); if (!user) return;
-    const info = await orgInfo(req.orgId);
-    const doc = await weekDocRef(user.id, req.params.weekStart).get();
+    const info = await personInfo(req.orgId, user.id, user.data);
+    const today = rules.localDate(new Date().toISOString(), info.tz);
+    const thisWeek = rules.weekRange(today, info.workweek);
+    const weekStart = req.params.weekStart === 'current' ? thisWeek.start : req.params.weekStart;
+    if (!rules.isWeekStart(weekStart, info.workweek)) return notAWeekStart(res, weekStart, info);
+    const range = rules.weekRange(weekStart, info.workweek);
+    const doc = await weekDocRef(user.id, weekStart).get();
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, userId: user.id, name: user.data.name || null, timeZone: info.tz, today: rules.localDate(new Date().toISOString(), info.tz),
-        ...statusView(exists(doc) ? doc.data() : null), ...(await weekView(req.orgId, user, req.params.weekStart, info, exists(doc) ? doc.data().restAttest || null : null)) });
+    res.json({ success: true, userId: user.id, name: user.data.name || null, timeZone: info.tz, today,
+        currentWeekStart: thisWeek.start, prevWeekStart: rules.weekStartFor(addDays(range.start, -1), info.workweek), nextWeekStart: rules.weekStartFor(addDays(range.end, 1), info.workweek),
+        workweekStartDay: range.startDay,
+        ...statusView(exists(doc) ? doc.data() : null), ...(await weekView(req.orgId, user, weekStart, info, exists(doc) ? doc.data().restAttest || null : null)) });
 });
 
 router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
     const weekStart = req.params.weekStart;
-    if (!isMonday(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
-    const info = await orgInfo(req.orgId);
-    const today = rules.localDate(new Date().toISOString(), info.tz);
-    if (weekStart > rules.weekStart(today)) return res.status(400).json({ success: false, error: 'That week has not started yet' });
     const user = await userDoc(req.orgId, req.user.id);
     if (!user) return res.status(404).json({ success: false, error: 'No employee record for this login' });
+    const info = await personInfo(req.orgId, user.id, user.data);
+    if (!rules.isWeekStart(weekStart, info.workweek)) return notAWeekStart(res, weekStart, info);
+    const today = rules.localDate(new Date().toISOString(), info.tz);
+    if (weekStart > rules.weekStartFor(today, info.workweek)) return res.status(400).json({ success: false, error: 'That week has not started yet' });
     const ref = weekDocRef(user.id, weekStart);
     const existing = await ref.get();
     const cur = exists(existing) ? existing.data() : null;
@@ -161,24 +216,26 @@ router.post('/weeks/:weekStart/submit', requireOrg, async (req, res) => {
         if (missedDays.length) view = await weekView(req.orgId, user, weekStart, info, restAttest);
     }
     await ref.set({
-        orgId: req.orgId, userId: user.id, employeeId: user.data.employeeId || null, name: user.data.name || null, weekStart,
+        orgId: req.orgId, userId: user.id, employeeId: user.data.employeeId || null, name: user.data.name || null, weekStart, weekEnd: view.weekEnd, timeZone: info.tz,
         status: 'submitted', submittedAt: new Date().toISOString(), submittedBy: req.user.id, totals: view.totals, flags: view.flags, holidayPay: view.holidayPay, restAttest, decisionNote: null, decidedAt: null, decidedBy: null
     });
+    audit(req.orgId, req, 'timesheet_submitted', user.id, { weekStart, weekEnd: view.weekEnd });
     require('../services/events').emit(req.orgId, 'timesheet.submitted', { person_id: user.id, week_start: weekStart, worked_hours: (view.totals && view.totals.workedHours) ?? null });
     res.json({ success: true, status: 'submitted', totals: view.totals });
 });
 
-router.get('/approvals', APPROVER, requireOrg, async (req, res) => {
+router.get('/approvals', APPROVAL_VIEWER, requireOrg, async (req, res) => {
     const status = ['submitted', 'approved', 'rejected', 'open'].includes(req.query.status) ? req.query.status : 'submitted';
     const snap = await rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get();
     const rows = (await teamScope.filterRows(req.user, req.orgId, snap.docs.map((d) => ({ id: d.id, ...d.data() })), 'time')).filter((w) => w.status === status)
         .sort((a, b) => b.weekStart.localeCompare(a.weekStart) || String(a.name).localeCompare(String(b.name)));
-    res.json({ success: true, status, count: rows.length, data: rows.slice(0, 300) });
+    res.json({ success: true, status, count: rows.length, canDecide: perms.can(req.user, 'time.approve') || perms.can(req.user, 'time.approve_team'), canReopen: perms.can(req.user, 'time.approve'),
+        data: rows.slice(0, 300).map((w) => ({ ...w, weekEnd: weekEndOf(w) })) });
 });
 
 router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
-    if (!isMonday(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
+    if (!parseIsoDate(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a date (YYYY-MM-DD)' });
     if (userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot approve your own hours' });
     const decision = String((req.body && req.body.decision) || '');
     if (!['approve', 'reject'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or reject' });
@@ -189,16 +246,17 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
     if (!perms.canManage(req.user, { ...user.data, id: user.id }, 'time')) return res.status(403).json({ success: false, error: 'You can only approve hours for people who report to you' });
     const ref = weekDocRef(userId, weekStart);
     const snap = await ref.get();
-    if (!exists(snap) || snap.data().status !== 'submitted') return res.status(409).json({ success: false, error: 'This week is not waiting for a decision' });
+    if (!exists(snap) || snap.data().orgId !== req.orgId || snap.data().status !== 'submitted') return res.status(409).json({ success: false, error: 'This week is not waiting for a decision' });
     const patch = { status: decision === 'approve' ? 'approved' : 'rejected', decidedAt: new Date().toISOString(), decidedBy: req.user.id, decisionNote: note || null };
     if (decision === 'approve') {
-        const info = await orgInfo(req.orgId);
+        const info = await personInfo(req.orgId, user.id, user.data);
         const view = await weekView(req.orgId, user, weekStart, info, snap.data().restAttest || null);
         if (view.openShift) return res.status(409).json({ success: false, error: 'This person is still clocked in' });
         patch.totals = view.totals; patch.flags = view.flags; patch.exempt = view.exempt; patch.rulesUsed = info.rules; patch.holidayPay = view.holidayPay;
+        patch.weekEnd = view.weekEnd; patch.timeZone = info.tz;
     }
     await ref.update(patch);
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', targetId: userId, actorId: req.user.id, at: new Date().toISOString(), weekStart }).catch(() => {});
+    audit(req.orgId, req, decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', userId, { weekStart });
     require('../services/events').emit(req.orgId, decision === 'approve' ? 'timesheet.approved' : 'timesheet.rejected', decision === 'approve'
         ? { person_id: userId, week_start: weekStart, worked_hours: (patch.totals && patch.totals.workedHours) ?? null, overtime_hours: (patch.totals && patch.totals.overtimeHours) ?? null }
         : { person_id: userId, week_start: weekStart });
@@ -208,13 +266,16 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
 router.post('/weeks/:userId/:weekStart/reopen', perms.requirePermission('time.approve'), requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
     const reason = String((req.body && req.body.reason) || '').trim();
-    if (!isMonday(weekStart) || reason.length < 5) return res.status(400).json({ success: false, error: 'A Monday weekStart and a reason of at least 5 characters are required' });
+    if (!parseIsoDate(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a date (YYYY-MM-DD)' });
+    if (reason.length < 5) return res.status(400).json({ success: false, error: 'Say why the week is being reopened (at least 5 characters)' });
     const ref = weekDocRef(userId, weekStart);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Week not found' });
-    await ref.update({ status: 'open', reopenedAt: new Date().toISOString(), reopenedBy: req.user.id, reopenReason: reason.slice(0, 300) });
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: 'timesheet_reopened', targetId: userId, actorId: req.user.id, at: new Date().toISOString(), weekStart, reason: reason.slice(0, 200) }).catch(() => {});
-    res.json({ success: true });
+    const was = snap.data().status;
+    if (!['approved', 'submitted'].includes(was)) return res.status(409).json({ success: false, error: 'This week is already open' });
+    await ref.update({ status: 'open', reopenedAt: new Date().toISOString(), reopenedBy: req.user.id, reopenReason: reason.slice(0, 300), reopenedFrom: was });
+    audit(req.orgId, req, 'timesheet_reopened', userId, { weekStart, reason: reason.slice(0, 200), was });
+    res.json({ success: true, status: 'open', was });
 });
 
 /* -------------------------------- punch corrections -------------------------------- */
@@ -229,7 +290,7 @@ async function sequenceOk(orgId, userId, sinceIso, mutate) {
 
 router.post('/corrections', requireOrg, async (req, res) => {
     const b = req.body || {};
-    const info = await orgInfo(req.orgId);
+    const info = await personInfo(req.orgId, req.user.id, req.user);
     const today = rules.localDate(new Date().toISOString(), info.tz);
     const reason = String(b.reason || '').trim();
     if (reason.length < 5) return res.status(400).json({ success: false, error: 'Please say what happened (at least 5 characters)' });
@@ -243,7 +304,7 @@ router.post('/corrections', requireOrg, async (req, res) => {
         const at = rules.zonedToUtcIso(b.localDate, b.localTime, info.tz);
         if (!at || new Date(at) > new Date()) return res.status(400).json({ success: false, error: 'Pick a real date and time that has already passed' });
         if (b.localDate < oldest) return res.status(400).json({ success: false, error: `Corrections can go back ${MAX_CORRECTION_AGE_DAYS} days` });
-        if (await weekIsLocked(req.user.id, b.localDate)) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
+        if (await weekIsLocked(req.user.id, b.localDate, info.workweek)) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
         if (!(await sequenceOk(req.orgId, req.user.id, sinceIso, (p) => [...p, { type: b.type, at }]))) {
             return res.status(400).json({ success: false, error: 'That would break the order of your punches (in, break, out). Check the time or ask your manager.' });
         }
@@ -251,12 +312,12 @@ router.post('/corrections', requireOrg, async (req, res) => {
     } else if (b.kind === 'change') {
         const snap = await rawCollection('time_punches').doc(String(b.punchId || '_')).get();
         if (!exists(snap) || snap.data().orgId !== req.orgId || snap.data().userId !== req.user.id || snap.data().voided) return res.status(404).json({ success: false, error: 'Punch not found' });
-        const p = snap.data();
+        const p = { ...snap.data(), localDate: rules.localDate(snap.data().at, info.tz) };
         const newDate = b.localDate || p.localDate;
         const at = rules.zonedToUtcIso(newDate, b.localTime, info.tz);
         if (!at || new Date(at) > new Date()) return res.status(400).json({ success: false, error: 'Pick a real date and time that has already passed' });
         if (p.localDate < oldest || newDate < oldest) return res.status(400).json({ success: false, error: `Corrections can go back ${MAX_CORRECTION_AGE_DAYS} days` });
-        if ((await weekIsLocked(req.user.id, p.localDate)) || (await weekIsLocked(req.user.id, newDate))) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
+        if ((await weekIsLocked(req.user.id, p.localDate, info.workweek)) || (await weekIsLocked(req.user.id, newDate, info.workweek))) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
         if (!(await sequenceOk(req.orgId, req.user.id, sinceIso, (list) => list.map((x) => (x.id === snap.id ? { ...x, at } : x))))) {
             return res.status(400).json({ success: false, error: 'That time would break the order of your punches (in, break, out). Check the time.' });
         }
@@ -264,15 +325,16 @@ router.post('/corrections', requireOrg, async (req, res) => {
     } else {
         const snap = await rawCollection('time_punches').doc(String(b.punchId || '_')).get();
         if (!exists(snap) || snap.data().orgId !== req.orgId || snap.data().userId !== req.user.id || snap.data().voided) return res.status(404).json({ success: false, error: 'Punch not found' });
-        const p = snap.data();
+        const p = { ...snap.data(), localDate: rules.localDate(snap.data().at, info.tz) };
         if (p.localDate < oldest) return res.status(400).json({ success: false, error: `Corrections can go back ${MAX_CORRECTION_AGE_DAYS} days` });
-        if (await weekIsLocked(req.user.id, p.localDate)) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
+        if (await weekIsLocked(req.user.id, p.localDate, info.workweek)) return res.status(409).json({ success: false, error: 'That week is approved. Ask HR to reopen it.' });
         if (!(await sequenceOk(req.orgId, req.user.id, sinceIso, (list) => list.filter((x) => x.id !== snap.id)))) {
             return res.status(400).json({ success: false, error: 'Removing that punch would break the order of your punches. Ask for a different fix.' });
         }
         Object.assign(doc, { punchId: snap.id, type: p.type, localDate: p.localDate, localTime: localTimeOf(p.at, info.tz), at: p.at });
     }
     const ref = await rawCollection('punch_corrections').add(doc);
+    audit(req.orgId, req, 'punch_correction_requested', req.user.id, { kind: doc.kind, localDate: doc.localDate, correctionId: ref.id });
     res.status(201).json({ success: true, correction: { id: ref.id, ...doc } });
 });
 
@@ -303,8 +365,8 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
     const patch = { status: decision === 'approve' ? 'approved' : 'denied', decidedBy: req.user.id, decidedAt: new Date().toISOString(), decisionNote: String((req.body && req.body.note) || '').slice(0, 300) };
 
     if (decision === 'approve') {
-        const info = await orgInfo(req.orgId);
-        if (await weekIsLocked(c.userId, c.localDate)) return res.status(409).json({ success: false, error: 'That week is approved. Reopen it first.' });
+        const info = await personInfo(req.orgId, owner.id, owner.data);
+        if (await weekIsLocked(c.userId, c.localDate, info.workweek)) return res.status(409).json({ success: false, error: 'That week is approved. Reopen it first.' });
         const sinceIso = new Date(Date.now() - (MAX_CORRECTION_AGE_DAYS + 3) * 86400000).toISOString();
         if (c.kind === 'add') {
             if (!(await sequenceOk(req.orgId, c.userId, sinceIso, (p) => [...p, { type: c.type, at: c.at }]))) return res.status(409).json({ success: false, error: 'The punches changed since this was requested and it would now break the order. Deny it and ask for a new request.' });
@@ -313,7 +375,7 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
                 source: 'correction', deviceId: null, location: null, note: c.reason, addedBy: req.user.id, correctionId: req.params.id
             });
         } else if (c.kind === 'change') {
-            if (c.originalLocalDate && await weekIsLocked(c.userId, c.originalLocalDate)) return res.status(409).json({ success: false, error: 'The original week is approved. Reopen it first.' });
+            if (c.originalLocalDate && await weekIsLocked(c.userId, c.originalLocalDate, info.workweek)) return res.status(409).json({ success: false, error: 'The original week is approved. Reopen it first.' });
             if (!(await sequenceOk(req.orgId, c.userId, sinceIso, (p) => p.map((x) => (x.id === c.punchId ? { ...x, at: c.at } : x))))) return res.status(409).json({ success: false, error: 'The punches changed since this was requested and the new time would now break the order. Deny it and ask for a new request.' });
             await rawCollection('time_punches').doc(c.punchId).update({ at: c.at, localDate: rules.localDate(c.at, info.tz), editedBy: req.user.id, editedAt: new Date().toISOString(), originalAt: c.originalAt, correctionId: req.params.id });
         } else {
@@ -323,7 +385,7 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
         }
     }
     await ref.update(patch);
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action: decision === 'approve' ? 'punch_correction_approved' : 'punch_correction_denied', targetId: c.userId, actorId: req.user.id, at: new Date().toISOString(), kind: c.kind, localDate: c.localDate }).catch(() => {});
+    audit(req.orgId, req, decision === 'approve' ? 'punch_correction_approved' : 'punch_correction_denied', c.userId, { kind: c.kind, localDate: c.localDate, correctionId: req.params.id });
     res.json({ success: true, status: patch.status });
 });
 
@@ -333,6 +395,7 @@ router.post('/corrections/:id/cancel', requireOrg, async (req, res) => {
     if (!exists(snap) || snap.data().orgId !== req.orgId || snap.data().userId !== req.user.id) return res.status(404).json({ success: false, error: 'Request not found' });
     if (snap.data().status !== 'pending') return res.status(409).json({ success: false, error: `This request is already ${snap.data().status}` });
     await ref.update({ status: 'cancelled', cancelledAt: new Date().toISOString() });
+    audit(req.orgId, req, 'punch_correction_cancelled', req.user.id, { correctionId: req.params.id });
     res.json({ success: true });
 });
 
@@ -345,7 +408,7 @@ router.get('/export/hours', perms.requirePermission('time.export'), requireOrg, 
     const rows = snap.docs.map((d) => d.data()).filter((w) => w.status === 'approved' && w.weekStart >= from && w.weekStart <= to)
         .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || String(a.employeeId).localeCompare(String(b.employeeId)))
         .map((w) => ({
-            employee_id: w.employeeId || '', name: w.name || '', week_start: w.weekStart, week_end: addDays(w.weekStart, 6), flsa_status: w.exempt ? 'exempt' : 'non_exempt',
+            employee_id: w.employeeId || '', name: w.name || '', week_start: w.weekStart, week_end: weekEndOf(w), flsa_status: w.exempt ? 'exempt' : 'non_exempt',
             regular_hours: w.totals.regularHours, overtime_hours: w.totals.overtimeHours, double_time_hours: w.totals.doubleTimeHours, total_hours: w.totals.workedHours,
             holiday_hours: w.totals.holidayHours || 0, break_premium_hours: w.totals.premiumHours || 0
         }));
@@ -354,8 +417,10 @@ router.get('/export/hours', perms.requirePermission('time.export'), requireOrg, 
         const esc = (v) => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
         res.set('Content-Type', 'text/csv; charset=utf-8');
         res.set('Content-Disposition', 'attachment; filename="approved-hours.csv"');
+        audit(req.orgId, req, 'approved_hours_exported', req.orgId, { from, to, rows: rows.length, format: 'csv' });
         return res.send([cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n') + '\n');
     }
+    audit(req.orgId, req, 'approved_hours_exported', req.orgId, { from, to, rows: rows.length, format: 'json' });
     res.json({ success: true, count: rows.length, data: rows });
 });
 

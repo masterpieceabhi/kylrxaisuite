@@ -28,4 +28,8 @@ router.get('/unlock/:email', verifyToken, authorize('Admin', 'Super Admin'), unl
 const localDemo = require('../services/local-demo');
 if (localDemo.enabled(process.env)) router.get('/dev-demo-login', localDemo.handler);
 
+// New people setting up their sign-in (personal set-up links, the company join link) and "choose a new password"
+// after a temporary one: /team/setup/*, /team/join/*, /password-status, /change-password (routes/team-access-public.js)
+router.use(require('./team-access-public'));
+
 module.exports = router;

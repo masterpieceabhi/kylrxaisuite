@@ -39,14 +39,16 @@ const T = {
         wrong: 'Number or PIN is not right', locked: 'Too many tries. Ask your manager for help.', expired: 'Time ran out. Start again.', fail: 'Cannot connect. Try again.',
         already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.', inactive: 'This account is not active.',
         agree: 'I AGREE', disagree: 'I do not agree', noticeOf: 'Notice {a} of {b}', declined: 'You did not accept the notice. Talk to your manager.', photoTitle: 'Look at the camera', snap: 'TAKE PHOTO', skip: 'Continue without a photo', noCam: 'The camera is not working. Tell your manager.', session_expired: 'Time ran out. Start again.',
-        consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed.', outside_geofence: 'This device is outside the work site area.', week_locked: 'This week has been approved. Ask your manager.' },
+        consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed.', outside_geofence: 'This device is outside the work site area.', week_locked: 'This week has been approved. Ask your manager.',
+        outside_network: 'This tablet is not on an approved work network. Tell your manager.', sendingP: 'Sending...', notSent: 'No connection. Your punch was NOT recorded.', notSentHelp: 'Try again in a moment, or tell your manager.' },
   es: { setup: 'Esta tableta aún no está configurada', setupHelp: 'Pida el enlace de configuración a su supervisor.', num: 'Su número', numHelp: 'Escriba su número de empleado', pin: 'Su PIN', pinHelp: 'Escriba su PIN secreto',
         next: 'SIGUIENTE', ok: 'OK', clear: 'BORRAR', hi: 'Hola, {n}', pick: '¿Qué desea hacer?', in: 'ENTRAR', out: 'SALIR', brk: 'EMPEZAR DESCANSO', brkEnd: 'TERMINAR DESCANSO',
         notMe: 'No soy yo', done_in: 'Entrada registrada', done_out: 'Salida registrada. ¡Gracias!', done_bs: 'Descanso iniciado', done_be: 'De vuelta al trabajo', at: 'a las {t}',
         wrong: 'Número o PIN incorrecto', locked: 'Demasiados intentos. Pida ayuda a su supervisor.', expired: 'Se acabó el tiempo. Empiece de nuevo.', fail: 'No hay conexión. Intente de nuevo.',
         already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.', inactive: 'Esta cuenta no está activa.',
         agree: 'ACEPTO', disagree: 'No acepto', noticeOf: 'Aviso {a} de {b}', declined: 'Usted no aceptó el aviso. Hable con su supervisor.', photoTitle: 'Mire a la cámara', snap: 'TOMAR FOTO', skip: 'Continuar sin foto', noCam: 'La cámara no funciona. Avise a su supervisor.', session_expired: 'Se acabó el tiempo. Empiece de nuevo.',
-        consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto.', outside_geofence: 'Este equipo está fuera del área del lugar de trabajo.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor.' }
+        consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto.', outside_geofence: 'Este equipo está fuera del área del lugar de trabajo.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor.',
+        outside_network: 'Esta tableta no está en una red de trabajo aprobada. Avise a su supervisor.', sendingP: 'Enviando...', notSent: 'Sin conexión. Su registro NO quedó guardado.', notSentHelp: 'Intente de nuevo en un momento o avise a su supervisor.' }
 };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
@@ -65,10 +67,18 @@ let flow = null, stream = null; // flow: the punch being finished ({ action, not
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function stopCam() { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } }
 
+/** offline: true means no answer came back from the app (no network, a timeout, or the server could not be reached) */
 async function api(path, body) {
-  const res = await fetch(`/api/time/kiosk/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Kiosk-Key': KEY }, body: JSON.stringify(body) });
-  return { ok: res.ok, json: await res.json().catch(() => ({})) };
+  const stop = new AbortController(); const timer = setTimeout(() => stop.abort(), 12000);
+  try {
+    const res = await fetch(`/api/time/kiosk/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Kiosk-Key': KEY }, body: JSON.stringify(body), signal: stop.signal });
+    const json = await res.json().catch(() => null);
+    if ([408, 425, 500, 502, 503, 504].includes(res.status) || json === null) return { ok: false, offline: true, json: json || {} };
+    return { ok: res.ok, json };
+  } catch (_) { return { ok: false, offline: true, json: {} }; } finally { clearTimeout(timer); }
 }
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
 
 function reset() { stopCam(); flow = null; clearTimeout(resetTimer); clearInterval(countdown); step = 'number'; typed = ''; number = ''; session = ''; who = null; render(); }
 function armReset(sec) { clearTimeout(resetTimer); resetTimer = setTimeout(reset, sec * 1000); }
@@ -122,6 +132,7 @@ async function submitNumber() { if (!typed) return; number = typed; typed = ''; 
 async function submitPin() {
   if (typed.length < 4) return setMsg(tr('wrong'));
   const r = await api('identify', { employeeNumber: number, pin: typed });
+  if (r.offline) { typed = ''; render(); return setMsg(tr('fail')); }
   if (!r.ok) { typed = ''; step = r.json.code === 'locked' ? 'number' : 'pin'; if (r.json.code === 'wrong_pin') { step = 'number'; number = ''; } render(); return setMsg(errText(r.json)); }
   session = r.json.session; who = { name: r.json.name, firstName: r.json.firstName, status: r.json.status, compliance: r.json.compliance || null }; typed = '';
   step = 'actions'; render(); armReset(30);
@@ -130,7 +141,7 @@ async function submitPin() {
 /** Notices first, then the photo, then the punch */
 function act(action) {
   const c = who.compliance || {};
-  flow = { action, notices: c.pending || [], index: 0, consents: [], photo: undefined, photoRequired: c.selfie === 'required', wantsPhoto: Boolean(c.selfie && c.selfie !== 'off') && ['in', 'out'].includes(action) };
+  flow = { key: newKey(), action, notices: c.pending || [], index: 0, consents: [], photo: undefined, photoRequired: c.selfie === 'required', wantsPhoto: Boolean(c.selfie && c.selfie !== 'off') && ['in', 'out'].includes(action) };
   nextStep();
 }
 function nextStep() {
@@ -155,7 +166,13 @@ function snap() {
 }
 async function sendPunch() {
   stopCam(); const action = flow.action; const declined = flow.consents.some((c) => c.decision === 'declined');
-  const r = await api('punch', { session, action, photo: flow.photo || undefined, consents: flow.consents.length ? flow.consents : undefined });
+  clearTimeout(resetTimer);
+  const body = { session, action, clientKey: flow.key, photo: flow.photo || undefined, consents: flow.consents.length ? flow.consents : undefined };
+  // The same one-time key goes with every try, so a punch that did reach the server is never recorded a second time.
+  // The tablet does not keep a punch for later (the sign-in lasts under a minute), so after three tries it says plainly that nothing was recorded.
+  let r = await api('punch', body);
+  for (let i = 0; i < 2 && r.offline; i++) { setMsg(tr('sendingP')); await pause(2500); r = await api('punch', body); }
+  if (r.offline) { who.doneKind = 'err'; who.doneText = tr('notSent'); who.doneTime = tr('notSentHelp'); step = 'done'; render(); armReset(9); return; }
   if (declined) { who.doneKind = 'err'; who.doneText = tr('declined'); who.doneTime = ''; step = 'done'; render(); armReset(6); return; }
   if (r.ok) {
     const st = r.json.status;

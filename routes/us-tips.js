@@ -142,12 +142,16 @@ router.get('/tips/monthly', VIEW, requireUsOrg, async (req, res) => {
     res.json({ success: true, note: NOTE, month, threshold: settings.monthlyReportingThreshold, data: rows });
 });
 
-/** Tip credit check for one pay week (Monday) for every tipped employee, or for one with ?userId= */
+/** Tip credit check for one pay week (it starts on the company's workweek day) for every tipped employee, or for one with ?userId= */
 router.get('/tips/credit-check', VIEW, requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
-    const weekStart = req.query.weekStart || timeRules.weekStart(todayIn(info.tz));
-    if (!parseIsoDate(weekStart) || timeRules.weekStart(weekStart) !== weekStart) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
-    const weekEnd = addDays(weekStart, 6);
+    const weekStart = req.query.weekStart || timeRules.weekStartFor(todayIn(info.tz), info.workweek);
+    if (!timeRules.isWeekStart(weekStart, info.workweek)) {
+        // name the day that week starts on (the day in use today when the value is not a date at all)
+        const day = timeRules.WEEKDAYS[timeRules.weekRange(timeRules.isRealDate(weekStart) ? weekStart : todayIn(info.tz), info.workweek).startDay];
+        return res.status(400).json({ success: false, error: `weekStart must be a ${day} (YYYY-MM-DD)` });
+    }
+    const weekEnd = timeRules.weekRange(weekStart, info.workweek).end; // 6 days later, except the one week cut short by a workweek change
     const [people, records, rules, hours] = await Promise.all([loadPeople(req.orgId), loadRecords(req.orgId, { from: weekStart, to: weekEnd }), loadRules(req.orgId), approvedHours(req.orgId, weekStart, weekStart)]);
     const W = require('../services/wage-rules');
     const rows = [];
@@ -222,7 +226,7 @@ router.post('/tips/pools/:id/distribute', MANAGE, requireUsOrg, async (req, res)
     if (!parseIsoDate(b.from) || !parseIsoDate(b.to) || b.to < b.from) return res.status(400).json({ success: false, errors: ['from and to must be valid dates, to on or after from'] });
     let hours = {};
     if (pool.shareMethod === 'hours') {
-        hours = b.hours && typeof b.hours === 'object' ? b.hours : await approvedHours(req.orgId, timeRules.weekStart(b.from), b.to);
+        hours = b.hours && typeof b.hours === 'object' ? b.hours : await approvedHours(req.orgId, timeRules.weekStartFor(b.from, (await orgInfo(req.orgId)).workweek), b.to);
     }
     const result = T.distribute(pool, amount, hours);
     if (result.errors.length) return res.status(400).json({ success: false, errors: result.errors });
@@ -245,7 +249,7 @@ router.get('/tips/report', requireAnyPermission('people.read_pay', 'time.manage_
     if (req.query.month) {
         if (!isMonth(req.query.month)) return res.status(400).json({ success: false, error: 'month must be YYYY-MM' });
         from = `${req.query.month}-01`; to = new Date(Date.UTC(+req.query.month.slice(0, 4), +req.query.month.slice(5), 0)).toISOString().slice(0, 10);
-    } else if (!from && !to) { from = timeRules.weekStart(todayIn(info.tz)); to = addDays(from, 6); }
+    } else if (!from && !to) { const week = timeRules.weekRange(todayIn(info.tz), info.workweek); from = week.start; to = week.end; }
     if (!parseIsoDate(from) || !parseIsoDate(to) || to < from) return res.status(400).json({ success: false, error: 'from and to must be valid dates (YYYY-MM-DD), to on or after from' });
     const [records, people, settings] = await Promise.all([loadRecords(req.orgId, { from, to }), loadPeople(req.orgId), getSettings(req.orgId)]);
     const rows = T.tipReportRows(records, Object.fromEntries(people.map((p) => [p.id, p])), from, to, settings.monthlyReportingThreshold);

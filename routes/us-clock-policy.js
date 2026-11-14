@@ -10,6 +10,7 @@ const R = require('../services/clock-compliance-rules');
 const io = require('../services/clock-compliance-io');
 const files = require('../services/file-store');
 const bio = require('../services/biometric-adapter');
+const ipMatch = require('../services/ip-match');
 
 router.use(verifyToken);
 const REVIEWER = requireAnyPermission('time.approve', 'time.approve_team');
@@ -29,7 +30,13 @@ router.get(`${base}/my-requirements`, requireUsOrg, async (req, res) => {
 router.get(`${base}/my-consents`, requireUsOrg, async (req, res) => {
     const notices = await io.loadNotices(req.orgId);
     const consents = await io.loadConsents(req.orgId, req.user.id);
-    res.json({ success: true, data: consents.sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt))).map((c) => ({ ...c, title_en: notices[c.type] && notices[c.type].title_en })) });
+    // `current`: for each notice type, where the person stands now (ok, stale, declined, none) and whether there is an agreement they can take back
+    const current = R.CONSENT_TYPES.map((type) => ({
+        type, status: R.consentStatus(consents, type, notices[type].version), canRevoke: consents.some((c) => c.type === type && !c.revokedAt && c.decision === 'accepted'),
+        title_en: notices[type].title_en, title_es: notices[type].title_es,
+        signedAt: (consents.filter((c) => c.type === type && !c.revokedAt && c.decision === 'accepted').sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt)))[0] || {}).signedAt || null
+    })).filter((c) => c.status !== 'none' || c.canRevoke);
+    res.json({ success: true, current, data: consents.sort((a, b) => String(b.signedAt).localeCompare(String(a.signedAt))).map((c) => ({ ...c, title_en: notices[c.type] && notices[c.type].title_en })) });
 });
 
 router.post(`${base}/consents`, requireUsOrg, async (req, res) => {
@@ -44,6 +51,9 @@ router.post(`${base}/consents`, requireUsOrg, async (req, res) => {
 router.post(`${base}/consents/revoke`, requireUsOrg, async (req, res) => {
     const type = String((req.body && req.body.type) || '');
     if (!R.CONSENT_TYPES.includes(type)) return res.status(400).json({ success: false, error: 'Unknown notice type' });
+    // only an agreement that is on file can be taken back
+    const mine = (await io.loadConsents(req.orgId, req.user.id)).filter((c) => c.type === type && !c.revokedAt && c.decision === 'accepted');
+    if (!mine.length) return res.status(409).json({ success: false, error: 'There is no agreement on file to take back' });
     const out = await io.revokeConsent(req.orgId, req.user.id, type, req.user.id);
     audit(req.orgId, req, 'clock_consent_revoked', req.user.id, { type, photosDestroyed: out.photosDestroyed });
     res.json({ success: true, revoked: out.revoked, photosDestroyed: out.photosDestroyed });
@@ -55,12 +65,18 @@ router.get(`${base}/policies`, requirePermission('time.manage_rules'), requireUs
     res.json({ success: true, data: await io.loadPolicies(req.orgId) });
 });
 
+/** The network address this request came from, so the person setting the limit can add the right one */
+router.get(`${base}/my-network`, requirePermission('time.manage_rules'), requireUsOrg, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, address: ipMatch.tidyAddress(req.ip) || null, note: 'This is the address the server sees for you right now. A whole office usually shares one address or a small range; ask whoever runs your internet connection.' });
+});
+
 async function workersInScope(orgId, policy) {
     const snap = await rawCollection('users').where('orgId', '==', orgId).get();
     const locs = new Map((await rawCollection('locations').where('orgId', '==', orgId).get()).docs.map((d) => [d.id, d.data()]));
     return snap.docs.filter((d) => activeStatus(d.data())).map((d) => {
         const p = d.data().usProfile || {};
-        const lid = p.locationId || d.data().locationId || null;
+        const lid = p.workLocationId || p.locationId || d.data().locationId || null; // the Company structure page saves workLocationId
         const loc = lid ? locs.get(String(lid)) : null;
         return { userId: d.id, workState: p.workState || (loc && loc.state) || null, city: (loc && loc.city) || p.workCity || null, locationId: lid };
     }).filter((w) => policy.scope === 'state' ? w.workState === policy.state : policy.scope === 'location' ? w.locationId === policy.locationId : true);
@@ -89,8 +105,10 @@ router.put(`${base}/policies`, requirePermission('time.manage_rules'), requireUs
     const id = value.scope === 'org' ? `${req.orgId}_org` : value.scope === 'state' ? `${req.orgId}_state_${value.state}` : `${req.orgId}_loc_${value.locationId}`;
     const doc = { ...value, orgId: req.orgId, active: true, updatedAt: new Date().toISOString(), updatedBy: req.user.id };
     await rawCollection('clock_policies').doc(id).set(doc);
-    audit(req.orgId, req, 'clock_policy_saved', id, { scope: value.scope, selfie: value.selfie, geofence: value.geofence.mode, biometric: value.biometric.enabled });
-    res.json({ success: true, policy: { id, ...doc } });
+    audit(req.orgId, req, 'clock_policy_saved', id, { scope: value.scope, selfie: value.selfie, geofence: value.geofence.mode, biometric: value.biometric.enabled, network: value.network.mode, networks: value.network.allowed.length });
+    // tell the person saving whether their own address would pass, so nobody locks a site out by a typing mistake
+    const yourAddress = ipMatch.tidyAddress(req.ip) || null;
+    res.json({ success: true, policy: { id, ...doc }, yourAddress, yourAddressAllowed: value.network.mode === 'off' ? null : ipMatch.addressInNetworks(req.ip, value.network.allowed) });
 });
 
 router.delete(`${base}/policies/:id`, requirePermission('time.manage_rules'), requireUsOrg, async (req, res) => {
@@ -165,7 +183,7 @@ router.get(`${base}/consents/status`, requireAnyPermission('time.manage_rules', 
     const data = [];
     for (const d of users.docs) {
         const u = d.data(); if (!activeStatus(u)) continue;
-        const p = u.usProfile || {}; const lid = p.locationId || u.locationId || null; const loc = lid ? locs.get(String(lid)) : null;
+        const p = u.usProfile || {}; const lid = p.workLocationId || p.locationId || u.locationId || null; const loc = lid ? locs.get(String(lid)) : null;
         const workState = p.workState || (loc && loc.state) || null; const city = (loc && loc.city) || p.workCity || null;
         const policy = R.resolvePolicy(policies, { state: workState, locationId: lid });
         if (!policy) { data.push({ userId: d.id, name: u.name, workState, policy: null, types: [] }); continue; }

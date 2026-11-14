@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My trainings | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 4px;font-size:19px;overflow-wrap:anywhere}
+.lang{white-space:nowrap}.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:640px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.hint{color:var(--muted);font-size:15px;margin:4px 0 0}
+label.f{display:grid;gap:6px;font-size:15px;color:var(--muted);font-weight:600;margin-top:12px}
+input{padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;width:100%}
+button.go{width:100%;padding:14px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer;margin-top:12px}
+button.go:disabled{opacity:.5}
+button.soft{width:100%;padding:12px 14px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-size:16px;font-weight:700;cursor:pointer;margin-top:8px}
+a.link{display:block;text-align:center;padding:12px 14px;border-radius:10px;background:#eef2ff;color:var(--blue);font-weight:700;text-decoration:none;margin-top:12px}
+.tag{display:inline-block;padding:2px 10px;border-radius:999px;font-size:14px;font-weight:700;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.wait{background:#fef3c7;color:#92400e}.late{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+.said{background:#fef2f2;border-radius:10px;padding:10px 12px;font-size:16px;margin-top:10px}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding:14px;text-decoration:none}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div id="list"></div>
+  <a class="back" href="punch.html" data-t="back"></a>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: { title: 'My trainings', back: 'Back to the clock', none: 'You have no trainings to take right now.', intro: 'These are the trainings your company asks you to take.', fail: 'Could not load. Try again.',
+        overdue: 'Overdue', due: 'To do', done: 'Done', waiting: 'Waiting for HR to confirm',
+        dueBy: 'Finish by {d}', lateBy: 'It was due on {d}', doneOn: 'Finished on {d}', again: 'Take it again by {d}', once: 'You take this once.', every: 'You take this every {n} months.', every1: 'You take this every month.',
+        open: 'Open the training', did: 'I completed this', when: 'Day you finished it', note: 'Certificate number or note (optional)', send: 'Tell HR I completed it', cancel: 'Cancel',
+        sent: 'Thank you. HR will check and confirm it.', told: 'You told HR you finished this on {d}. HR has not confirmed it yet.', no: 'HR did not accept what you sent for {d}: {n}', noPlain: 'HR did not accept what you sent for {d}.', noteHint: 'Do not write your Social Security number here.' },
+  es: { title: 'Mis capacitaciones', back: 'Volver al reloj', none: 'No tiene capacitaciones pendientes en este momento.', intro: 'Estas son las capacitaciones que su empresa le pide tomar.', fail: 'No se pudo cargar. Intente de nuevo.',
+        overdue: 'Atrasada', due: 'Pendiente', done: 'Lista', waiting: 'Esperando que Recursos Humanos confirme',
+        dueBy: 'Termínela antes del {d}', lateBy: 'Debía terminarse el {d}', doneOn: 'Terminada el {d}', again: 'Tómela de nuevo antes del {d}', once: 'Esta se toma una sola vez.', every: 'Esta se toma cada {n} meses.', every1: 'Esta se toma cada mes.',
+        open: 'Abrir la capacitación', did: 'Ya la completé', when: 'Día en que la terminó', note: 'Número de certificado o nota (opcional)', send: 'Avisar a Recursos Humanos', cancel: 'Cancelar',
+        sent: 'Gracias. Recursos Humanos lo revisará y lo confirmará.', told: 'Usted avisó que la terminó el {d}. Recursos Humanos todavía no lo confirma.', no: 'Recursos Humanos no aceptó lo que envió para el {d}: {n}', noPlain: 'Recursos Humanos no aceptó lo que envió para el {d}.', noteHint: 'No escriba aquí su número de Seguro Social.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k, v = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
+let data = null; let today = ''; let openId = null; let failed = false;
+
+async function req(method, path, body) {
+  const res = await fetch(`/api/us/training${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`);
+  return json;
+}
+const safeLink = (u) => (/^https?:\/\//i.test(String(u || '')) ? u : null);
+function card(t) {
+  const tagHtml = t.waitingForHr ? `<span class="tag grey">${esc(tr('waiting'))}</span>` : t.status === 'overdue' ? `<span class="tag late">${esc(tr('overdue'))}</span>` : t.status === 'due' ? `<span class="tag wait">${esc(tr('due'))}</span>` : `<span class="tag good">${esc(tr('done'))}</span>`;
+  const lines = [];
+  if (t.status === 'done') { lines.push(tr('doneOn', { d: day(t.lastCompletedOn) })); if (t.nextDueDate) lines.push(tr('again', { d: day(t.nextDueDate) })); }
+  else if (t.dueDate) lines.push(tr(t.status === 'overdue' ? 'lateBy' : t.lastCompletedOn ? 'again' : 'dueBy', { d: day(t.dueDate) }));
+  lines.push(t.repeatMonths ? (t.repeatMonths === 1 ? tr('every1') : tr('every', { n: t.repeatMonths })) : tr('once'));
+  const link = safeLink(t.link);
+  const form = openId === t.id ? `<form data-form="${esc(t.id)}">
+      <label class="f">${esc(tr('when'))}<input type="date" name="completedOn" value="${esc(today)}" max="${esc(today)}" required></label>
+      <label class="f">${esc(tr('note'))}<input type="text" name="note" maxlength="300" autocomplete="off"></label>
+      <p class="hint">${esc(tr('noteHint'))}</p>
+      <button class="go" type="submit">${esc(tr('send'))}</button><button class="soft" type="button" data-cancel>${esc(tr('cancel'))}</button></form>` : '';
+  return `<section class="card"><h2>${esc(t.name)}</h2>${tagHtml}
+    ${t.description ? `<p class="hint">${esc(t.description)}</p>` : ''}
+    ${lines.map((l) => `<p class="hint">${esc(l)}</p>`).join('')}
+    ${t.waitingForHr ? `<p class="hint">${esc(tr('told', { d: day(t.reportedOn) }))}</p>` : ''}
+    ${t.lastAnswer ? `<p class="said">${esc(t.lastAnswer.note ? tr('no', { d: day(t.lastAnswer.completedOn), n: t.lastAnswer.note }) : tr('noPlain', { d: day(t.lastAnswer.completedOn) }))}</p>` : ''}
+    ${link ? `<a class="link" href="${esc(link)}" target="_blank" rel="noopener noreferrer">${esc(tr('open'))}</a>` : ''}
+    ${t.canReport && openId !== t.id ? `<button class="go" data-did="${esc(t.id)}">${esc(tr('did'))}</button>` : ''}${form}</section>`;
+}
+function paint() {
+  document.documentElement.lang = lang; document.title = tr('title');
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  if (failed) { $('list').innerHTML = `<section class="card"><p class="hint" style="margin:0">${esc(tr('fail'))}</p></section>`; return; }
+  if (!data) return;
+  $('list').innerHTML = data.length ? `<p class="hint" style="margin:0 0 10px">${esc(tr('intro'))}</p><div style="display:grid;gap:14px">${data.map(card).join('')}</div>` : `<section class="card"><p class="hint" style="margin:0">${esc(tr('none'))}</p></section>`;
+}
+async function load() { const r = await req('GET', '/mine'); data = r.data; today = r.today; failed = false; paint(); }
+document.addEventListener('click', (e) => {
+  let t;
+  if ((t = e.target.closest('[data-l]'))) { lang = t.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }
+  else if ((t = e.target.closest('[data-did]'))) { openId = t.dataset.did; $('msg').className = ''; paint(); const f = document.querySelector('[data-form]'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  else if (e.target.closest('[data-cancel]')) { openId = null; paint(); }
+});
+document.addEventListener('submit', async (e) => {
+  const f = e.target.closest('[data-form]'); if (!f) return;
+  e.preventDefault(); const btn = f.querySelector('button[type="submit"]'); btn.disabled = true;
+  try {
+    await req('POST', `/mine/${encodeURIComponent(f.dataset.form)}/complete`, { completedOn: f.elements.completedOn.value, note: f.elements.note.value });
+    openId = null; await load(); say(tr('sent'));
+  } catch (err) { btn.disabled = false; say(err.message, false); }
+});
+paint();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try { await load(); } catch (_) { failed = true; paint(); }
+});
+</script>
+</body>
+</html>

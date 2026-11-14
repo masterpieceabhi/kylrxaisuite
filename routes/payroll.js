@@ -4,9 +4,12 @@ const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMi
 
 router.use(verifyToken);
 
-// Administrative payroll routes require Admin/HR roles; employee document reads are gated by req.user.id
+// Administrative payroll routes require Admin/HR roles. Only the two "pay documents of one person" reads are open to
+// other signed-in people; who may read whose documents is decided inside them (services/payroll-doc-access.js).
+// The paths are matched exactly, so no other route can slip past the role check by having a look-alike id in its path.
+const PERSON_DOCUMENT_READS = [/^\/documents\/[^/]+\/download-url\/?$/, /^\/employee\/[^/]+\/documents\/?$/];
 router.use((req, res, next) => {
-    if (req.method === 'GET' && (req.path.includes('/download-url') || req.path.startsWith('/employee/'))) {
+    if (req.method === 'GET' && PERSON_DOCUMENT_READS.some((re) => re.test(req.path))) {
         return next();
     }
     return authorize(ADMIN_HR_ROLES)(req, res, next);
@@ -28,6 +31,21 @@ const payrollController = require('../controllers/payroll-controller');
 const { orgDocs } = require('../config/tenant');
 const firebaseConfig = require('../config/firebase');
 const orgOf = (req) => (req.user && req.user.orgId) || req.tenantOrgId || null;
+const payAccess = require('../services/payroll-doc-access');
+const snapExists = (snap) => Boolean(snap) && (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
+const dbReady = () => Boolean(db && admin && admin.apps && admin.apps.length);
+/** A stored record read by its id counts only when it belongs to the caller's company */
+const ownRecord = (req, snap) => (snapExists(snap) && payAccess.inCompany(orgOf(req), snap.data()) ? snap.data() : null);
+/** The stored person a pay document belongs to (login record first, then the older employee record), or null */
+async function personRecord(employeeId) {
+    for (const name of ['users', 'employees']) {
+        const snap = await firebaseConfig.rawCollection(name).doc(String(employeeId)).get();
+        if (snapExists(snap)) return snap.data() || {};
+    }
+    return null;
+}
+const validId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 200 && !id.includes('/');
+const refuse = (res, verdict) => res.status(verdict.status).json({ success: false, error: verdict.error });
 const newestFirst = (field) => (a, b) => String(b[field] || '').localeCompare(String(a[field] || ''));
 
 router.get('/runs', async (req, res) => {
@@ -66,7 +84,18 @@ router.post('/documents/generate-payslip', payrollController.generatePayslip);
 router.post('/documents/generate-batch', payrollController.generateBatch);
 router.post('/documents/export-register-excel', payrollController.exportRegisterExcel);
 router.post('/documents/export-register-pdf', payrollController.exportRegisterPdf);
-router.get('/documents/vault', payrollController.getVaultDocuments);
+// The vault list is built by the controller; only the caller's company's documents leave this router
+router.get('/documents/vault', (req, res, next) => {
+    const send = res.json.bind(res);
+    res.json = (body) => {
+        if (body && Array.isArray(body.documents)) {
+            const documents = body.documents.filter((d) => payAccess.inCompany(orgOf(req), d));
+            return send({ ...body, count: documents.length, documents });
+        }
+        return send(body);
+    };
+    next();
+}, payrollController.getVaultDocuments);
 
 // ─────────────────────────────────────────────
 // 2. DECOUPLED DECENTRO DISBURSEMENT ROUTES
@@ -84,30 +113,31 @@ router.post('/disburse/webhook/decentro', payrollController.handleDecentroWebhoo
  */
 router.get('/documents/:docId/download-url', async (req, res) => {
     try {
-        if (!admin || !admin.apps || admin.apps.length === 0) {
-            return res.status(503).json({ success: false, error: 'Firebase Admin not configured' });
-        }
         const { docId } = req.params;
         const { employeeId } = req.query;
 
-        if (!employeeId) {
+        if (!validId(employeeId)) {
             return res.status(400).json({ success: false, error: 'employeeId is required' });
         }
 
-        const userRole = (req.user && req.user.role ? req.user.role : '').toLowerCase();
-        if (userRole === 'employee' && employeeId !== req.user.id) {
-            return res.status(403).json({ success: false, error: 'Unauthorized: Employees may only download their own payslips' });
+        // Who is asking comes first: the person themself, or a role that may see pay. Nothing is read before this.
+        const who = { user: req.user, callerOrgId: orgOf(req), employeeId };
+        const first = payAccess.decide(who);
+        if (!first.ok) return refuse(res, first);
+
+        if (!dbReady()) {
+            return res.status(503).json({ success: false, error: 'Firebase Admin not configured' });
         }
 
-        const docSnap = await db.collection('payroll_documents').doc(docId).get();
-        if (!docSnap.exists) {
-            return res.status(404).json({ success: false, error: 'Payroll document not found' });
-        }
+        // Same company: the person the documents belong to, and the document itself
+        const person = await personRecord(employeeId);
+        const aboutPerson = payAccess.decide({ ...who, person });
+        if (!aboutPerson.ok) return refuse(res, aboutPerson);
 
-        const data = docSnap.data();
-        if (data.employeeId !== employeeId) {
-            return res.status(403).json({ success: false, error: 'Not authorized for this document' });
-        }
+        const docSnap = validId(docId) ? await db.collection('payroll_documents').doc(docId).get() : null;
+        const data = snapExists(docSnap) ? docSnap.data() : null;
+        const verdict = payAccess.decide({ ...who, person, doc: data });
+        if (!verdict.ok) return refuse(res, verdict);
 
         if (data.storageUrl) {
             return res.json({ success: true, url: data.storageUrl, source: 'firestore' });
@@ -143,10 +173,14 @@ router.get('/documents/:docId/download-url', async (req, res) => {
 router.get('/employee/:employeeId/documents', async (req, res) => {
     try {
         const { employeeId } = req.params;
-        const userRole = (req.user && req.user.role ? req.user.role : '').toLowerCase();
-        if (userRole === 'employee' && employeeId !== req.user.id) {
-            return res.status(403).json({ success: false, error: 'Unauthorized: Employees may only view their own documents' });
+        const who = { user: req.user, callerOrgId: orgOf(req), employeeId };
+        const first = payAccess.decide(who);
+        if (!first.ok) return refuse(res, first);
+        if (!db) {
+            return res.status(503).json({ success: false, error: 'Firebase Admin not configured' });
         }
+        const aboutPerson = payAccess.decide({ ...who, person: await personRecord(employeeId) });
+        if (!aboutPerson.ok) return refuse(res, aboutPerson);
         const snap = await db.collection('payroll_documents')
             .where('employeeId', '==', employeeId)
             .orderBy('createdAt', 'desc')
@@ -156,6 +190,8 @@ router.get('/employee/:employeeId/documents', async (req, res) => {
         const documents = [];
         snap.forEach((doc) => {
             const d = doc.data();
+            // an employee ID can repeat between companies: only this company's documents are listed
+            if (!payAccess.inCompany(who.callerOrgId, d)) return;
             if (d.docType === 'Payslip' || d.docType === 'Invoice') {
                 documents.push({
                     id: doc.id,
@@ -198,9 +234,10 @@ router.get(['/runs/:runId/summary', '/payroll-runs/:runId/summary'], async (req,
 
         if (db) {
             // 1. First check if a locked/approved PayrollRun document exists
-            const runDoc = await db.collection('payroll_runs').doc(runId).get();
-            if (runDoc.exists && runDoc.data().totals) {
-                const totals = runDoc.data().totals;
+            // Only the caller's company: another company's run is treated as not there, and only this company's people are counted
+            const runData = ownRecord(req, await db.collection('payroll_runs').doc(runId).get());
+            if (runData && runData.totals) {
+                const totals = runData.totals;
                 grossPayroll = Number(totals.total_gross_earnings || 0);
                 employeeDeductions = Number(totals.total_employee_deductions || 0);
                 netSalary = Number(totals.total_net_payable || 0);
@@ -212,6 +249,7 @@ router.get(['/runs/:runId/summary', '/payroll-runs/:runId/summary'], async (req,
                 
                 usersSnap.forEach((doc) => {
                     const u = doc.data();
+                    if (!payAccess.inCompany(orgOf(req), u)) return;
                     // Include active employees / managers with valid salary
                     if (u.status !== 'inactive' && u.status !== 'terminated') {
                         const salary = Number(u.salary || u.basicSalary || u.netSalary || 0);
@@ -324,8 +362,10 @@ router.post(['/batches/:batchId/generate-bank-file', '/payroll-runs/:runId/gener
         if (db) {
             // Check if batch document exists in Firestore
             const batchDoc = await db.collection('payment_batches').doc(batchId).get();
-            if (batchDoc.exists) {
-                batchData = { ...batchData, ...batchDoc.data() };
+            if (snapExists(batchDoc)) {
+                const own = ownRecord(req, batchDoc);
+                if (!own) return res.status(404).json({ success: false, error: 'Payment batch not found' });
+                batchData = { ...batchData, ...own };
             }
         }
 
@@ -528,16 +568,21 @@ router.post(['/reconciliation/upload', '/runs/:runId/reconciliation/upload', '/p
             ]
         };
 
+        let otherCompanyBatch = false;
         if (db) {
             try {
                 const batchDoc = await db.collection('payment_batches').doc(batch_id).get();
-                if (batchDoc.exists && batchDoc.data().records) {
-                    paymentBatch = { ...paymentBatch, ...batchDoc.data() };
+                if (snapExists(batchDoc)) {
+                    // the settlement is written back to this batch, so it must be the caller's company's batch
+                    const own = ownRecord(req, batchDoc);
+                    if (!own) otherCompanyBatch = true;
+                    else if (own.records) paymentBatch = { ...paymentBatch, ...own };
                 }
             } catch (e) {
                 console.warn('[RECON] Firestore batch lookup notice:', e.message);
             }
         }
+        if (otherCompanyBatch) return res.status(404).json({ success: false, error: 'BATCH_NOT_FOUND', message: 'Payment batch not found' });
 
         // Process reconciliation
         const result = await reconService.processSettlementFile({
@@ -663,16 +708,25 @@ router.post(['/batches/:batchId/resolve-issue', '/payroll-batches/:batchId/resol
             summary: { total_amount: 50000 }
         };
 
+        let notThisCompany = null;
         if (db) {
             try {
                 const bSnap = await db.collection('payment_batches').doc(batchId).get();
-                if (bSnap.exists) {
-                    batchDocData = { ...batchDocData, ...bSnap.data() };
+                if (snapExists(bSnap)) {
+                    const own = ownRecord(req, bSnap);
+                    if (!own) notThisCompany = 'Payment batch not found';
+                    else batchDocData = { ...batchDocData, ...own };
                 }
+                // the fix is written to the employee's record and the issue record: both must be this company's
+                const empSnap = validId(String(targetEmpId)) ? await db.collection('users').doc(String(targetEmpId)).get() : null;
+                if (snapExists(empSnap) && !ownRecord(req, empSnap)) notThisCompany = 'Employee not found';
+                const issueSnap = validId(String(issue_id)) ? await db.collection('validation_issues').doc(String(issue_id)).get() : null;
+                if (snapExists(issueSnap) && !ownRecord(req, issueSnap)) notThisCompany = 'Issue not found';
             } catch (e) {
                 console.warn('[RESOLVE_ISSUE] Firestore batch fetch warning:', e.message);
             }
         }
+        if (notThisCompany) return res.status(404).json({ success: false, error: 'NOT_FOUND', message: notThisCompany });
 
         store.setBatch(batchDocData);
         store.setEmployee({

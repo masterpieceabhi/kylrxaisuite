@@ -165,13 +165,17 @@ function evaluate(tasks, facts, todayIso) {
     };
 }
 
-/** Which person can tick a task: its owner, or HR for anything */
-function canComplete(task, role, isSelf) {
+/**
+ * Which person can tick a task: its owner, or HR for anything.
+ * A manager task belongs to the person's own manager: `managesPerson` must be true (the caller looked up that the
+ * person reports to this manager). A manager of another team cannot tick it.
+ */
+function canComplete(task, role, isSelf, managesPerson = false) {
     const r = String(role || '').toLowerCase().replace(/[\s_-]+/g, '');
     const hr = ['superadmin', 'admin', 'hradmin', 'hrms', 'hrpayroll'].includes(r);
     if (hr) return true;
-    if (task.assignee === 'employee') return isSelf;
-    if (task.assignee === 'manager') return r === 'manager';
+    if (task.assignee === 'employee') return isSelf === true;
+    if (task.assignee === 'manager') return r === 'manager' && managesPerson === true;
     return false;
 }
 

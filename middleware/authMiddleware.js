@@ -1,6 +1,7 @@
 const { admin, db } = require('../config/firebase');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { mustChangeBlocks } = require('../services/access-link-rules');
 
 if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET environment variable is missing');
@@ -158,6 +159,12 @@ const verifyToken = async (req, res, next) => {
         // Someone whose employment has ended can no longer use any existing session
         if (/^terminated$/i.test(String(userData.status || ''))) {
             return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
+
+        // A temporary password (given out by HR) only opens the "choose a new password" step. Every other signed-in
+        // request is refused until the person has chosen their own password (services/access-link-rules.js).
+        if (mustChangeBlocks(userData, decoded, req.originalUrl)) {
+            return res.status(403).json({ success: false, code: 'password_change_required', mustChangePassword: true, error: 'Choose a new password before you continue' });
         }
 
         req.user = userData;

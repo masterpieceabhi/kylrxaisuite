@@ -5,6 +5,9 @@ import jwt from 'jsonwebtoken';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+// Run on the full in-memory database. Without a database the payslip download answers 503 ("not configured") before it
+// looks at who is asking, so the "another employee's payslip is 403" check below could never be reached.
+require('./helpers/memory-firestore.js').install();
 const { app, dynamicRoutesLoaded } = require('../server.js');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'kylrx_production_jwt_secret_key_v2_2026_secured';
@@ -16,9 +19,12 @@ describe('Global Route Authentication & RBAC Enforcement Suite', () => {
 
     // The explicit exempt routes according to security specification:
     // POST /api/auth/login, POST /api/auth/signup, POST /api/auth/refresh-token, GET /api/health
+    // POST /api/auth/register-organization is the public "create a company" sign-up, added after this list was written
+    // (routes/auth.js mounts it next to /signup, behind the same rate limiter).
     const EXEMPT_ROUTES = new Set([
         'POST /api/auth/login',
         'POST /api/auth/signup',
+        'POST /api/auth/register-organization',
         'POST /api/auth/refresh-token',
         'GET /api/health'
     ]);
@@ -71,6 +77,13 @@ describe('Global Route Authentication & RBAC Enforcement Suite', () => {
             { prefix: '/api/bulk-trigger', router: require('../routes/bulk-trigger.js') },
             { prefix: '/api/payroll-settings', router: require('../routes/payroll-settings.js') },
             { prefix: '/api/controls-acceptance', router: require('../routes/controls-acceptance.js') },
+            // US HR routers that hold people's paperwork, documents and compliance records
+            { prefix: '/api/us', router: require('../routes/us-hr.js') },
+            { prefix: '/api/us', router: require('../routes/us-forms.js') },
+            { prefix: '/api/us', router: require('../routes/us-vault.js') },
+            { prefix: '/api/us', router: require('../routes/us-compliance.js') },
+            { prefix: '/api/us', router: require('../routes/us-checklists.js') },
+            { prefix: '/api/us', router: require('../routes/us-offboarding.js') },
             { prefix: '/api/reconciliation', router: recon },
             { prefix: '/api/esic', router: esic },
             { prefix: '/api/gratuity', router: gratuity },

@@ -48,7 +48,7 @@ const PAGES = [
   ['admin-us-reports.html', 'Reports', 'Headcount, hours, time off, paperwork', ['reports.view']],
   ['admin-us-compliance.html', 'Compliance', 'Documents, notices, EEO, injury log', ['compliance.view']],
   ['admin-us-calendar.html', 'Compliance calendar', 'Every dated duty in one list', ['compliance.view', 'people.read']],
-  ['admin-us-checklists.html', 'Checklists', 'New-hire and leaving tasks', ['people.write']],
+  ['admin-us-checklists.html', 'Checklists', 'New-hire and leaving tasks', ['people.write', 'people.read']],
   ['admin-us-i9-report.html', 'I-9 audit report', 'Printable list of every form', ['reports.view']],
   ['admin-us-performance.html', 'Goals and reviews', 'Team goals and performance reviews', ['people.read', 'people.read_team', 'people.write']],
   ['admin-us-surveys.html', 'Surveys', 'Ask the team short questions and see the results', ['people.read', 'people.write', 'reports.view']],
@@ -59,8 +59,11 @@ const PAGES = [
   ['admin-us-pay-schedule.html', 'Pay schedule', 'Pay periods and pay dates', ['payroll.view', 'org.settings']],
   ['admin-us-payroll-import.html', 'Bring in past payroll', 'Load pay history from before this system', ['payroll.run']],
   ['admin-us-exit-interviews.html', 'Exit interviews', 'Why people leave', ['people.write']],
+  ['admin-us-team-import.html', 'Add your team', 'Bring people in from a file, a paste or a join link', ['people.write']],
+  ['admin-us-i9.html', 'Form I-9', 'Check documents, Section 2, work permits that end', ['compliance.view']],
+  ['admin-us-training.html', 'Training records', 'Who must take which training, and who is overdue', ['compliance.view']],
   ['admin-us-report-builder.html', 'Report builder', 'Make your own lists and download them', ['reports.view']],
-  ['admin-us-offboarding.html', 'Offboarding', 'Terminations and final steps', ['people.write']],
+  ['admin-us-offboarding.html', 'Offboarding', 'Terminations and final steps', ['people.write', 'people.read']],
   ['admin-us-privacy.html', 'Privacy requests', 'Data copies and deletions', ['privacy.manage']],
   ['admin-us-integrations.html', 'Integrations', 'API keys, webhooks, connected apps', ['integrations.view', 'integrations.manage']],
   ['admin-us-owner.html', 'Owner settings', 'Activity log, roles, billing', ['security.manage', 'audit.view', 'billing.manage']],
@@ -68,7 +71,7 @@ const PAGES = [
 ];
 const MINE = [
   ['punch.html', 'Clock in and out', 'Start and end your day'], ['timesheet.html', 'My hours', 'Check and send your week'], ['my-schedule.html', 'My schedule', 'Shifts, swaps, availability'],
-  ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-goals.html', 'My goals', 'Goals and reviews'], ['my-surveys.html', 'Surveys', 'Short questions from the company'], ['my-assets.html', 'My equipment', 'Company items you have'], ['my-policies.html', 'Company policies', 'Read the rules and confirm you read them'], ['my-news.html', 'Company news', 'Announcements and thanks'], ['my-reviews.html', 'My reviews', 'Your review and feedback for coworkers'], ['my-exit-interview.html', 'Exit interview', 'If you are leaving the company'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
+  ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-goals.html', 'My goals', 'Goals and reviews'], ['my-surveys.html', 'Surveys', 'Short questions from the company'], ['my-assets.html', 'My equipment', 'Company items you have'], ['my-policies.html', 'Company policies', 'Read the rules and confirm you read them'], ['my-news.html', 'Company news', 'Announcements and thanks'], ['my-training.html', 'My trainings', 'Trainings to take and ones you finished'], ['set-password.html', 'Change password', 'Pick a new password'], ['my-reviews.html', 'My reviews', 'Your review and feedback for coworkers'], ['my-exit-interview.html', 'Exit interview', 'If you are leaving the company'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
   ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data']
 ];
 const tile = ([href, name, text]) => { const a = document.createElement('a'); a.className = 'tile'; a.href = href; const b = document.createElement('b'); b.textContent = name; const s = document.createElement('span'); s.textContent = text; a.append(b, s); return a; };
@@ -85,6 +88,15 @@ onAuthStateChanged(auth, async (user) => {
     const has = new Set(me.permissions || []);
     const open = PAGES.filter((p) => p[3].some((x) => has.has(x)));
     $('workSec').hidden = open.length === 0; $('work').replaceChildren(...open.map(tile));
+    try {
+      const w = await (await fetch('/api/us/approvals/waiting', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json();
+      if (w.success && w.canApprove && w.total > 0) {
+        const parts = [[w.timesheets, 'timesheet', 'timesheets'], [w.punchFixes, 'punch fix', 'punch fixes'], [w.leaveRequests, 'time-off request', 'time-off requests']].filter((x) => x[0] > 0).map((x) => `${x[0]} ${x[0] === 1 ? x[1] : x[2]}`);
+        const a = document.createElement('a'); a.href = (w.links && (w.timesheets + w.punchFixes > 0 ? w.links.timesheets : w.links.leaveRequests)) || 'admin-us-time.html';
+        a.textContent = `Waiting for you: ${parts.join(', ')}`; a.style.fontWeight = '700';
+        $('msg').replaceChildren(a); $('msg').style.display = 'block';
+      }
+    } catch (_) { /* the menu still works without the count */ }
   } catch (_) { $('msg').textContent = 'Could not load your menu. Your own pages below still work.'; $('msg').style.display = 'block'; }
 });
 </script>

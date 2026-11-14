@@ -7,6 +7,7 @@ const { rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
 const R = require('./clock-compliance-rules');
 const files = require('./file-store');
+const ipMatch = require('./ip-match');
 
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
@@ -70,7 +71,8 @@ async function userContext(orgId, userId) {
     const snap = await rawCollection('users').doc(userId).get();
     if (!exists(snap) || snap.data().orgId !== orgId) return null;
     const u = snap.data(); const p = u.usProfile || {};
-    let locationId = p.locationId || u.locationId || null;
+    // the place the person works at: the Company structure page saves it as workLocationId
+    let locationId = p.workLocationId || p.locationId || u.locationId || null;
     let city = p.workCity || p.city || (p.homeAddress && p.homeAddress.city) || null;
     let state = p.workState || null;
     if (locationId) {
@@ -225,15 +227,17 @@ async function beforePunch({ orgId, userId, type, source, deviceId, location, ph
     const ev = R.evaluatePunch({
         policy, rules: rows, workState: ctx.workState, city: ctx.city, type, source, hasPhoto: parsed.ok, location, statuses, sites,
         deviceHash, deviceDoc, userDeviceHashes: Array.from(new Set(punches.map((p) => p.deviceHash).filter(Boolean))),
-        prev: last, recent: punches, shifts, nowIso: at, tz, userId
+        prev: last, recent: punches, shifts, nowIso: at, tz, userId, ip
     });
+    // the address is kept only with a punch that was outside the allowed networks, for the person who reviews it
+    const outsideNetwork = ev.network === 'outside' ? { ip: ipMatch.tidyAddress(ip) || String(ip || '').slice(0, 60) || null } : {};
     const result = { evaluation: ev, policy, deviceHash, pending: [], ctx };
     if (ev.decision === 'block') {
         result.block = true; result.code = ev.reasons.find((r) => r.severity === 'block').code;
         if (result.code === 'consent_required') {
             result.pending = ev.pendingTypes.map((t) => ({ type: t, version: notices[t].version, title_en: notices[t].title_en, body_en: notices[t].body_en, title_es: notices[t].title_es, body_es: notices[t].body_es }));
         } else {
-            await rawCollection('clock_exceptions').add(exceptionDoc(orgId, userId, null, ev, { kind: 'blocked_attempt', type, source: source || 'web', distanceMeters: ev.distanceMeters }));
+            await rawCollection('clock_exceptions').add(exceptionDoc(orgId, userId, null, ev, { kind: 'blocked_attempt', type, source: source || 'web', distanceMeters: ev.distanceMeters, ...outsideNetwork }));
         }
         return result;
     }
@@ -243,8 +247,9 @@ async function beforePunch({ orgId, userId, type, source, deviceId, location, ph
         deviceHash: deviceHash || null, ...(source !== 'kiosk' && deviceHash ? { deviceId: null } : {}),
         distanceMeters: ev.distanceMeters, nearestSiteId: ev.nearest ? ev.nearest.id : null,
         geofence: ev.nearest ? (ev.nearest.inside ? 'inside' : 'outside') : null,
-        complianceFlags: ev.reasons.map((r) => r.code), photoId, policyId: policy.id
+        complianceFlags: ev.reasons.map((r) => r.code), photoId, policyId: policy.id, network: ev.network
     };
+    result.exceptionExtras = outsideNetwork;
     if (!ev.storeLocation) result.dropLocation = true;
     return result;
 }
@@ -261,7 +266,7 @@ async function afterPunch(c, { orgId, userId, punchId, type, source, tz }) {
         });
     }
     if (c.evaluation.reasons.length) {
-        await rawCollection('clock_exceptions').add(exceptionDoc(orgId, userId, punchId, c.evaluation, { kind: 'flagged_punch', type, source: source || 'web', distanceMeters: c.evaluation.distanceMeters }));
+        await rawCollection('clock_exceptions').add(exceptionDoc(orgId, userId, punchId, c.evaluation, { kind: 'flagged_punch', type, source: source || 'web', distanceMeters: c.evaluation.distanceMeters, ...(c.exceptionExtras || {}) }));
     }
     if (c.deviceHash && source !== 'kiosk') {
         const ref = rawCollection('clock_devices').doc(`${orgId}_${c.deviceHash.slice(0, 32)}`);
@@ -272,7 +277,19 @@ async function afterPunch(c, { orgId, userId, punchId, type, source, tz }) {
     }
 }
 
+/**
+ * A punch made without a connection and sent later: listed with the punches to look at, so a manager sees
+ * both the time the phone reported and the time the server received it.
+ */
+async function recordLatePunch({ orgId, userId, punchId, type, source, punchAt, receivedAt }) {
+    const delayMinutes = Math.max(0, Math.round((new Date(receivedAt).getTime() - new Date(punchAt).getTime()) / 60000));
+    const ev = { decision: 'flag', reasons: [{ code: 'sent_late', severity: 'flag', en: R.MSG.sent_late[0], es: R.MSG.sent_late[1] }] };
+    await rawCollection('clock_exceptions').add(exceptionDoc(orgId, userId, punchId, ev, { kind: 'late_punch', type, source: source || 'web', punchAt, receivedAt, delayMinutes }));
+    return { delayMinutes };
+}
+
 module.exports = {
+    recordLatePunch,
     loadJurisdictionRows, rulesForEval, loadNotices, saveNotice, loadPolicies, userContext, loadConsents, recordConsent, revokeConsent,
     pendingFor, destroyPhoto, destroyPhotosFor, purgeExpiredPhotos, beforePunch, afterPunch, photoFileId
 };

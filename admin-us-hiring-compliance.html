@@ -191,9 +191,13 @@ async function bgStep(step, el) {
   if (step === 'pre-adverse') body = { reportCopyProvided: on('s5a'), summaryOfRightsProvided: on('s5b') };
   if (step === 'adverse' && !window.confirm(`Record that the final notice was sent to ${candName(bgCandidate)}? This closes the check.`)) return;
   if (step === 'dispute') body = { note: $('dNote').value };
-  if (step === 'dispute/resolve') body = { resolution: el.dataset.res };
+  if (step === 'dispute/resolve') {
+    const clear = el.dataset.res === 'corrected_clear';
+    if (!window.confirm(clear ? `Close the dispute for ${candName(bgCandidate)} as "the report was corrected and is now clear"? The result changes to clear and the notice steps are reset.` : `Close the dispute for ${candName(bgCandidate)} as "the report was confirmed as correct"? The result stays as it is and the final notice can be sent once the waiting time has passed.`)) return;
+    body = { resolution: el.dataset.res };
+  }
   const r = await req('POST', `/hiring/candidates/${bgCandidate}/background/${step}`, body);
-  paintCheck(r.check); say('Recorded.'); await loadBackground();
+  paintCheck(r.check); say(step === 'dispute/resolve' ? 'Dispute closed and written to the check\'s history.' : 'Recorded.'); await loadBackground();
 }
 $('bgOpen').addEventListener('click', () => { if ($('bgPick').value) openCheck($('bgPick').value).catch((err) => say(err.message, false)); });
 $('bgDaysSave').addEventListener('click', async () => { try { await req('PUT', '/hiring/settings', { background: { waitingBusinessDays: Number($('bgDays').value) } }); say('Saved.'); } catch (err) { say(err.message, false); } });

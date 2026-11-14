@@ -6,22 +6,39 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const { admin, db, rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
 const { getCountryConfig } = require('../country-config');
 const rules = require('../services/time-rules');
 const policy = require('../services/time-policy');
 const clockIo = require('../services/clock-compliance-io');
+const access = require('../services/time-access');
+const auditChain = require('../services/audit-chain');
 
 const KIOSK_SESSION_SECONDS = 45;
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCK_MINUTES = 15;
 const DUPLICATE_WINDOW_MS = 15000;
-const MANAGER_ROLES = [...ADMIN_HR_ROLES, 'Manager', 'manager'];
+// A punch made without a connection may be sent later, up to this old; after that the person asks for a fix instead
+const LATE_PUNCH_MAX_HOURS = 72;
+const LATE_PUNCH_FUTURE_GRACE_MS = 2 * 60000;
 
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-/** Company time zone, country and overtime setting */
+/** Audit entry for a time route (joins the tamper-evident chain; never fails the request) */
+function audit(orgId, req, action, targetId, extra = {}) {
+    try {
+        return auditChain.writeAudit(orgId, {
+            action, targetId: targetId === undefined ? null : targetId, actorId: (req.user && (req.user.id || req.user.uid)) || null,
+            actorRole: (req.user && req.user.role) || null, at: new Date().toISOString(), ip: req.ip || null, ...extra
+        }).catch((e) => logger.error(`Audit write failed: ${e.message}`));
+    } catch (e) {
+        logger.error(`Audit write failed: ${e.message}`);
+        return Promise.resolve();
+    }
+}
+
+/** Company time zone, country, workweek and overtime setting */
 async function orgInfo(orgId) {
     const snap = await rawCollection('organizations').doc(orgId).get();
     const data = exists(snap) ? snap.data() : {};
@@ -30,7 +47,46 @@ async function orgInfo(orgId) {
     let tz = country.timeZones[0];
     try { new Intl.DateTimeFormat('en-US', { timeZone: candidate }); tz = candidate; } catch (_) {}
     const merged = { ...policy.DEFAULT_RULES, ...((data.usProfile && data.usProfile.timeRules) || {}) };
-    return { orgId, tz, country: country.code, rules: merged, overtimeWeeklyHours: country.code === 'US' ? merged.overtimeWeeklyHours : null };
+    merged.workweek = rules.normalizeWorkweek(merged.workweek);
+    return { orgId, tz, orgTz: tz, country: country.code, rules: merged, workweek: merged.workweek, overtimeWeeklyHours: country.code === 'US' ? merged.overtimeWeeklyHours : null };
+}
+
+/** The id of the place a person works at, wherever it was saved */
+function workLocationIdOf(userData) {
+    const u = userData || {};
+    const p = u.usProfile || {};
+    const id = p.workLocationId || p.locationId || u.workLocationId || u.locationId || null;
+    return id ? String(id) : null;
+}
+
+/** Time zones of a company's locations: Map(locationId -> timeZone) */
+async function locationZones(orgId) {
+    const snap = await rawCollection('locations').where('orgId', '==', orgId).get();
+    return new Map(snap.docs.map((d) => [d.id, d.data().timeZone || null]));
+}
+
+/**
+ * The company info as it applies to one person: days, "today" and weeks are cut in the time zone of the
+ * person's work location when that location has one, and in the company's time zone otherwise.
+ * `userData` is the person's stored record when the caller already has it; `zones` a locationZones() map
+ * when many people are handled in one request.
+ */
+async function personInfo(orgId, userId, userData, { info, zones } = {}) {
+    const base = info || await orgInfo(orgId);
+    let data = userData;
+    if (!data && userId) {
+        const snap = await rawCollection('users').doc(String(userId)).get();
+        data = exists(snap) && snap.data().orgId === orgId ? snap.data() : {};
+    }
+    const locationId = workLocationIdOf(data);
+    if (!locationId) return base;
+    let zone = null;
+    if (zones) zone = zones.get(locationId) || null;
+    else {
+        const l = await rawCollection('locations').doc(locationId).get();
+        if (exists(l) && l.data().orgId === orgId) zone = l.data().timeZone || null;
+    }
+    return { ...base, tz: rules.pickTimeZone(zone, base.tz), locationId };
 }
 
 /** Punches for a user at or after `sinceIso`, oldest first */
@@ -42,9 +98,11 @@ async function punchesSince(orgId, userId, sinceIso, tx) {
 
 function buildStatus(punches, info, nowIso) {
     const state = rules.stateOf(punches);
-    const sheet = rules.timesheet(punches, info.tz, nowIso, info.overtimeWeeklyHours);
-    const today = sheet.days.find((d) => d.date === rules.localDate(nowIso, info.tz));
-    const week = sheet.weeks.find((w) => w.weekStart === rules.weekStart(rules.localDate(nowIso, info.tz)));
+    const sheet = rules.timesheet(punches, info.tz, nowIso, info.overtimeWeeklyHours, info.workweek);
+    const todayIso = rules.localDate(nowIso, info.tz);
+    const today = sheet.days.find((d) => d.date === todayIso);
+    const range = rules.weekRange(todayIso, info.workweek);
+    const week = sheet.weeks.find((w) => w.weekStart === range.start);
     const last = punches.length ? punches[punches.length - 1] : null;
     const lastIn = [...punches].reverse().find((p) => p.type === 'in');
     return {
@@ -54,6 +112,7 @@ function buildStatus(punches, info, nowIso) {
         shiftStartedAt: state !== 'out' && lastIn ? lastIn.at : null,
         todayMinutes: today ? today.workedMinutes : 0,
         weekMinutes: week ? week.workedMinutes : 0,
+        weekStart: range.start,
         forgottenClockOut: rules.isForgottenClockOut(punches, nowIso),
         timeZone: info.tz,
         serverNow: nowIso
@@ -73,51 +132,100 @@ function cleanLocation(loc) {
 }
 
 /**
- * Records one punch if it is allowed. Runs in a transaction so two quick taps cannot both
- * clock in. A repeat of the same action within 15 seconds is treated as the same tap.
+ * True when the person's workweek containing `localDay` has been approved (it is then locked).
+ * With the company's workweek setting the week is looked up directly. Without it (older callers) every
+ * approved week of the person is checked by its dates, so the answer is right whatever day the workweek starts on.
  */
-/** True when the person's workweek containing `localDay` has been approved (it is then locked) */
-async function weekIsLocked(userId, localDay) {
-    const snap = await rawCollection('timesheet_weeks').doc(`${userId}_${rules.weekStart(localDay)}`).get();
-    return exists(snap) && snap.data().status === 'approved';
+async function weekIsLocked(userId, localDay, workweek) {
+    if (workweek) {
+        const snap = await rawCollection('timesheet_weeks').doc(`${userId}_${rules.weekStartFor(localDay, workweek)}`).get();
+        return exists(snap) && snap.data().status === 'approved';
+    }
+    const snap = await rawCollection('timesheet_weeks').where('userId', '==', userId).get();
+    return snap.docs.some((d) => {
+        const w = d.data();
+        return w.status === 'approved' && w.weekStart <= localDay && localDay <= (w.weekEnd || rules.addDaysIso(w.weekStart, 6));
+    });
 }
 
-async function recordPunch({ orgId, userId, employeeId, type, source, deviceId, location, note, addedBy, photo, consents, ip }) {
-    const info = await orgInfo(orgId);
+const cleanClientKey = (k) => (typeof k === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(k) ? k : null);
+
+/**
+ * Records one punch if it is allowed. Runs in a transaction so two quick taps cannot both
+ * clock in. A repeat of the same action within 15 seconds is treated as the same tap.
+ *
+ * clientKey: a random key the page makes for each tap. The same key is only ever recorded once, so a page that
+ *   sends a punch again (because it never saw the answer) cannot make a second punch.
+ * clientAt: only for a punch made without a connection and sent later. The punch is recorded at that time, marked
+ *   "sent late" with the time the server received it, and listed for the manager to look at.
+ */
+async function recordPunch({ orgId, userId, userData, employeeId, type, source, deviceId, location, note, addedBy, photo, consents, ip, clientKey, clientAt }) {
+    const info = await personInfo(orgId, userId, userData);
     const nowIso = new Date().toISOString();
-    if (await weekIsLocked(userId, rules.localDate(nowIso, info.tz))) {
-        return { ok: false, code: 'week_locked', status: buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso) };
+    const status = async () => buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso);
+    const key = cleanClientKey(clientKey);
+    const punchRef = key ? rawCollection('time_punches').doc(`ck_${sha256(`${userId}:${key}`).slice(0, 40)}`) : rawCollection('time_punches').doc();
+    if (key) {
+        const already = await punchRef.get();
+        if (exists(already) && already.data().orgId === orgId && already.data().userId === userId) return { ok: true, duplicate: true, status: await status() };
     }
-    // Clock compliance hook: does nothing (returns null) until the company sets a clock policy
+    let atIso = nowIso;
+    const late = clientAt !== undefined && clientAt !== null && clientAt !== '';
+    if (late) {
+        const when = new Date(clientAt);
+        if (!key || Number.isNaN(when.getTime()) || when.getTime() > Date.now() + LATE_PUNCH_FUTURE_GRACE_MS) return { ok: false, code: 'late_bad_time', status: await status() };
+        if (Date.now() - when.getTime() > LATE_PUNCH_MAX_HOURS * 3600000) return { ok: false, code: 'late_too_old', status: await status() };
+        atIso = new Date(Math.min(when.getTime(), Date.now())).toISOString();
+    }
+    if (await weekIsLocked(userId, rules.localDate(atIso, info.tz), info.workweek)) {
+        return { ok: false, code: 'week_locked', status: await status() };
+    }
+    // Clock compliance hook: does nothing (returns null) until the company sets a clock policy.
+    // A punch sent late is not put through it: it carries no photo or location, and it is flagged for the manager anyway.
     let comp = null;
-    try {
-        comp = await clockIo.beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz: info.tz, loadPunches: () => punchesSince(orgId, userId, daysAgoIso(8)) });
-    } catch (e) { logger.error(`Clock compliance check failed: ${e.message}`); }
-    if (comp && comp.block) {
-        return { ok: false, code: comp.code, status: buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso), compliance: complianceView(comp) };
+    if (!late) {
+        try {
+            comp = await clockIo.beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz: info.tz, loadPunches: () => punchesSince(orgId, userId, daysAgoIso(8)) });
+        } catch (e) { logger.error(`Clock compliance check failed: ${e.message}`); }
+        if (comp && comp.block) {
+            return { ok: false, code: comp.code, status: await status(), compliance: complianceView(comp) };
+        }
     }
-    const punchRef = rawCollection('time_punches').doc();
     const out = await admin.firestore().runTransaction(async (tx) => {
+        if (key) {
+            const again = await tx.get(punchRef);
+            if (exists(again)) return { ok: true, duplicate: true };
+        }
         const punches = await punchesSince(orgId, userId, daysAgoIso(8), tx);
         const last = punches.length ? punches[punches.length - 1] : null;
-        if (last && last.type === type && (Date.now() - new Date(last.at).getTime()) < DUPLICATE_WINDOW_MS) {
+        if (!late && last && last.type === type && (Date.now() - new Date(last.at).getTime()) < DUPLICATE_WINDOW_MS) {
             return { ok: true, duplicate: true, status: buildStatus(punches, info, nowIso) };
         }
+        // a late punch has to come after everything already recorded, or the order of in/break/out would be wrong
+        if (late && last && atIso <= last.at) return { ok: false, code: 'late_out_of_order', status: buildStatus(punches, info, nowIso) };
         const code = rules.checkPunch(rules.stateOf(punches), type);
         if (code) return { ok: false, code, status: buildStatus(punches, info, nowIso) };
         const punch = {
-            orgId, userId, employeeId: employeeId || null, type, at: nowIso,
-            localDate: rules.localDate(nowIso, info.tz), tz: info.tz, source: source || 'web',
+            orgId, userId, employeeId: employeeId || null, type, at: atIso,
+            localDate: rules.localDate(atIso, info.tz), tz: info.tz, source: source || 'web',
             deviceId: deviceId || null, location: comp && comp.dropLocation ? null : cleanLocation(location), note: note ? String(note).slice(0, 200) : null,
-            addedBy: addedBy || null, ...(comp ? comp.punchExtras : {})
+            addedBy: addedBy || null, ...(comp ? comp.punchExtras : {}),
+            ...(key ? { clientKey: key } : {}),
+            ...(late ? { sentLate: true, receivedAt: nowIso, clientAt: atIso, complianceFlags: ['sent_late'] } : {})
         };
         tx.set(punchRef, punch);
         return { ok: true, duplicate: false, status: buildStatus([...punches, punch], info, nowIso) };
     });
+    if (out.ok && !out.status) out.status = await status();
     if (comp && out.ok && !out.duplicate) {
         try { await clockIo.afterPunch(comp, { orgId, userId, punchId: punchRef.id, type, source, tz: info.tz }); } catch (e) { logger.error(`Clock compliance follow-up failed: ${e.message}`); }
         out.compliance = complianceView(comp);
     }
+    if (late && out.ok && !out.duplicate) {
+        out.late = { punchAt: atIso, receivedAt: nowIso };
+        try { await clockIo.recordLatePunch({ orgId, userId, punchId: punchRef.id, type, source, punchAt: atIso, receivedAt: nowIso }); } catch (e) { logger.error(`Late punch flag failed: ${e.message}`); }
+    }
+    if (out.ok && !out.duplicate) out.punchId = punchRef.id;
     return out;
 }
 
@@ -132,7 +240,11 @@ const ERROR_TEXT = {
     not_on_break: 'You are not on a break.', unknown_action: 'Unknown action.', not_allowed: 'That is not possible right now.',
     week_locked: 'This week has been approved. Ask your manager if something needs to change.',
     consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is required. Please take one.', outside_geofence: 'You are outside the work site area.',
-    low_accuracy: 'Your phone location is not accurate enough.', location_required: 'Location is required to clock in here.'
+    low_accuracy: 'Your phone location is not accurate enough.', location_required: 'Location is required to clock in here.',
+    outside_network: 'This device is not on an approved work network. Connect to the work network and try again.',
+    late_bad_time: 'The saved time of this punch could not be read. Ask your manager to add it.',
+    late_too_old: 'This punch was saved too long ago to be sent. Ask your manager to add it.',
+    late_out_of_order: 'This saved punch is older than a punch already recorded. Ask your manager to check your hours.'
 };
 
 /* ----------------------------- Shared-device kiosk (no login) ----------------------------- */
@@ -177,7 +289,7 @@ router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     }
     if (u.pinAttempts) await doc.ref.update({ pinAttempts: 0 });
 
-    const info = await orgInfo(kiosk.orgId);
+    const info = await personInfo(kiosk.orgId, doc.id, u);
     const nowIso = new Date().toISOString();
     const status = buildStatus(await punchesSince(kiosk.orgId, doc.id, daysAgoIso(8)), info, nowIso);
     let compliance = null;
@@ -202,10 +314,11 @@ router.post('/kiosk/punch', kioskLimiter, async (req, res) => {
         return res.status(401).json({ success: false, code: 'session_expired', error: 'Please enter your PIN again' });
     }
     const userSnap = await rawCollection('users').doc(claims.uid).get();
-    const u = exists(userSnap) ? userSnap.data() : {};
+    const u = exists(userSnap) && userSnap.data().orgId === kiosk.orgId ? userSnap.data() : {};
+    // clientKey: the tablet sends the same key if it has to send a punch again, so it is never recorded twice
     const result = await recordPunch({
-        orgId: kiosk.orgId, userId: claims.uid, employeeId: u.employeeId, type: String(req.body.action || ''),
-        source: 'kiosk', deviceId: kiosk.id, photo: req.body.photo, consents: req.body.consents, ip: req.ip
+        orgId: kiosk.orgId, userId: claims.uid, userData: u, employeeId: u.employeeId, type: String(req.body.action || ''),
+        source: 'kiosk', deviceId: kiosk.id, photo: req.body.photo, consents: req.body.consents, ip: req.ip, clientKey: req.body.clientKey
     });
     if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status, compliance: result.compliance });
     res.json({ success: true, duplicate: result.duplicate, name: u.name || null, status: result.status, compliance: result.compliance });
@@ -226,71 +339,87 @@ function requireOrg(req, res, next) {
     next();
 }
 
-const norm = (r) => String(r || '').toLowerCase().replace(/[\s_-]+/g, '');
-const hasRole = (user, list) => list.some((r) => norm(r) === norm(user.role));
+const forbidden = (res) => res.status(403).json({ success: false, error: 'You do not have permission to do this' });
 
 router.get('/status', requireOrg, async (req, res) => {
-    const info = await orgInfo(req.orgId);
+    const info = await personInfo(req.orgId, req.user.id, req.user);
     const nowIso = new Date().toISOString();
     const punches = await punchesSince(req.orgId, req.user.id, daysAgoIso(8));
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, name: req.user.name || null, country: info.country, status: buildStatus(punches, info, nowIso) });
+    res.json({ success: true, name: req.user.name || null, country: info.country, leaving: /^terminating$/i.test(String(req.user.status || '')), status: buildStatus(punches, info, nowIso) });
 });
 
 router.post('/punch', requireOrg, async (req, res) => {
+    const b = req.body || {};
     const result = await recordPunch({
-        orgId: req.orgId, userId: req.user.id, employeeId: req.user.employeeId, type: String((req.body && req.body.action) || ''),
-        source: 'web', deviceId: req.body && req.body.deviceId ? String(req.body.deviceId).slice(0, 60) : null,
-        location: req.body && req.body.location, note: req.body && req.body.note, photo: req.body && req.body.photo, ip: req.ip
+        orgId: req.orgId, userId: req.user.id, userData: req.user, employeeId: req.user.employeeId, type: String(b.action || ''),
+        source: 'web', deviceId: b.deviceId ? String(b.deviceId).slice(0, 60) : null,
+        location: b.location, note: b.note, photo: b.photo, ip: req.ip, clientKey: b.clientKey, clientAt: b.clientAt
     });
     if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status, compliance: result.compliance });
-    res.json({ success: true, duplicate: result.duplicate, status: result.status, compliance: result.compliance });
+    if (result.late) audit(req.orgId, req, 'time_punch_sent_late', req.user.id, { type: String(b.action || ''), punchAt: result.late.punchAt, receivedAt: result.late.receivedAt, punchId: result.punchId });
+    res.json({ success: true, duplicate: result.duplicate, late: Boolean(result.late), recordedAt: result.late ? result.late.punchAt : undefined, receivedAt: result.late ? result.late.receivedAt : undefined, status: result.status, compliance: result.compliance });
 });
 
 router.get('/timesheet', requireOrg, async (req, res) => {
     const targetId = req.query.userId && req.query.userId !== req.user.id ? String(req.query.userId) : req.user.id;
-    if (targetId !== req.user.id && !hasRole(req.user, ADMIN_HR_ROLES)) {
-        return res.status(403).json({ success: false, error: 'Not allowed' });
-    }
+    const base = await orgInfo(req.orgId);
+    let targetData = req.user;
     if (targetId !== req.user.id) {
+        const scope = access.timeAccess(req.user, base.country).timesheets;
+        if (scope === 'none') return res.status(403).json({ success: false, error: 'Not allowed' });
         const t = await rawCollection('users').doc(targetId).get();
         if (!exists(t) || t.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Person not found' });
+        targetData = t.data();
+        if (!access.allowedFor(req.user, scope, { ...targetData, id: targetId })) return res.status(403).json({ success: false, error: 'You can only see hours for people who report to you' });
     }
-    const info = await orgInfo(req.orgId);
+    const info = await personInfo(req.orgId, targetId, targetData, { info: base });
     const nowIso = new Date().toISOString();
     const today = rules.localDate(nowIso, info.tz);
-    const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '') ? req.query.from : rules.weekStart(today);
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || '') ? req.query.from : rules.weekStartFor(today, info.workweek);
     const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || '') ? req.query.to : today;
-    const sinceIso = new Date(new Date(`${from}T00:00:00Z`).getTime() - 86400000).toISOString();
-    const punches = (await punchesSince(req.orgId, targetId, sinceIso)).filter((p) => p.localDate <= to);
-    const sheet = rules.timesheet(punches, info.tz, nowIso, info.overtimeWeeklyHours);
+    const sinceIso = new Date(new Date(`${from}T00:00:00Z`).getTime() - 2 * 86400000).toISOString();
+    const punches = (await punchesSince(req.orgId, targetId, sinceIso)).filter((p) => rules.localDate(p.at, info.tz) <= to);
+    const sheet = rules.timesheet(punches, info.tz, nowIso, info.overtimeWeeklyHours, info.workweek);
     res.json({
         success: true, userId: targetId, from, to, timeZone: info.tz, overtimeWeeklyHours: info.overtimeWeeklyHours,
         days: sheet.days.filter((d) => d.date >= from && d.date <= to), weeks: sheet.weeks
     });
 });
 
-/** Who is working right now (managers and HR) */
-router.get('/team/now', authorize(MANAGER_ROLES), requireOrg, async (req, res) => {
+/** Who is working right now: everyone for HR, payroll and auditors; their own direct reports for managers */
+router.get('/team/now', requireOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
+    const scope = access.timeAccess(req.user, info.country).teamNow;
+    if (scope === 'none') return forbidden(res);
     const nowIso = new Date().toISOString();
-    const [people, punchSnap] = await Promise.all([
+    const [people, punchSnap, zones] = await Promise.all([
         rawCollection('users').where('orgId', '==', req.orgId).get(),
-        rawCollection('time_punches').where('orgId', '==', req.orgId).where('at', '>=', daysAgoIso(2)).orderBy('at').get()
+        rawCollection('time_punches').where('orgId', '==', req.orgId).where('at', '>=', daysAgoIso(2)).orderBy('at').get(),
+        locationZones(req.orgId)
     ]);
     const byUser = new Map();
-    punchSnap.docs.forEach((d) => { const p = d.data(); if (!byUser.has(p.userId)) byUser.set(p.userId, []); byUser.get(p.userId).push(p); });
-    const rows = people.docs.filter((d) => ['active', 'terminating'].includes(String(d.data().status || 'Active').toLowerCase())).map((d) => {
+    punchSnap.docs.forEach((d) => { const p = d.data(); if (p.voided) return; if (!byUser.has(p.userId)) byUser.set(p.userId, []); byUser.get(p.userId).push(p); });
+    const rows = [];
+    for (const d of people.docs) {
         const u = d.data();
-        const s = buildStatus(byUser.get(d.id) || [], info, nowIso);
-        return { userId: d.id, employeeId: u.employeeId || null, name: u.name, jobTitle: u.jobTitle || null, department: u.departmentName || null,
-            hasPin: Boolean(u.pinHash), state: s.state, since: s.shiftStartedAt, todayMinutes: s.todayMinutes, forgottenClockOut: s.forgottenClockOut };
-    }).sort((a, b) => (a.state === 'out') - (b.state === 'out') || String(a.name).localeCompare(String(b.name)));
-    res.json({ success: true, timeZone: info.tz, counts: { in: rows.filter((r) => r.state === 'in').length, break: rows.filter((r) => r.state === 'break').length, out: rows.filter((r) => r.state === 'out').length }, data: rows });
+        if (!['active', 'terminating'].includes(String(u.status || 'Active').toLowerCase())) continue;
+        if (!access.allowedFor(req.user, scope, { ...u, id: d.id })) continue;
+        const mine = await personInfo(req.orgId, d.id, u, { info, zones });
+        const s = buildStatus(byUser.get(d.id) || [], mine, nowIso);
+        rows.push({ userId: d.id, employeeId: u.employeeId || null, name: u.name, jobTitle: u.jobTitle || null, department: u.departmentName || null,
+            hasPin: Boolean(u.pinHash), state: s.state, since: s.shiftStartedAt, todayMinutes: s.todayMinutes, forgottenClockOut: s.forgottenClockOut, timeZone: mine.tz });
+    }
+    rows.sort((a, b) => (a.state === 'out') - (b.state === 'out') || String(a.name).localeCompare(String(b.name)));
+    const acc = access.timeAccess(req.user, info.country);
+    res.json({ success: true, timeZone: info.tz, scope, can: { addPunch: acc.addPunch === 'all', kiosk: acc.kioskManage, kioskView: acc.kioskView },
+        counts: { in: rows.filter((r) => r.state === 'in').length, break: rows.filter((r) => r.state === 'break').length, out: rows.filter((r) => r.state === 'out').length }, data: rows });
 });
 
-/** HR adds a missed punch (with a reason, written to the audit log) */
-router.post('/punches/manual', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+/** HR or payroll adds a missed punch (with a reason, written to the audit log) */
+router.post('/punches/manual', requireOrg, async (req, res) => {
+    const base = await orgInfo(req.orgId);
+    if (access.timeAccess(req.user, base.country).addPunch !== 'all') return forbidden(res);
     const { userId, type, at, reason } = req.body || {};
     if (!rules.PUNCH_TYPES.includes(type)) return res.status(400).json({ success: false, error: 'type must be in, out, break_start or break_end' });
     const when = new Date(at);
@@ -298,58 +427,64 @@ router.post('/punches/manual', authorize(ADMIN_HR_ROLES), requireOrg, async (req
     if (String(reason || '').trim().length < 5) return res.status(400).json({ success: false, error: 'A reason of at least 5 characters is required' });
     const t = await rawCollection('users').doc(String(userId)).get();
     if (!exists(t) || t.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Person not found' });
-    const info = await orgInfo(req.orgId);
+    const info = await personInfo(req.orgId, String(userId), t.data(), { info: base });
     const atIso = when.toISOString();
-    if (await weekIsLocked(userId, rules.localDate(atIso, info.tz))) return res.status(409).json({ success: false, error: 'That week is approved. Reopen it first.' });
-    await rawCollection('time_punches').add({
+    if (await weekIsLocked(userId, rules.localDate(atIso, info.tz), info.workweek)) return res.status(409).json({ success: false, error: 'That week is approved. Reopen it first.' });
+    const ref = await rawCollection('time_punches').add({
         orgId: req.orgId, userId, employeeId: t.data().employeeId || null, type, at: atIso, localDate: rules.localDate(atIso, info.tz),
         tz: info.tz, source: 'manual', deviceId: null, location: null, note: String(reason).slice(0, 200), addedBy: req.user.id
     });
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({
-        action: 'time_punch_added_manually', targetId: userId, actorId: req.user.id, at: new Date().toISOString(), type, punchAt: atIso, reason: String(reason).slice(0, 200)
-    }).catch((e) => logger.error(`Audit write failed: ${e.message}`));
+    audit(req.orgId, req, 'time_punch_added_manually', userId, { type, punchAt: atIso, punchId: ref.id, reason: String(reason).slice(0, 200) });
     res.status(201).json({ success: true });
 });
 
 /** HR sets or resets a worker's kiosk PIN; if none is given a random 4-digit PIN is made and shown once */
-router.put('/pin', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.put('/pin', requireOrg, async (req, res) => {
+    const base = await orgInfo(req.orgId);
+    if (!access.timeAccess(req.user, base.country).kioskManage) return forbidden(res);
     const userId = String((req.body && req.body.userId) || '');
-    const t = await rawCollection('users').doc(userId).get();
-    if (!userId || !exists(t) || t.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Person not found' });
+    const t = userId ? await rawCollection('users').doc(userId).get() : null;
+    if (!t || !exists(t) || t.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Person not found' });
     const pin = req.body.pin ? String(req.body.pin) : String(crypto.randomInt(0, 10000)).padStart(4, '0');
     if (!rules.validPin(pin)) return res.status(400).json({ success: false, error: 'PIN must be 4 to 6 digits' });
     await t.ref.update({ pinHash: await bcrypt.hash(pin, 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: new Date().toISOString() });
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({
-        action: 'kiosk_pin_set', targetId: userId, actorId: req.user.id, at: new Date().toISOString()
-    }).catch(() => {});
+    audit(req.orgId, req, 'kiosk_pin_set', userId);
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, employeeId: t.data().employeeId || null, name: t.data().name || null, pin });
 });
 
 /** Kiosk devices: the key is shown once when the kiosk is created */
-router.post('/kiosks', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.post('/kiosks', requireOrg, async (req, res) => {
+    const base = await orgInfo(req.orgId);
+    if (!access.timeAccess(req.user, base.country).kioskManage) return forbidden(res);
     const name = String((req.body && req.body.name) || '').trim().slice(0, 60);
     if (!name) return res.status(400).json({ success: false, error: 'name is required' });
     const key = crypto.randomBytes(32).toString('base64url');
     const ref = await rawCollection('kiosks').add({ orgId: req.orgId, name, keyHash: sha256(key), active: true, createdAt: new Date().toISOString(), createdBy: req.user.id });
+    audit(req.orgId, req, 'kiosk_added', ref.id, { name });
     res.set('Cache-Control', 'no-store');
     res.status(201).json({ success: true, id: ref.id, name, key, setupPath: `/kiosk.html?key=${key}` });
 });
 
-router.get('/kiosks', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.get('/kiosks', requireOrg, async (req, res) => {
+    const base = await orgInfo(req.orgId);
+    if (!access.timeAccess(req.user, base.country).kioskView) return forbidden(res);
     const snap = await rawCollection('kiosks').where('orgId', '==', req.orgId).get();
     res.json({ success: true, data: snap.docs.map((d) => ({ id: d.id, name: d.data().name, active: d.data().active !== false, createdAt: d.data().createdAt })) });
 });
 
-router.delete('/kiosks/:id', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
+router.delete('/kiosks/:id', requireOrg, async (req, res) => {
+    const base = await orgInfo(req.orgId);
+    if (!access.timeAccess(req.user, base.country).kioskManage) return forbidden(res);
     const ref = rawCollection('kiosks').doc(req.params.id);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Kiosk not found' });
     await ref.update({ active: false, deactivatedAt: new Date().toISOString() });
+    audit(req.orgId, req, 'kiosk_turned_off', req.params.id);
     res.json({ success: true });
 });
 
-// Shared with the leave routes (worked hours drive hours-based accrual)
-router.helpers = { orgInfo, punchesSince, buildStatus, weekIsLocked, ERROR_TEXT };
+// Shared with the leave routes (worked hours drive hours-based accrual) and the approval routes
+router.helpers = { orgInfo, personInfo, locationZones, workLocationIdOf, punchesSince, buildStatus, weekIsLocked, audit, ERROR_TEXT };
 
 module.exports = router;

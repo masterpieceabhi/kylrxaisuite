@@ -43,7 +43,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <div class="danger" id="cfgWarn" hidden></div>
   </section>
 
-  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="offcycle">Off-cycle pay</button><button data-tab="contractors">Contractors</button><button data-tab="deduct">Deductions and garnishments</button><button data-tab="forms">W-2 and 1099</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
+  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="offcycle">Off-cycle pay</button><button data-tab="contractors">Contractors</button><button data-tab="deduct">Deductions and garnishments</button><button data-tab="forms">W-2 and 1099</button><button data-tab="stubs">Pay stubs</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
 
   <div id="tab-setup" style="display:grid;gap:20px">
     <section class="card" id="connectCard" hidden>
@@ -191,6 +191,16 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <div class="row" style="margin-top:0"><button class="ghost" id="formsLoad">Check with Gusto</button></div>
       <table style="margin-top:12px"><thead><tr><th>Person</th><th>Form</th><th>Years ready</th><th>Download</th></tr></thead><tbody id="formsRows"></tbody></table>
     </section>
+  </div>
+
+  <div id="tab-stubs" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>A person's pay stubs</h2>
+      <p class="hint">Read from Gusto each time. Every look is written to the audit log. Only people who have been sent to Gusto are listed.</p>
+      <div class="row" style="margin-top:0"><label>Person<select id="stubPerson"><option value="">Choose a person</option></select></label><button class="ghost" id="stubGo">Show pay stubs</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Pay date</th><th>Pay period</th><th>Gross pay</th><th>Net pay</th><th></th></tr></thead><tbody id="stubRows"><tr><td colspan="5" class="hint">Choose a person.</td></tr></tbody></table>
+    </section>
+    <section class="card" id="stubCard" hidden><h2 id="stubTitle">Pay stub</h2><div id="stubBody"></div><p class="hint">This is everything Gusto sent for this pay stub. For the printable stub, open the person in Gusto.</p></section>
   </div>
 
   <div id="tab-history" hidden style="display:grid;gap:20px">
@@ -609,8 +619,43 @@ $('subscribe').addEventListener('click', guard(async () => { await req('POST', '
 $('poll').addEventListener('click', guard(async () => { const r = await req('POST', '/webhooks/poll', {}); say(`Fetched ${r.fetched} updates, ${r.added} were new.`); await loadHealth(); }));
 $('disconnect').addEventListener('click', guard(async () => { if ($('discWord').value.trim() !== 'DISCONNECT') throw new Error('Type DISCONNECT to confirm.'); await req('POST', '/disconnect', { confirm: true }); say('Disconnected from Gusto.'); await loadStatus(); await loadSetup(false); }));
 
+/* ---------- one person's pay stubs (people.read_pay) ---------- */
+let stubList = []; let stubName = '';
+async function loadStubPeople() {
+  if ($('stubPerson').options.length > 1) return;
+  const r = await req('GET', '/people');
+  $('stubPerson').insertAdjacentHTML('beforeend', r.data.filter((p) => p.inGusto).sort((a, b) => String(a.name).localeCompare(String(b.name))).map((p) => `<option value="${esc(p.userId)}">${esc(p.name)}${p.active ? '' : ' (left)'}</option>`).join(''));
+}
+const stubPeriod = (s) => { const p = s.pay_period || {}; const a = p.start_date || s.pay_period_start_date; const b = p.end_date || s.pay_period_end_date; return a || b ? `${day(a)} to ${day(b)}` : ''; };
+$('stubGo').addEventListener('click', guard(async () => {
+  const sel = $('stubPerson'); $('stubCard').hidden = true;
+  if (!sel.value) throw new Error('Choose a person first.');
+  stubName = sel.options[sel.selectedIndex].textContent;
+  let r;
+  try { r = await req('GET', `/pay-stubs/${encodeURIComponent(sel.value)}`); } catch (e) { if (e.status === 403) throw new Error('Your role cannot see what other people are paid.'); throw e; }
+  stubList = (Array.isArray(r.data) ? r.data : []).slice().sort((a, b) => String(b.check_date || '').localeCompare(String(a.check_date || '')));
+  $('stubRows').innerHTML = stubList.map((s, i) => `<tr><td>${esc(day(s.check_date))}</td><td>${esc(stubPeriod(s))}</td><td>${money(s.gross_pay)}</td><td>${money(s.net_pay)}</td><td><button class="ghost" data-stub="${i}">Open</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">No pay stubs yet for this person.</td></tr>';
+}));
+const STUB_WORDS = { check_date: 'Pay date', gross_pay: 'Gross pay', net_pay: 'Net pay', payroll_uuid: 'Payroll id in Gusto', employee_taxes: 'Taxes taken from pay', employee_deductions: 'Deductions', employer_taxes: 'Employer taxes', reimbursements: 'Reimbursements', payment_method: 'Paid by', check_amount: 'Amount paid' };
+const stubWord = (k) => STUB_WORDS[k] || String(k).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+function stubValue(k, v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Array.isArray(v)) return v.length ? `<table>${v.map((x) => `<tr><td>${x && typeof x === 'object' ? Object.entries(x).map(([a, b]) => `${esc(stubWord(a))}: ${esc(b && typeof b === 'object' ? JSON.stringify(b) : b)}`).join(' &nbsp;·&nbsp; ') : esc(x)}</td></tr>`).join('')}</table>` : '<span class="hint">None</span>';
+  if (typeof v === 'object') return Object.entries(v).map(([a, b]) => `${esc(stubWord(a))}: ${esc(b && typeof b === 'object' ? JSON.stringify(b) : b)}`).join('<br>');
+  if (/date$/.test(k) && /^\d{4}-\d{2}-\d{2}$/.test(String(v))) return esc(day(v));
+  if (/(pay|amount|taxes|deductions|reimbursements|total)$/.test(k) && !Number.isNaN(Number(v))) return money(v);
+  return esc(v);
+}
+$('stubRows').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-stub]'); if (!b) return;
+  const s = stubList[Number(b.dataset.stub)]; if (!s) return;
+  $('stubTitle').textContent = `Pay stub: ${stubName}, paid ${day(s.check_date)}`;
+  $('stubBody').innerHTML = `<table>${Object.entries(s).filter(([k]) => k !== 'pay_period').map(([k, v]) => `<tr><th style="width:220px">${esc(stubWord(k))}</th><td>${stubValue(k, v)}</td></tr>`).join('')}<tr><th>Pay period</th><td>${esc(stubPeriod(s))}</td></tr></table>`;
+  $('stubCard').hidden = false; $('stubCard').scrollIntoView({ behavior: 'smooth' });
+});
+
 /* ---------- tabs ---------- */
-const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, offcycle: loadOffCycle, contractors: loadContractors, deduct: loadGarnishments, forms: async () => {}, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
+const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, offcycle: loadOffCycle, contractors: loadContractors, deduct: loadGarnishments, forms: async () => {}, stubs: loadStubPeople, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
 function show(tab) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;

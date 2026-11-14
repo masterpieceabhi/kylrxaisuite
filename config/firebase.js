@@ -60,6 +60,49 @@ if (serviceAccount || useEmulator) {
   
   const _firestoreStore = new Map();
 
+  // FieldValue markers (delete, serverTimestamp, increment, arrayUnion, arrayRemove) are applied as the real database
+  // applies them, instead of being stored as objects. Data without any marker is stored exactly as before.
+  const markerOf = (v) => (v && typeof v === 'object' && v.constructor && /Transform$/.test(v.constructor.name) ? v.constructor.name : null);
+  const isPlainObject = (v) => v !== null && typeof v === 'object' && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+  const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const hasMarker = (v) => Boolean(markerOf(v)) || (isPlainObject(v) && Object.values(v).some(hasMarker));
+  const REMOVE = Symbol('remove');
+  function applyMarkers(v, cur) {
+    switch (markerOf(v)) {
+      case 'DeleteTransform': return REMOVE;
+      case 'ServerTimestampTransform': return require('firebase-admin/firestore').Timestamp.now();
+      case 'NumericIncrementTransform': return (Number(cur) || 0) + Number(v.operand);
+      case 'ArrayUnionTransform': { const a = Array.isArray(cur) ? cur.slice() : []; for (const e of v.elements) if (!a.some((x) => sameValue(x, e))) a.push(e); return a; }
+      case 'ArrayRemoveTransform': return (Array.isArray(cur) ? cur : []).filter((x) => !v.elements.some((e) => sameValue(x, e)));
+      default: break;
+    }
+    if (isPlainObject(v) && hasMarker(v)) {
+      const out = {};
+      for (const [k, x] of Object.entries(v)) { const r = applyMarkers(x, isPlainObject(cur) ? cur[k] : undefined); if (r !== REMOVE) out[k] = r; }
+      return out;
+    }
+    return v;
+  }
+  /** `data` laid over `existing` (as { ...existing, ...data }), with any markers in it applied. dotted: "a.b" keys of update() reach into nested maps for markers. */
+  function overlay(existing, data, dotted = false) {
+    if (!hasMarker(data)) return { ...existing, ...data };
+    const out = { ...existing };
+    for (const [k, v] of Object.entries(data || {})) {
+      let holder = out; let key = k;
+      if (dotted && markerOf(v) && k.includes('.') && !(k in out)) {
+        const parts = k.split('.'); key = parts.pop();
+        for (const part of parts) {
+          if (!isPlainObject(holder[part])) { if (markerOf(v) === 'DeleteTransform') { holder = null; break; } holder[part] = {}; } else holder[part] = { ...holder[part] };
+          holder = holder[part];
+        }
+        if (!holder) continue;
+      }
+      const r = applyMarkers(v, holder[key]);
+      if (r === REMOVE) delete holder[key]; else holder[key] = r;
+    }
+    return out;
+  }
+
   function getCollectionData(name) {
     if (!_firestoreStore.has(name)) {
       const colMap = new Map();
@@ -164,14 +207,14 @@ if (serviceAccount || useEmulator) {
           set: async function(data, opts = {}) {
             const colMap = getCollectionData(collectionName);
             const existing = colMap.get(docId) || {};
-            const merged = opts.merge ? { ...existing, ...data, id: docId } : { ...data, id: docId };
+            const merged = opts.merge ? { ...overlay(existing, data), id: docId } : { ...overlay({}, data), id: docId };
             colMap.set(docId, merged);
             return { id: docId };
           },
           update: async function(data) {
             const colMap = getCollectionData(collectionName);
             const existing = colMap.get(docId) || { id: docId };
-            colMap.set(docId, { ...existing, ...data });
+            colMap.set(docId, overlay(existing, data, true));
             return { id: docId };
           },
           delete: async function() {
@@ -184,7 +227,7 @@ if (serviceAccount || useEmulator) {
       add: async function(data) {
         const colMap = getCollectionData(collectionName);
         const id = data.id || `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-        colMap.set(id, { ...data, id });
+        colMap.set(id, { ...overlay({}, data), id });
         return { id };
       }
     };

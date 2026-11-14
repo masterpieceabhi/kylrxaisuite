@@ -74,7 +74,14 @@ test('who can tick a task', () => {
     assert.equal(C.canComplete(emp, 'employee', false), false);
     assert.equal(C.canComplete(hr, 'employee', true), false);
     assert.equal(C.canComplete(hr, 'hr_admin', false), true);
-    assert.equal(C.canComplete(mgr, 'manager', false), true);
+    assert.equal(C.canComplete(mgr, 'manager', false, true), true, 'the manager this person reports to');
+    assert.equal(C.canComplete(mgr, 'manager', false), false, 'a manager of another team');
+    assert.equal(C.canComplete(mgr, 'manager', false, false), false);
+    assert.equal(C.canComplete(mgr, 'employee', false, true), false, 'only the manager role ticks manager tasks');
+    assert.equal(C.canComplete(mgr, 'payroll_admin', false, true), false);
+    assert.equal(C.canComplete(hr, 'manager', false, true), false, 'a manager does not tick HR tasks');
+    assert.equal(C.canComplete(emp, 'manager', false, true), false, 'nor the tasks of the person themself');
+    assert.equal(C.canComplete(mgr, 'hr_admin', false), true, 'HR ticks anything');
     assert.equal(C.canComplete(mgr, 'employee', false), false);
     assert.equal(C.canComplete(emp, 'super_admin', false), true);
 });

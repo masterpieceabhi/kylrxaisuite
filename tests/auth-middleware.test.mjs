@@ -4,10 +4,14 @@ import jwt from 'jsonwebtoken';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+// The middleware reads JWT_SECRET from .env when it is first loaded. Settle the secret here, before any token is
+// signed: reading it earlier than that (as this file used to) signed the "valid" tokens with a different secret.
+require('dotenv').config({ quiet: true });
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 describe('Authentication Middleware & Secret Security Suite', () => {
     const OLD_FALLBACK_SECRET = 'super-secret-enterprise-key-hrflow-2026';
-    const CURRENT_JWT_SECRET = process.env.JWT_SECRET || 'kylrx_production_jwt_secret_key_v2_2026_secured';
+    const CURRENT_JWT_SECRET = process.env.JWT_SECRET;
 
     function createMockRes() {
         return {

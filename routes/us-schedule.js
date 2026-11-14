@@ -13,7 +13,12 @@ router.use(verifyToken);
 const SCHED = requireAnyPermission('time.approve', 'time.approve_team');
 const B = '/schedule';
 const nowIso = () => new Date().toISOString();
-const isMonday = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) && S.weekStartOf(d) === d;
+// A schedule week is the company's workweek (routes/time.js orgInfo().workweek): Monday to Sunday unless the company chose another day
+const isWeekStart = (d, info) => timeRules.isWeekStart(String(d || ''), info.workweek);
+/** The weekday name a week must start on: the one of the week the given date falls in, or the one in use today */
+const startDayName = (d, info) => timeRules.WEEKDAYS[timeRules.weekRange(timeRules.isRealDate(String(d || '')) ? String(d) : timeRules.localDate(nowIso(), info.tz), info.workweek).startDay];
+/** A shift belongs to the week its date falls in (shifts saved without a date keep the week stored on them) */
+const inWeek = (s, range) => (s.date ? s.date >= range.start && s.date <= range.end : s.weekStart === range.start);
 const col = (n) => rawCollection(n);
 const rows = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 const mineOrg = (orgId) => (r) => r.orgId === orgId;
@@ -39,13 +44,13 @@ async function shiftsOfUser(orgId, userId) {
 }
 
 /** Conflict list for a candidate shift (needs userId). Hard ones have severity 'block'. */
-async function checkShift(orgId, shift, settings, tz) {
+async function checkShift(orgId, shift, settings, tz, workweek) {
     const [others, leaves, av] = await Promise.all([
         shiftsOfUser(orgId, shift.userId),
         col('leave_requests').where('userId', '==', shift.userId).get().then((s) => rows(s).filter((l) => l.orgId === orgId)),
         col('schedule_availability').doc(`${orgId}_${shift.userId}`).get()
     ]);
-    return S.conflictsFor({ shift, others, leaves, settings, avail: exists(av) ? av.data() : null, tz });
+    return S.conflictsFor({ shift, others, leaves, settings, avail: exists(av) ? av.data() : null, tz, workweek });
 }
 
 const stateOfPerson = async (orgId, p) => {
@@ -103,7 +108,7 @@ router.delete(`${B}/templates/:id`, SCHED, requireUsOrg, async (req, res) => {
 
 /* ------------------------------ shifts ------------------------------ */
 
-async function buildShift(req, body, tz, base = {}) {
+async function buildShift(req, body, tz, base = {}, workweek) {
     let b = { ...base, ...body };
     if (body.templateId) {
         const t = await getDoc('shift_templates', req.orgId, body.templateId);
@@ -114,7 +119,7 @@ async function buildShift(req, body, tz, base = {}) {
     if (errors.length) return { errors, code: 400 };
     const shift = {
         ...value, orgId: req.orgId, userId: b.userId || null, locationId: b.locationId || null, departmentId: b.departmentId || null, role: b.role ? String(b.role).slice(0, 60) : null,
-        jobId: b.jobId || null, templateId: b.templateId || null, notes: b.notes ? String(b.notes).slice(0, 300) : null, weekStart: S.weekStartOf(value.date)
+        jobId: b.jobId || null, templateId: b.templateId || null, notes: b.notes ? String(b.notes).slice(0, 300) : null, weekStart: S.weekStartOf(value.date, workweek)
     };
     if (shift.jobId && !(await getDoc('jobs', req.orgId, shift.jobId))) return { errors: ['Job not found'], code: 400 };
     if (shift.userId) {
@@ -129,16 +134,17 @@ const blocked = (c) => c.filter((x) => x.severity === 'block');
 
 router.post(`${B}/shifts`, SCHED, requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
-    const built = await buildShift(req, req.body || {}, info.tz);
+    const built = await buildShift(req, req.body || {}, info.tz, {}, info.workweek);
     if (built.code) return res.status(built.code).json(built.errors ? { success: false, errors: built.errors } : { success: false, error: built.error });
     const shift = { ...built.shift, status: 'draft', createdAt: nowIso(), createdBy: req.user.id };
     let conflicts = [];
     if (shift.userId) {
-        conflicts = await checkShift(req.orgId, shift, await settingsOf(req.orgId), info.tz);
+        conflicts = await checkShift(req.orgId, shift, await settingsOf(req.orgId), info.tz, info.workweek);
         if (blocked(conflicts).length) return res.status(409).json({ success: false, error: blocked(conflicts)[0].message, conflicts });
     }
     // Adding a shift to a week that is already published is a schedule change
-    const sib = rows(await col('schedule_shifts').where('orgId', '==', req.orgId).get()).find((s) => s.weekStart === shift.weekStart && s.status === 'published' && (s.locationId || null) === shift.locationId && (s.departmentId || null) === shift.departmentId);
+    const shiftWeek = timeRules.weekRange(shift.date, info.workweek);
+    const sib = rows(await col('schedule_shifts').where('orgId', '==', req.orgId).get()).find((s) => inWeek(s, shiftWeek) && s.status === 'published' && (s.locationId || null) === shift.locationId && (s.departmentId || null) === shift.departmentId);
     if (sib) { shift.status = 'published'; shift.publishedAt = nowIso(); const pr = await premiumFor(req.orgId, shift, 'added'); if (pr) shift.premiumOwed = [pr]; }
     const ref = await col('schedule_shifts').add(shift);
     if (shift.status === 'published') await notify(req.orgId, shift.userId, 'shift_added', 'New shift', `You were added to a shift on ${shift.date} ${shift.startTime}-${shift.endTime}.`, { shiftId: ref.id });
@@ -155,10 +161,10 @@ router.post(`${B}/shifts/bulk`, SCHED, requireUsOrg, async (req, res) => {
     const targets = userIds.length ? userIds : [null];
     const results = [];
     for (const uid of targets) for (const date of dates) {
-        const built = await buildShift(req, { ...b, userId: uid, date }, info.tz);
+        const built = await buildShift(req, { ...b, userId: uid, date }, info.tz, {}, info.workweek);
         if (built.code) { results.push({ userId: uid, date, created: false, error: built.error || built.errors.join('; ') }); continue; }
         const shift = { ...built.shift, status: 'draft', createdAt: nowIso(), createdBy: req.user.id };
-        const conflicts = shift.userId ? await checkShift(req.orgId, shift, settings, info.tz) : [];
+        const conflicts = shift.userId ? await checkShift(req.orgId, shift, settings, info.tz, info.workweek) : [];
         if (blocked(conflicts).length) { results.push({ userId: uid, date, created: false, error: blocked(conflicts)[0].message, conflicts }); continue; }
         const ref = await col('schedule_shifts').add(shift);
         results.push({ userId: uid, date, created: true, id: ref.id, warnings: conflicts });
@@ -172,12 +178,12 @@ router.put(`${B}/shifts/:id`, SCHED, requireUsOrg, async (req, res) => {
     if (!cur || cur.status === 'cancelled') return res.status(404).json({ success: false, error: 'Shift not found' });
     if (cur.userId && !mayManage(req, await person(req.orgId, cur.userId))) return res.status(403).json({ success: false, error: 'Not allowed' });
     const info = await orgInfo(req.orgId);
-    const built = await buildShift(req, req.body || {}, info.tz, cur);
+    const built = await buildShift(req, req.body || {}, info.tz, cur, info.workweek);
     if (built.code) return res.status(built.code).json(built.errors ? { success: false, errors: built.errors } : { success: false, error: built.error });
     const next = { ...cur, ...built.shift, id: cur.id };
     let conflicts = [];
     if (next.userId) {
-        conflicts = await checkShift(req.orgId, next, await settingsOf(req.orgId), info.tz);
+        conflicts = await checkShift(req.orgId, next, await settingsOf(req.orgId), info.tz, info.workweek);
         if (blocked(conflicts).length) return res.status(409).json({ success: false, error: blocked(conflicts)[0].message, conflicts });
     }
     const patch = { ...built.shift, updatedAt: nowIso(), updatedBy: req.user.id };
@@ -208,8 +214,9 @@ router.delete(`${B}/shifts/:id`, SCHED, requireUsOrg, async (req, res) => {
 
 /* ------------------------------ week view, copy, publish ------------------------------ */
 
-async function scopedShifts(req, weekStart, q = {}) {
-    let list = rows(await col('schedule_shifts').where('orgId', '==', req.orgId).get()).filter((s) => s.weekStart === weekStart && s.status !== 'cancelled');
+async function scopedShifts(req, weekStart, q = {}, info = {}) {
+    const range = timeRules.weekRange(weekStart, info.workweek);
+    let list = rows(await col('schedule_shifts').where('orgId', '==', req.orgId).get()).filter((s) => inWeek(s, range) && s.status !== 'cancelled');
     if (q.locationId) list = list.filter((s) => s.locationId === q.locationId);
     if (q.departmentId) list = list.filter((s) => s.departmentId === q.departmentId);
     const people = await teamScope.loadOrgPeople(req.orgId);
@@ -217,11 +224,13 @@ async function scopedShifts(req, weekStart, q = {}) {
 }
 
 router.get(`${B}/week`, SCHED, requireUsOrg, async (req, res) => {
-    const weekStart = String(req.query.weekStart || '');
-    if (!isMonday(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
     const info = await orgInfo(req.orgId); const settings = await settingsOf(req.orgId);
-    const { list, people } = await scopedShifts(req, weekStart, req.query);
     const today = timeRules.localDate(nowIso(), info.tz);
+    // "current" asks for the week running now, so a page does not have to know which day the company's week starts on
+    const weekStart = req.query.weekStart === 'current' ? timeRules.weekStartFor(today, info.workweek) : String(req.query.weekStart || '');
+    if (!isWeekStart(weekStart, info)) return res.status(400).json({ success: false, error: `weekStart must be a ${startDayName(weekStart, info)} (YYYY-MM-DD)` });
+    const range = timeRules.weekRange(weekStart, info.workweek);
+    const { list, people } = await scopedShifts(req, weekStart, req.query, info);
     const staff = [];
     for (const p of people.values()) {
         if (!['active', 'terminating'].includes(String(p.status || 'active').toLowerCase())) continue;
@@ -229,30 +238,34 @@ router.get(`${B}/week`, SCHED, requireUsOrg, async (req, res) => {
         const mine = list.filter((s) => s.userId === p.id);
         let worked = {};
         if (weekStart < today) {
-            const sheet = timeRules.timesheet(await punchesSince(req.orgId, p.id, new Date(new Date(`${weekStart}T00:00:00Z`).getTime() - 86400000).toISOString()), info.tz, nowIso(), null);
+            const sheet = timeRules.timesheet(await punchesSince(req.orgId, p.id, new Date(new Date(`${weekStart}T00:00:00Z`).getTime() - 86400000).toISOString()), info.tz, nowIso(), null, info.workweek);
             sheet.days.forEach((d) => { worked[d.date] = d.workedMinutes / 60; });
         }
-        const scheduled = S.weeklyHours(weekStart, mine);
-        const projected = S.projectedWeekHours(weekStart, mine, worked, today);
+        const scheduled = S.weeklyHours(weekStart, mine, info.workweek);
+        const projected = S.projectedWeekHours(weekStart, mine, worked, today, info.workweek);
         const warn = [];
         if (projected > settings.maxWeeklyHours) warn.push('over_weekly_hours'); else if (projected > settings.overtimeWeeklyHours) warn.push('overtime_risk');
         staff.push({ userId: p.id, name: p.name || null, jobTitle: p.jobTitle || null, scheduledHours: scheduled, projectedHours: projected, warnings: warn });
     }
     staff.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    res.json({ success: true, weekStart, today, settings, staff, shifts: list.map((s) => ({ ...s, ref: undefined })), published: list.length > 0 && list.every((s) => s.status === 'published') });
+    const week = { weekEnd: range.end, weekDays: range.days, workweekStartDay: range.startDay, prevWeekStart: timeRules.weekStartFor(timeRules.addDaysIso(range.start, -1), info.workweek), nextWeekStart: timeRules.weekStartFor(timeRules.addDaysIso(range.end, 1), info.workweek) };
+    res.json({ success: true, weekStart, ...week, today, settings, staff, shifts: list.map((s) => ({ ...s, ref: undefined })), published: list.length > 0 && list.every((s) => s.status === 'published') });
 });
 
 router.post(`${B}/copy`, SCHED, requireUsOrg, async (req, res) => {
     const { fromWeek, toWeek } = req.body || {};
-    if (!isMonday(fromWeek) || !isMonday(toWeek) || fromWeek === toWeek) return res.status(400).json({ success: false, error: 'fromWeek and toWeek must be different Mondays' });
     const info = await orgInfo(req.orgId); const settings = await settingsOf(req.orgId);
-    const { list } = await scopedShifts(req, fromWeek, req.body);
+    if (!isWeekStart(fromWeek, info) || !isWeekStart(toWeek, info) || fromWeek === toWeek) return res.status(400).json({ success: false, error: `fromWeek and toWeek must be different ${startDayName(toWeek, info)}s` });
+    const { list } = await scopedShifts(req, fromWeek, req.body, info);
     const copies = S.copyWeek(list, fromWeek, toWeek, info.tz);
     let created = 0; const skipped = [];
+    const target = timeRules.weekRange(toWeek, info.workweek);
     for (const c of copies) {
+        // only when the target is the one week cut short by a workweek change: a day past its end is not copied into the next week
+        if (c.date > target.end) { skipped.push({ userId: c.userId || null, date: c.date, reason: 'That day is outside the shorter week at the workweek change' }); continue; }
         const shift = { ...c, orgId: req.orgId, status: 'draft', weekStart: toWeek, createdAt: nowIso(), createdBy: req.user.id, copiedFrom: fromWeek };
         if (shift.userId) {
-            const cf = await checkShift(req.orgId, shift, settings, info.tz);
+            const cf = await checkShift(req.orgId, shift, settings, info.tz, info.workweek);
             if (blocked(cf).length) { skipped.push({ userId: shift.userId, date: shift.date, reason: blocked(cf)[0].message }); continue; }
         }
         await col('schedule_shifts').add(shift); created += 1;
@@ -263,8 +276,9 @@ router.post(`${B}/copy`, SCHED, requireUsOrg, async (req, res) => {
 
 router.post(`${B}/publish`, SCHED, requireUsOrg, async (req, res) => {
     const weekStart = String((req.body && req.body.weekStart) || '');
-    if (!isMonday(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a Monday (YYYY-MM-DD)' });
-    const { list } = await scopedShifts(req, weekStart, req.body);
+    const info = await orgInfo(req.orgId);
+    if (!isWeekStart(weekStart, info)) return res.status(400).json({ success: false, error: `weekStart must be a ${startDayName(weekStart, info)} (YYYY-MM-DD)` });
+    const { list } = await scopedShifts(req, weekStart, req.body, info);
     const drafts = list.filter((s) => s.status === 'draft');
     const at = nowIso(); const byUser = new Map();
     for (const s of drafts) {
@@ -302,7 +316,7 @@ router.post(`${B}/shifts/:id/claim`, requireUsOrg, async (req, res) => {
     const me = await person(req.orgId, req.user.id);
     if (!me || !S.isQualified(s, me)) return res.status(403).json({ success: false, error: 'You are not qualified for this shift' });
     const info = await orgInfo(req.orgId); const settings = await settingsOf(req.orgId);
-    const conflicts = await checkShift(req.orgId, { ...s, userId: req.user.id }, settings, info.tz);
+    const conflicts = await checkShift(req.orgId, { ...s, userId: req.user.id }, settings, info.tz, info.workweek);
     if (blocked(conflicts).length) return res.status(409).json({ success: false, error: blocked(conflicts)[0].message, conflicts });
     if (settings.claimNeedsApproval) {
         await s.ref.update({ claim: { userId: req.user.id, name: me.name || null, at: nowIso(), status: 'pending' } });
@@ -323,7 +337,7 @@ router.post(`${B}/shifts/:id/claim/decision`, SCHED, requireUsOrg, async (req, r
     if (!['approve', 'deny'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or deny' });
     if (decision === 'approve') {
         const info = await orgInfo(req.orgId);
-        const cf = await checkShift(req.orgId, { ...s, userId: s.claim.userId }, await settingsOf(req.orgId), info.tz);
+        const cf = await checkShift(req.orgId, { ...s, userId: s.claim.userId }, await settingsOf(req.orgId), info.tz, info.workweek);
         if (blocked(cf).length) return res.status(409).json({ success: false, error: blocked(cf)[0].message, conflicts: cf });
         await s.ref.update({ userId: s.claim.userId, claim: null, assignedVia: 'claim' });
         await notify(req.orgId, s.claim.userId, 'claim_approved', 'Shift approved', `You got the shift on ${s.date} ${s.startTime}-${s.endTime}.`, { shiftId: s.id });
@@ -358,7 +372,7 @@ router.post(`${B}/swaps`, requireUsOrg, async (req, res) => {
         const peer = await person(req.orgId, b.targetUserId);
         if (!peer) return res.status(404).json({ success: false, error: 'Coworker not found' });
         if (!S.isQualified(shift, peer)) return res.status(403).json({ success: false, error: 'That coworker is not qualified for this shift' });
-        const cf = await checkShift(req.orgId, { ...shift, userId: peer.id }, await settingsOf(req.orgId), info.tz);
+        const cf = await checkShift(req.orgId, { ...shift, userId: peer.id }, await settingsOf(req.orgId), info.tz, info.workweek);
         if (blocked(cf).length) return res.status(409).json({ success: false, error: `Your coworker cannot take it: ${blocked(cf)[0].message}`, conflicts: cf });
         doc.targetUserId = peer.id; doc.targetName = peer.name || null;
         if (b.targetShiftId) {
@@ -393,11 +407,11 @@ async function applySwap(req, sw) {
     const swapShift = sw.targetShiftId ? await getDoc('schedule_shifts', req.orgId, sw.targetShiftId) : null;
     if (sw.type === 'swap') {
         const others = (await shiftsOfUser(req.orgId, sw.targetUserId)).filter((o) => !swapShift || o.id !== swapShift.id);
-        const cf1 = S.conflictsFor({ shift: { ...shift, userId: sw.targetUserId }, others, leaves: rows(await col('leave_requests').where('userId', '==', sw.targetUserId).get()).filter((l) => l.orgId === req.orgId), settings, avail: null, tz: info.tz });
+        const cf1 = S.conflictsFor({ shift: { ...shift, userId: sw.targetUserId }, others, leaves: rows(await col('leave_requests').where('userId', '==', sw.targetUserId).get()).filter((l) => l.orgId === req.orgId), settings, avail: null, tz: info.tz, workweek: info.workweek });
         if (blocked(cf1).length) return { error: blocked(cf1)[0].message, conflicts: cf1 };
         if (swapShift) {
             const mineOthers = (await shiftsOfUser(req.orgId, sw.requesterId)).filter((o) => o.id !== shift.id);
-            const cf2 = S.conflictsFor({ shift: { ...swapShift, userId: sw.requesterId }, others: mineOthers, leaves: rows(await col('leave_requests').where('userId', '==', sw.requesterId).get()).filter((l) => l.orgId === req.orgId), settings, avail: null, tz: info.tz });
+            const cf2 = S.conflictsFor({ shift: { ...swapShift, userId: sw.requesterId }, others: mineOthers, leaves: rows(await col('leave_requests').where('userId', '==', sw.requesterId).get()).filter((l) => l.orgId === req.orgId), settings, avail: null, tz: info.tz, workweek: info.workweek });
             if (blocked(cf2).length) return { error: blocked(cf2)[0].message, conflicts: cf2 };
             await swapShift.ref.update({ userId: sw.requesterId, assignedVia: 'swap' });
         }

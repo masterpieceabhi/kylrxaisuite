@@ -276,7 +276,8 @@ router.post('/payroll/:id/cancel', ...RUN, run(async (req, res) => {
     res.json({ success: true, ...out });
 }));
 
-router.post('/payroll/:id/refresh', ...VIEW, run(async (req, res) => {
+// Asking Gusto again changes what we store about the payroll, so it needs the right to run payroll (not just to look).
+router.post('/payroll/:id/refresh', ...RUN, run(async (req, res) => {
     const ctx = await ctxFor(req);
     const rec = await payroll.refreshPayroll(ctx, String(req.params.id));
     if (!rec) return res.status(404).json({ success: false, error: 'We have no payroll with that id.' });
@@ -300,7 +301,7 @@ router.get('/my/pay-stubs', requireUsOrg, run(async (req, res) => {
     return undefined;
 }));
 
-router.get('/pay-stubs/:userId', ...VIEW, run(async (req, res) => {
+router.get('/pay-stubs/:userId', ...VIEW, requirePermission('people.read_pay'), run(async (req, res) => {
     const ctx = await ctxFor(req);
     const userId = String(req.params.userId);
     const data = await payroll.payStubs(ctx, userId);

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Set up your sign-in | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 6px;font-size:20px}p{margin:8px 0}
+.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:520px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+label.f{display:grid;gap:6px;margin:14px 0;font-size:16px;font-weight:600}
+input{width:100%;padding:14px 12px;border:1px solid #cbd5e1;border-radius:10px;font:inherit;color:var(--ink);background:#fff}
+input:focus{outline:3px solid #bfdbfe;border-color:var(--blue)}
+.hint{color:var(--muted);font-size:15px;font-weight:400}
+button.go{width:100%;padding:16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer;margin-top:6px}button.go:disabled{opacity:.5}
+label.show{display:flex;gap:10px;align-items:center;font-size:16px;margin:4px 0 10px}label.show input{width:22px;height:22px}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.who{background:#eff6ff;border-radius:10px;padding:10px 12px;overflow-wrap:anywhere}
+a.link{color:var(--blue);font-weight:700}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button type="button" data-l="en">English</button> <button type="button" data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card" id="loading"><p data-t="loading"></p></section>
+
+  <section class="card" id="dead" hidden>
+    <h2 data-t="deadT"></h2><p data-t="deadP"></p>
+    <p><a class="link" href="login.html" data-t="toLogin"></a></p>
+  </section>
+
+  <!-- personal set-up link: the person only chooses a password -->
+  <form class="card" id="setup" hidden novalidate>
+    <h2 id="setupHello"></h2>
+    <p data-t="setupP"></p>
+    <p class="who"><span data-t="yourEmail"></span> <b id="setupEmail"></b></p>
+    <label class="f"><span data-t="pw"></span><input type="password" id="sPw" autocomplete="new-password" maxlength="72" required><span class="hint" id="sRules"></span></label>
+    <label class="f"><span data-t="pw2"></span><input type="password" id="sPw2" autocomplete="new-password" maxlength="72" required></label>
+    <label class="show"><input type="checkbox" id="sShow"><span data-t="show"></span></label>
+    <button class="go" type="submit" id="sGo" data-t="setupGo"></button>
+  </form>
+
+  <!-- company join link: the person asks to join and waits for HR -->
+  <form class="card" id="join" hidden novalidate>
+    <h2 id="joinHello"></h2>
+    <p data-t="joinP"></p>
+    <label class="f"><span data-t="first"></span><input type="text" id="jFirst" autocomplete="given-name" maxlength="80" required></label>
+    <label class="f"><span data-t="last"></span><input type="text" id="jLast" autocomplete="family-name" maxlength="80" required></label>
+    <label class="f"><span data-t="email"></span><input type="email" id="jEmail" autocomplete="email" inputmode="email" maxlength="200" required><span class="hint" data-t="emailHint"></span></label>
+    <label class="f"><span data-t="phone"></span><input type="tel" id="jPhone" autocomplete="tel" inputmode="tel" maxlength="30"></label>
+    <label class="f"><span data-t="pw"></span><input type="password" id="jPw" autocomplete="new-password" maxlength="72" required><span class="hint" id="jRules"></span></label>
+    <label class="f"><span data-t="pw2"></span><input type="password" id="jPw2" autocomplete="new-password" maxlength="72" required></label>
+    <label class="show"><input type="checkbox" id="jShow"><span data-t="show"></span></label>
+    <button class="go" type="submit" id="jGo" data-t="joinGo"></button>
+    <p class="hint" data-t="joinNote"></p>
+  </form>
+
+  <section class="card" id="waiting" hidden>
+    <h2 data-t="waitT"></h2><p data-t="waitP"></p><p class="hint" data-t="waitP2"></p>
+    <p><a class="link" href="login.html" data-t="toLogin"></a></p>
+  </section>
+
+  <section class="card" id="done" hidden>
+    <h2 data-t="doneT"></h2><p data-t="doneP"></p>
+    <p><a class="link" href="login.html" data-t="toLogin"></a></p>
+  </section>
+</main>
+<script type="module">
+import { auth } from './firebase-config.js';
+import { signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js';
+
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: { title: 'Set up your sign-in', loading: 'Checking your link...', deadT: 'This link does not work any more', deadP: 'It may have been used already, turned off, or it is too old. Ask your employer for a new link.', toLogin: 'Go to the sign-in page',
+    hello: 'Welcome, {n}', helloJoin: 'Join {c}', setupP: '{c} added you. Choose a password to finish. You will use it with your email every time you sign in.', yourEmail: 'Your sign-in email:',
+    pw: 'Choose a password', pw2: 'Type the password again', show: 'Show the passwords', setupGo: 'Save my password', rules: 'At least 14 characters, with an uppercase letter, a lowercase letter, a number and a special character (like ! # $ % & * ?).',
+    joinP: 'Fill this in to ask to join. Your employer has to approve you before you can sign in.', first: 'First name', last: 'Last name', email: 'Your email', emailHint: 'You will sign in with this email.', phone: 'Mobile phone (optional)', joinGo: 'Ask to join',
+    joinNote: 'If your employer already gave you a personal link, use that one instead.',
+    waitT: 'Your request was sent', waitP: 'You are waiting for approval. Nothing more to do right now.', waitP2: 'No email will be sent. Your employer will tell you when you are approved. Then sign in with your email and the password you just chose.',
+    doneT: 'Your password is saved', doneP: 'Taking you to your new hire paperwork...', noMatch: 'The two passwords are not the same.', need: 'Please fill in every field.', fail: 'Something went wrong. Try again.', signInFail: 'Your password is saved. Sign in with your email and new password.' },
+  es: { title: 'Configure su acceso', loading: 'Revisando su enlace...', deadT: 'Este enlace ya no funciona', deadP: 'Puede que ya se haya usado, que lo hayan desactivado o que sea muy antiguo. Pida un enlace nuevo a su empleador.', toLogin: 'Ir a la página de acceso',
+    hello: 'Bienvenido/a, {n}', helloJoin: 'Únase a {c}', setupP: '{c} le agregó. Elija una contraseña para terminar. La usará con su correo cada vez que entre.', yourEmail: 'Su correo de acceso:',
+    pw: 'Elija una contraseña', pw2: 'Escriba la contraseña otra vez', show: 'Mostrar las contraseñas', setupGo: 'Guardar mi contraseña', rules: 'Al menos 14 caracteres, con una letra mayúscula, una minúscula, un número y un carácter especial (como ! # $ % & * ?).',
+    joinP: 'Llene esto para pedir unirse. Su empleador tiene que aprobarle antes de que pueda entrar.', first: 'Nombre', last: 'Apellido', email: 'Su correo electrónico', emailHint: 'Entrará con este correo.', phone: 'Teléfono celular (opcional)', joinGo: 'Pedir unirme',
+    joinNote: 'Si su empleador ya le dio un enlace personal, use ese enlace.',
+    waitT: 'Su solicitud fue enviada', waitP: 'Está esperando aprobación. No tiene que hacer nada más por ahora.', waitP2: 'No se enviará ningún correo. Su empleador le avisará cuando esté aprobado/a. Después entre con su correo y la contraseña que acaba de elegir.',
+    doneT: 'Su contraseña quedó guardada', doneP: 'Le llevamos a sus papeles de nuevo empleado...', noMatch: 'Las dos contraseñas no son iguales.', need: 'Por favor llene todos los campos.', fail: 'Algo salió mal. Intente de nuevo.', signInFail: 'Su contraseña quedó guardada. Entre con su correo y su nueva contraseña.' }
+};
+// Server messages (English) that a person may see while typing, in Spanish
+const ES_ERRORS = [
+  [/at least 14 characters/, 'La contraseña debe tener al menos 14 caracteres'], [/at most 72/, 'La contraseña puede tener 72 caracteres como máximo'], [/< or >/, 'La contraseña no puede tener los caracteres < o >'],
+  [/uppercase/, 'La contraseña debe tener una letra mayúscula'], [/lowercase/, 'La contraseña debe tener una letra minúscula'], [/contain a number/, 'La contraseña debe tener un número'],
+  [/special character/, 'La contraseña debe tener un carácter especial, como ! # $ % & * ?'], [/too common/, 'Esa contraseña es muy común. Elija otra.'], [/email name/, 'La contraseña no puede contener el nombre de su correo'],
+  [/First name is required/, 'Falta el nombre'], [/Last name is required/, 'Falta el apellido'], [/valid email/, 'Escriba un correo electrónico válido'], [/phone number/, 'Escriba un teléfono de 10 dígitos, o déjelo vacío'],
+  [/link does not work/, 'Este enlace ya no funciona. Pida un enlace nuevo a su empleador.'], [/Too many tries/, 'Demasiados intentos. Espere 15 minutos e intente de nuevo.'], [/Too many people are waiting/, 'Hay demasiadas personas esperando aprobación. Pida a su empleador que revise la lista y vuelva a intentar.']
+];
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k, v = {}) => (T[lang][k] ?? T.en[k] ?? k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+const local = (text) => { if (lang !== 'es') return text; const hit = ES_ERRORS.find(([re]) => re.test(text)); return hit ? hit[1] : text; };
+const say = (t, ok = false) => { const m = $('msg'); m.textContent = t; m.className = t ? (ok ? 'ok' : 'err') : ''; if (t) window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+// The link's secret is after the # so it is never sent to the server as part of the address
+const hash = new URLSearchParams(location.hash.replace(/^#/, ''));
+const mode = hash.get('s') ? 'setup' : (hash.get('c') ? 'join' : null);
+const token = hash.get('s') || hash.get('c') || '';
+let info = null;
+
+function paint() {
+  document.documentElement.lang = lang; document.title = tr('title');
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t, { c: info ? info.company : '' }); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('sRules').textContent = tr('rules'); $('jRules').textContent = tr('rules');
+  if (info) { $('setupHello').textContent = tr('hello', { n: info.firstName || '' }); $('joinHello').textContent = tr('helloJoin', { c: info.company }); $('setupEmail').textContent = info.email || ''; }
+}
+document.querySelectorAll('.lang button').forEach((b) => b.addEventListener('click', () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }));
+
+const show = (id) => ['loading', 'dead', 'setup', 'join', 'waiting', 'done'].forEach((x) => { $(x).hidden = x !== id; });
+
+async function post(path, body) {
+  const res = await fetch(`/api/auth/team/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.map(local).join(' ')) || local(typeof json.error === 'string' ? json.error : tr('fail'))); e.status = res.status; throw e; }
+  return json;
+}
+
+$('sShow').addEventListener('change', (e) => { $('sPw').type = $('sPw2').type = e.target.checked ? 'text' : 'password'; });
+$('jShow').addEventListener('change', (e) => { $('jPw').type = $('jPw2').type = e.target.checked ? 'text' : 'password'; });
+
+$('setup').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); say('');
+  const pw = $('sPw').value;
+  if (!pw) return say(tr('need'));
+  if (pw !== $('sPw2').value) return say(tr('noMatch'));
+  $('sGo').disabled = true;
+  try {
+    const r = await post('setup/complete', { token, password: pw });
+    history.replaceState(null, '', location.pathname); // the link is used up; take it out of the address bar
+    show('done');
+    try {
+      await signInWithEmailAndPassword(auth, r.email, pw);
+      window.location.replace(r.next === 'us-onboarding.html' ? 'us-onboarding.html' : 'login.html');
+    } catch (_) { say(tr('signInFail'), true); $('done').querySelector('[data-t=doneP]').hidden = true; }
+  } catch (e) {
+    if (e.status === 404) show('dead'); else say(e.message);
+    $('sGo').disabled = false;
+  }
+});
+
+$('join').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); say('');
+  const v = { firstName: $('jFirst').value.trim(), lastName: $('jLast').value.trim(), email: $('jEmail').value.trim(), phone: $('jPhone').value.trim(), password: $('jPw').value };
+  if (!v.firstName || !v.lastName || !v.email || !v.password) return say(tr('need'));
+  if (v.password !== $('jPw2').value) return say(tr('noMatch'));
+  $('jGo').disabled = true;
+  try {
+    await post('join/request', { token, ...v });
+    $('join').reset(); history.replaceState(null, '', location.pathname);
+    show('waiting');
+  } catch (e) {
+    if (e.status === 404) show('dead'); else say(e.message);
+    $('jGo').disabled = false;
+  }
+});
+
+paint();
+(async () => {
+  if (!mode || !/^[A-Za-z0-9_-]{43}$/.test(token)) return show('dead');
+  try { info = await post(`${mode}/info`, { token }); paint(); show(mode); } catch (e) { if (e.status === 404) show('dead'); else { show('dead'); say(e.message); } }
+})();
+</script>
+</body>
+</html>

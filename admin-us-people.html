@@ -26,7 +26,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
 </style>
 </head>
 <body>
-<header><h1>US People</h1><div><a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<header><h1>US People</h1><div><a href="admin-us-team-import.html">Add your team</a> &nbsp;|&nbsp; <a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="admin-us-compliance.html">Compliance</a> &nbsp;|&nbsp; <a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
 <main>
   <div id="msg" role="status"></div>
   <div class="card" id="blocked" style="display:none"><h2>Not available</h2><p>This page is for US companies. Your organization's country is not set to United States.</p></div>
@@ -51,7 +51,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <h2>Employees</h2>
     <div class="row" id="tagFilterRow" style="margin:0 0 12px;display:none"><label>Show people tagged<select id="tagFilter"><option value="">Everyone</option></select></label><span class="hint" id="tagFilterNote"></span><a href="admin-us-changes.html#tags">Edit tags</a></div>
     <table><thead><tr><th>ID</th><th>Name</th><th>Tags</th><th>Type</th><th>Work state</th><th>SSN</th><th>Profile</th><th></th></tr></thead><tbody id="rows"></tbody></table>
-    <p class="hint" id="empty" style="display:none">No employees yet. Create one from the dashboard, then come back to complete the US profile.</p>
+    <p class="hint" id="empty" style="display:none">No employees yet. <a href="admin-us-team-import.html?welcome=1">Add your team</a>: paste a list, type names and emails, or share a join link.</p>
   </section>
 
   <section class="card" id="todoCard" style="display:none">
@@ -77,12 +77,13 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <label>First day of work<input name="startDate" type="date" required></label>
       <label>Job title<input name="jobTitle"></label>
       <label>Department<input name="department"></label>
-    </div><div class="row"><button type="submit">Add employee</button><span class="hint">The person fills in their own SSN, W-4 and I-9 after logging in.</span></div></form>
+    </div><div class="row"><button type="submit">Add employee</button><span class="hint">The person fills in their own SSN, W-4 and I-9 after logging in. They must choose their own password right after the first sign-in.</span></div></form>
     <div id="newPw" class="hint" style="margin-top:10px"></div>
   </section>
 
   <section class="card" id="bulkCard" style="display:none">
     <h2>Add many employees from a file</h2>
+    <p class="hint"><b>Easier:</b> <a href="admin-us-team-import.html">Add your team</a> reads a pasted sheet or a payroll export as it is (no template needed), lets you fix rows on screen, and can give each person a set-up link instead of a temporary password. It also has the company join link and sign-in help (new link or temporary password for one person).</p>
     <p class="hint">Use a CSV or Excel file. Columns: first_name, last_name, email, role, start_date (YYYY-MM-DD), job_title, department. Optional: phone and the profile columns (work_state, classification, flsa_status, employment_type, pay_type, pay_frequency, pay_rate, date_of_birth, address_line1, city, state, zip). Leave out ssn when you can: people can enter it themselves.</p>
     <div class="row"><button type="button" class="ghost" id="tplBtn">Download blank template</button><input type="file" id="bulkFile" accept=".csv,.xlsx,.xls"><button type="button" id="bulkCheck" disabled>Check file</button><button type="button" id="bulkGo" disabled>Create employees</button></div>
     <div id="bulkOut" class="hint" style="margin-top:12px"></div>

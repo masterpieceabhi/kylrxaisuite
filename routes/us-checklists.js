@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { db, rawCollection } = require('../config/firebase');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { can, canManage, requirePermission } = require('../services/permissions');
 const { requireUsOrg, findEmployee, audit, PEOPLE_COLLECTIONS } = require('./us-hr').helpers;
 const { orgInfo } = require('./time').helpers;
 const timeRules = require('../services/time-rules');
@@ -11,21 +12,35 @@ const { parseIsoDate } = require('../services/us-forms');
 
 router.use(verifyToken);
 
-const norm = (r) => String(r || '').toLowerCase().replace(/[\s_-]+/g, '');
-const isStaff = (user) => ADMIN_HR_ROLES.some((r) => norm(r) === norm(user.role));
+// Who may do what on these routes (services/permissions.js decides which roles hold each permission):
+//   read anyone's lists, the company to-do list and the task templates   people.read (HR, owner, auditor)
+//   add tasks, change the templates, skip a required task                 people.write
+//   a person always sees their own lists; ticking a task follows checklist-rules.canComplete
+//   a manager ticks manager tasks only for their own direct reports (permissions.canManage, as for hours and leave)
+//   only HR and the person themself start a new hire's list by opening it: a read-only role never writes by reading
+const READ = requirePermission('people.read');
+const WRITE = requirePermission('people.write');
+const canReadAll = (user) => can(user, 'people.read');
+const isStaff = (user) => can(user, 'people.write');
 const isSelf = (user, emp) => [emp.id, emp.data.uid, emp.data.userId].filter(Boolean).includes(user.id);
+/** The person reports to this manager (never true for the manager's own lists) */
+const managesPerson = (user, emp) => !isSelf(user, emp) && canManage(user, { ...emp.data, id: emp.id }, 'time');
+const mayStartList = (user, emp) => isStaff(user) || isSelf(user, emp);
 const orgOptions = (org) => ({ skipFederalHolidays: Boolean(org.usProfile && org.usProfile.i9SkipFederalHolidays) });
 const startDateOf = (emp) => {
     const d = String((emp.data.usProfile && emp.data.usProfile.startDate) || emp.data.joiningDate || '').slice(0, 10);
     return parseIsoDate(d) ? d : null;
 };
 
-/** Checklists for one person with live state; creates the onboarding list for a recent hire if missing */
-async function checklistsFor(req, emp) {
+/**
+ * Checklists for one person with live state. With `create`, the onboarding list of a recent hire is made if it is missing;
+ * without it nothing is written (an auditor or a support session only reads).
+ */
+async function checklistsFor(req, emp, create = false) {
     const info = await orgInfo(req.orgId);
     const today = timeRules.localDate(new Date().toISOString(), info.tz);
     let lists = await store.listForUser(req.orgId, emp.id);
-    if (!lists.some((c) => c.kind === 'onboarding') && !/terminated/i.test(String(emp.data.status || ''))) {
+    if (create && !lists.some((c) => c.kind === 'onboarding') && !/terminated/i.test(String(emp.data.status || ''))) {
         const start = startDateOf(emp);
         const sixtyDaysAgo = new Date(new Date(`${today}T00:00:00Z`).getTime() - 60 * 86400000).toISOString().slice(0, 10);
         if (start && start >= sixtyDaysAgo) {
@@ -40,15 +55,15 @@ async function checklistsFor(req, emp) {
 router.get('/checklists/person/:userId', requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.userId);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
-    if (!isStaff(req.user) && !isSelf(req.user, emp)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!canReadAll(req.user) && !isSelf(req.user, emp)) return res.status(403).json({ success: false, error: 'Not allowed' });
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, name: emp.data.name || null, lists: await checklistsFor(req, emp) });
+    res.json({ success: true, name: emp.data.name || null, lists: await checklistsFor(req, emp, mayStartList(req.user, emp)) });
 });
 
 router.get('/checklists/mine', requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.user.id);
     if (!emp) return res.json({ success: true, lists: [] });
-    const lists = (await checklistsFor(req, emp)).map((l) => ({ ...l, tasks: l.tasks.filter((t) => t.assignee === 'employee') }));
+    const lists = (await checklistsFor(req, emp, true)).map((l) => ({ ...l, tasks: l.tasks.filter((t) => t.assignee === 'employee') }));
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, lists });
 });
@@ -63,7 +78,7 @@ router.put('/checklists/person/:userId/:listId/tasks/:taskId', requireUsOrg, asy
     const list = snap.data();
     const task = list.tasks.find((t) => t.id === req.params.taskId);
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
-    if (!rules.canComplete(task, req.user.role, isSelf(req.user, emp))) return res.status(403).json({ success: false, error: 'This task is not yours to tick' });
+    if (!rules.canComplete(task, req.user.role, isSelf(req.user, emp), managesPerson(req.user, emp))) return res.status(403).json({ success: false, error: 'This task is not yours to tick' });
     const status = String((req.body && req.body.status) || '');
     if (!['done', 'open', 'skipped'].includes(status)) return res.status(400).json({ success: false, error: 'status must be done, open or skipped' });
     if (status === 'skipped' && task.required && !isStaff(req.user)) return res.status(403).json({ success: false, error: 'Only HR can skip a required task' });
@@ -75,7 +90,7 @@ router.put('/checklists/person/:userId/:listId/tasks/:taskId', requireUsOrg, asy
 });
 
 /** HR adds a custom task to one person's list */
-router.post('/checklists/person/:userId/:listId/tasks', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/checklists/person/:userId/:listId/tasks', WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.userId);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
     const ref = rawCollection('checklists').doc(req.params.listId);
@@ -90,11 +105,11 @@ router.post('/checklists/person/:userId/:listId/tasks', authorize(ADMIN_HR_ROLES
 });
 
 /** The task lists new checklists are built from: built-in tasks plus the company's own changes */
-router.get('/checklists/templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/checklists/templates', READ, requireUsOrg, async (req, res) => {
     res.json({ success: true, kinds: rules.KINDS, assignees: rules.ASSIGNEES, templates: rules.describeTemplates(await store.templateSettings(req.orgId)), note: 'Changes apply to checklists created from now on. Lists that already exist are not changed.' });
 });
 
-router.put('/checklists/templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/checklists/templates', WRITE, requireUsOrg, async (req, res) => {
     const { errors, value } = rules.validateTemplateSettings(req.body && req.body.settings);
     if (errors.length) return res.status(400).json({ success: false, errors });
     await rawCollection('checklist_templates').doc(req.orgId).set({ orgId: req.orgId, settings: value, updatedAt: new Date().toISOString(), updatedBy: req.user.id || null });
@@ -103,7 +118,7 @@ router.put('/checklists/templates', authorize(ADMIN_HR_ROLES), requireUsOrg, asy
 });
 
 /** HR to-do list across everyone: open tasks, overdue first */
-router.get('/checklists/overview', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/checklists/overview', READ, requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
     const today = timeRules.localDate(new Date().toISOString(), info.tz);
     const [lists, snaps] = await Promise.all([
@@ -126,4 +141,5 @@ router.get('/checklists/overview', authorize(ADMIN_HR_ROLES), requireUsOrg, asyn
     res.json({ success: true, today, counts: { open: rows.length, overdue: rows.filter((r) => r.overdue).length }, data: rows.slice(0, 500) });
 });
 
+router.helpers = { canReadAll, isStaff, managesPerson, mayStartList };
 module.exports = router;

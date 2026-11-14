@@ -7,10 +7,13 @@
  * The one-tap path is the default: with no policy nothing in this file is consulted.
  */
 const crypto = require('crypto');
+const ipMatch = require('./ip-match');
 
 const METHODS = ['web', 'kiosk_pin', 'selfie_photo', 'geofence', 'biometric'];
 const SELFIE_MODES = ['off', 'optional', 'required'];
 const GEO_MODES = ['off', 'record', 'flag', 'block'];
+// Clock-in limit by network address: off, warn (the punch is recorded and flagged for review) or block
+const NETWORK_MODES = ['off', 'warn', 'block'];
 const NOTE = 'Confirm with counsel before relying on this row.';
 
 const CONSENT_TYPES = ['biometric_release', 'biometric_consent', 'monitoring_notice', 'nyc_biometric_notice', 'cpra_notice', 'photo_notice', 'location_notice'];
@@ -113,6 +116,14 @@ function validatePolicy(body) {
     value.sharedDeviceWorkers = Number.isInteger(sw) && sw >= 2 && sw <= 10 ? sw : 2;
     const win = b.sharedDeviceWindowMinutes === undefined ? 120 : Number(b.sharedDeviceWindowMinutes);
     value.sharedDeviceWindowMinutes = win >= 5 && win <= 1440 ? Math.round(win) : 120;
+    // Allowed networks: single IPv4/IPv6 addresses and CIDR ranges. Checked on the server against the address the request came from.
+    const n = b.network || {};
+    const netMode = n.mode === undefined ? 'off' : String(n.mode);
+    if (!NETWORK_MODES.includes(netMode)) errors.push('network.mode must be off, warn or block');
+    const nets = ipMatch.validateNetworks(n.allowed);
+    errors.push(...nets.errors);
+    if (NETWORK_MODES.includes(netMode) && netMode !== 'off' && !nets.value.length && !nets.errors.length) errors.push('List at least one allowed network, or turn the network limit off');
+    value.network = { mode: NETWORK_MODES.includes(netMode) ? netMode : 'off', allowed: nets.value };
     return { errors, value };
 }
 
@@ -258,20 +269,31 @@ const MSG = {
     new_device: ['New device for this worker.', 'Dispositivo nuevo para este trabajador.'],
     impossible_travel: ['Location is too far from the last punch for the time passed.', 'La ubicación está demasiado lejos del último registro para el tiempo transcurrido.'],
     outside_schedule: ['Punch is outside the scheduled shift.', 'El registro está fuera del turno programado.'],
-    repeated_timestamp: ['The same clock time was punched several times in a row.', 'Se registró la misma hora varias veces seguidas.']
+    repeated_timestamp: ['The same clock time was punched several times in a row.', 'Se registró la misma hora varias veces seguidas.'],
+    outside_network: ['This device is not on an approved work network.', 'Este dispositivo no está en una red de trabajo aprobada.'],
+    sent_late: ['This punch was made without a connection and reached the server later. The time is the one the phone reported.', 'Este registro se hizo sin conexión y llegó al servidor más tarde. La hora es la que informó el teléfono.']
 };
 const reason = (code, severity, extra = {}) => ({ code, severity, en: MSG[code][0], es: MSG[code][1], ...extra });
 
 /**
  * ctx: { policy, rules, workState, city, type, source, hasPhoto, location, statuses:{type:status}, sites,
- *        deviceHash, deviceDoc, userDeviceHashes, prev, recent, shifts, nowIso, tz, userId, locationScoped }
+ *        deviceHash, deviceDoc, userDeviceHashes, prev, recent, shifts, nowIso, tz, userId, locationScoped, ip }
  */
 function evaluatePunch(ctx) {
-    const out = { decision: 'allow', reasons: [], pendingTypes: [], usePhoto: false, storeLocation: true, distanceMeters: null, nearest: null };
+    const out = { decision: 'allow', reasons: [], pendingTypes: [], usePhoto: false, storeLocation: true, distanceMeters: null, nearest: null, network: null };
     const policy = ctx.policy;
     if (!policy) return out;
     const finish = () => { out.decision = out.reasons.some((r) => r.severity === 'block') ? 'block' : out.reasons.length ? 'flag' : 'allow'; return out; };
     const enforce = (policy.punchTypes || ['in', 'out']).includes(ctx.type);
+    // network address: checked first, because a blocked network needs no notice or photo
+    const net = policy.network || { mode: 'off', allowed: [] };
+    if (net.mode !== 'off' && enforce) {
+        out.network = ipMatch.addressInNetworks(ctx.ip, net.allowed) ? 'inside' : 'outside';
+        if (out.network === 'outside') {
+            out.reasons.push(reason('outside_network', net.mode === 'block' ? 'block' : 'flag'));
+            if (net.mode === 'block') { out.storeLocation = false; return finish(); }
+        }
+    }
     const req = requirements(policy, ctx.workState, ctx.city, ctx.rules);
     const disabled = new Set(); const pending = new Set();
     const blocking = { selfie_photo: policy.selfie === 'required', geofence: ['flag', 'block'].includes(policy.geofence.mode), biometric: false };
@@ -350,7 +372,7 @@ function parsePhoto(input) {
 }
 
 module.exports = {
-    METHODS, SELFIE_MODES, GEO_MODES, CONSENT_TYPES, DEFAULT_JURISDICTIONS, DEFAULT_NOTICES, DEFAULT_ANOMALY, MAX_PHOTO_BYTES,
+    METHODS, SELFIE_MODES, GEO_MODES, NETWORK_MODES, CONSENT_TYPES, DEFAULT_JURISDICTIONS, DEFAULT_NOTICES, DEFAULT_ANOMALY, MAX_PHOTO_BYTES,
     textHashOf, validatePolicy, resolvePolicy, methodsInUse, ruleApplies, requirements, consentStatus, biometricGuard,
     haversineMeters, nearestSite, impossibleTravel, repeatedTimes, outsideSchedule, sharedDevice, evaluatePunch, parsePhoto, MSG
 };

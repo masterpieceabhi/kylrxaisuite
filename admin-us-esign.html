@@ -58,6 +58,11 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <p class="hint" id="sHint"></p>
       <div class="row"><button type="submit">Create the signing link</button></div></form>
     </section>
+    <section class="card" id="dueCard" hidden>
+      <h2>Waiting too long: who to remind <span id="dueCount"></span></h2>
+      <p class="hint"><b>What a reminder does today:</b> this system does not send email or text messages. "Log a reminder" only writes down, on the document's history, that you reminded the person, and takes them off this list for 3 days. You still have to contact them yourself. If they lost their link, press "New link" and send them the new one.</p>
+      <table><thead><tr><th>Document</th><th>Signer</th><th>Last contact</th><th>Time left to sign</th><th></th></tr></thead><tbody id="dueRows"></tbody></table>
+    </section>
     <section class="card">
       <h2>Sent documents</h2>
       <div class="row" style="margin-top:0"><label>Show<select id="rStatus"><option value="">All</option><option value="pending">Not opened yet</option><option value="viewed">Opened, not signed</option><option value="signed">Signed</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="locked">Locked</option><option value="voided">Cancelled</option></select></label></div>
@@ -177,6 +182,14 @@ async function loadRequests() {
   }).join('') || '<tr><td colspan="6" class="hint">Nothing sent yet.</td></tr>';
 }
 $('rStatus').addEventListener('change', () => loadRequests().catch((err) => say(err.message, false)));
+// The reminder worklist (HR only): open requests nobody has contacted for 3 days, or that run out within 3 days
+async function loadDue() {
+  if (!canManage) { $('dueCard').hidden = true; return; }
+  const r = await req('GET', '/esign/reminders');
+  $('dueCard').hidden = false; $('dueCount').textContent = r.count ? `(${r.count})` : '';
+  const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
+  $('dueRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.templateName)}</b></td><td>${esc(x.signerName)}<br><span class="hint">${esc(x.signerType)}</span></td><td>${x.daysSinceContact <= 0 ? 'today' : `${esc(days(x.daysSinceContact))} ago`}</td><td>${x.daysLeft <= 0 ? '<span class="tag badTag">runs out today</span>' : `${esc(days(x.daysLeft))}${x.expiringSoon ? ' <span class="tag warnTag">soon</span>' : ''}`}</td><td><button class="ghost" data-rremind="${esc(x.id)}">Log a reminder</button> <button class="ghost" data-rresend="${esc(x.id)}" data-name="${esc(x.signerName)}">New link</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody needs a reminder right now.</td></tr>';
+}
 
 // --------------------------------------------------------------------- clicks
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
@@ -197,11 +210,11 @@ document.addEventListener('click', async (e) => {
       $('viewHistory').innerHTML = r.history.map((h) => `<tr><td>${esc(when(h.at, true))}</td><td>${esc(words(h.event || h.type || ''))}</td><td class="hint">${esc(h.ip || '')}${h.reason ? ` · ${esc(h.reason)}` : ''}</td></tr>`).join('');
       $('viewHash').textContent = `Document fingerprint (SHA-256): ${r.request.documentHash}`; $('viewCard').scrollIntoView({ behavior: 'smooth' });
     } else if ((t = el('rresend'))) {
-      if (window.confirm('Make a new link? The old link stops working.')) { const r = await req('POST', `/esign/requests/${t.dataset.rresend}/resend`, {}); showLink(`New signing link for ${t.dataset.name}`, r.signUrl); await loadRequests(); }
+      if (window.confirm('Make a new link? The old link stops working.')) { const r = await req('POST', `/esign/requests/${t.dataset.rresend}/resend`, {}); showLink(`New signing link for ${t.dataset.name}`, r.signUrl); await loadRequests(); await loadDue(); }
     } else if ((t = el('rvoid'))) {
       const reason = window.prompt('Why are you cancelling this request? (optional)');
-      if (reason !== null) { await req('POST', `/esign/requests/${t.dataset.rvoid}/void`, { reason }); say('Request cancelled. The link no longer works.'); await loadRequests(); }
-    } else if ((t = el('rremind'))) { const r = await req('POST', `/esign/requests/${t.dataset.rremind}/remind`, {}); say(r.note); await loadRequests(); } else if ((t = el('rcert'))) {
+      if (reason !== null) { await req('POST', `/esign/requests/${t.dataset.rvoid}/void`, { reason }); say('Request cancelled. The link no longer works.'); await loadRequests(); await loadDue(); }
+    } else if ((t = el('rremind'))) { await req('POST', `/esign/requests/${t.dataset.rremind}/remind`, {}); say('Written down that you reminded this person. Nothing was sent to them: contact them yourself, or press "New link" and send them the new link.'); await loadRequests(); await loadDue(); } else if ((t = el('rcert'))) {
       const blob = await req('GET', `/esign/requests/${t.dataset.rcert}/certificate`, null, true); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `certificate-${t.dataset.rcert}.html`; document.body.appendChild(a); a.click(); a.remove();
     }
   } catch (err) { say(err.message, false); }
@@ -223,6 +236,7 @@ onAuthStateChanged(auth, async (user) => {
     await step(async () => { const c = (await req('GET', '/hiring/candidates')).data; $('sCand').innerHTML = c.filter((x) => !['hired', 'rejected', 'withdrawn'].includes(x.stage)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.requisitionTitle)})</option>`).join('') || '<option value="">No open candidates</option>'; });
   }
   await step(loadRequests);
+  await step(loadDue);
 });
 </script>
 </body>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Training records | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:16px 0 6px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);font-weight:400}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+button{padding:7px 12px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:#eef2ff;color:var(--blue)}button.no{background:#fee2e2;color:var(--bad)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+td.acts button{margin:0 4px 4px 0}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.good{background:#dcfce7;color:var(--ok)}.warnTag{background:#fef3c7;color:#92400e}.badTag{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:10px 12px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button{background:#fff;color:var(--ink);border:1px solid var(--line)}.tabs button.on{background:var(--ink);color:#fff}
+.stat{border:1px solid var(--line);border-radius:10px;padding:12px}.big{font-size:22px;font-weight:700}
+.picks{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Training records</h1><div><a href="my-training.html">My own trainings</a> &nbsp;|&nbsp; <a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note">This system does not decide which trainings the law requires. Confirm your list with a US compliance advisor.</div>
+  <div class="tabs" id="tabs"><button data-tab="list" class="on">Trainings</button><button data-tab="confirm">Waiting for you to confirm <span id="waitCount"></span></button><button data-tab="report">Who is due</button></div>
+
+  <div id="tab-list" style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Trainings</h2>
+      <table><thead><tr><th>Training</th><th>Who must take it</th><th>How often</th><th>People</th><th>Where they stand</th><th></th></tr></thead><tbody id="list"></tbody></table>
+      <div class="row" id="newRow" hidden><button id="newBtn" type="button">Add a training</button></div>
+    </section>
+
+    <section class="card" id="editCard" hidden>
+      <h2 id="eTitle">Add a training</h2>
+      <form id="editForm">
+        <div class="grid">
+          <label>Name<input name="name" required minlength="3" maxlength="120" placeholder="Safe food handling"></label>
+          <label>Who must take it<select name="audienceType" id="eAudience">
+            <option value="everyone">Everyone</option><option value="location">People at chosen locations</option><option value="department">People in chosen departments</option><option value="role">People with a chosen system role</option><option value="job_title">People with a chosen job title</option>
+          </select></label>
+          <label>How often<select name="repeatKind" id="eRepeatKind"><option value="once">Once</option><option value="repeat">Again every so many months</option></select></label>
+          <label id="eMonthsLabel" hidden>Months between<input name="repeatMonths" type="number" min="1" max="120" step="1" placeholder="12"></label>
+          <label>Days a person has to finish it the first time<input name="dueWithinDays" type="number" min="0" max="365" step="1" value="30"></label>
+          <label>Link to the course or material (optional)<input name="link" type="url" maxlength="500" placeholder="https://"></label>
+        </div>
+        <div id="ePicksWrap" hidden><h3 id="ePicksTitle"></h3><div class="picks" id="ePicks"></div><p class="hint" id="ePicksHint"></p></div>
+        <label style="margin-top:12px">Short description shown to employees (optional)<input name="description" maxlength="500"></label>
+        <p class="hint">The first due date counts from a person's first day, or from the day you add the training if they already work here.</p>
+        <div class="row"><button type="submit">Save</button><button type="button" class="ghost" id="cancelBtn">Cancel</button></div>
+      </form>
+    </section>
+
+    <section class="card" id="recordCard" hidden>
+      <h2>Record that a person finished a training</h2>
+      <form id="recordForm"><div class="grid">
+        <label>Training<select name="trainingId" id="rTraining" required></select></label>
+        <label>Person<select name="userId" id="rPerson" required></select></label>
+        <label>Date finished<input name="completedOn" type="date" required></label>
+        <label>Certificate number or note (optional)<input name="note" maxlength="300" placeholder="Card 48213, expires 2029"></label>
+      </div><div class="row"><button type="submit">Record</button><span class="hint">This counts right away. Do not type Social Security numbers or other private details in the note.</span></div></form>
+    </section>
+  </div>
+
+  <div id="tab-confirm" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>People who said "I completed this"</h2>
+      <p class="hint">A training only counts as done after you confirm it. Ask to see the certificate first if your company needs one.</p>
+      <table><thead><tr><th>Person</th><th>Training</th><th>Date they gave</th><th>Their note</th><th>Sent</th><th></th></tr></thead><tbody id="waitRows"></tbody></table>
+    </section>
+    <section class="card">
+      <h2>Records</h2>
+      <div class="row" style="margin-top:0"><label>Show<select id="cStatus"><option value="confirmed">Confirmed</option><option value="rejected">Not accepted</option><option value="">All</option></select></label></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Training</th><th>Date finished</th><th>Note</th><th>Status</th><th></th></tr></thead><tbody id="cRows"></tbody></table>
+    </section>
+  </div>
+
+  <div id="tab-report" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>Who is due, overdue and done</h2>
+      <div class="grid" id="stats"></div>
+      <div class="row"><label>Training<select id="fTraining"><option value="">All trainings</option></select></label><label>Show<select id="fStatus"><option value="">Everything</option><option value="overdue">Overdue</option><option value="due">Due</option><option value="done">Done</option></select></label><button class="ghost" id="csvBtn" type="button">Download CSV</button></div>
+      <table style="margin-top:12px"><thead><tr><th>Person</th><th>Training</th><th>Status</th><th>Last finished</th><th>Due</th></tr></thead><tbody id="repRows"></tbody></table>
+      <p class="hint">Overdue: the due date has passed. Due: not finished yet, or a repeat falls due within 30 days. Done: finished and nothing falls due within 30 days. Overdue trainings also show on the Paperwork report.</p>
+    </section>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+const day = (d) => (d ? new Date(String(d).length > 10 ? d : `${d}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const tag = (text, cls) => `<span class="tag ${cls}">${esc(text)}</span>`;
+const STATUS = { overdue: ['Overdue', 'badTag'], due: ['Due', 'warnTag'], done: ['Done', 'good'] };
+const GROUP = { location: ['Locations', 'locations', 'Add locations on the Company page first.'], department: ['Departments', 'departments', 'Add departments on the Company page first.'], role: ['System roles', 'roles', ''], job_title: ['Job titles', 'jobTitles', 'Job titles come from people\'s records. Nobody has one yet.'] };
+let options = null; let trainings = []; let editing = null; let canManage = false;
+
+async function req(method, path, body, raw) {
+  const res = await fetch(`/api/us/training${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  if (raw) { if (!res.ok) throw new Error(`Request failed (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`);
+  return json;
+}
+const nameOf = (kind, id) => { const row = ((options && options[GROUP[kind][1]]) || []).find((x) => (x.id || x) === id); return row ? (row.name || row) : id; };
+const audienceText = (a) => (!a || a.type === 'everyone' ? 'Everyone' : `${GROUP[a.type][0]}: ${a.values.map((v) => nameOf(a.type, v)).join(', ')}`);
+const repeatText = (t) => (t.repeatMonths ? `Every ${t.repeatMonths} month${t.repeatMonths === 1 ? '' : 's'}` : 'Once');
+
+/* ---------- trainings ---------- */
+async function loadList() {
+  const r = await req('GET', '');
+  trainings = r.data; $('note').textContent = r.note;
+  $('waitCount').textContent = r.waiting ? `(${r.waiting})` : '';
+  $('list').innerHTML = trainings.map((t) => `<tr><td><b>${esc(t.name)}</b>${t.active ? '' : ` ${tag('Switched off', 'grey')}`}${t.description ? `<br><span class="hint">${esc(t.description)}</span>` : ''}${t.link ? `<br><a href="${esc(t.link)}" target="_blank" rel="noopener noreferrer">Open the link</a>` : ''}</td><td>${esc(audienceText(t.audience))}</td><td>${esc(repeatText(t))}</td><td>${esc(t.counts.people)}</td><td>${t.active ? `${t.counts.overdue ? tag(`${t.counts.overdue} overdue`, 'badTag') : ''} ${t.counts.due ? tag(`${t.counts.due} due`, 'warnTag') : ''} ${tag(`${t.counts.done} done`, 'good')}` : ''}</td><td class="acts">${canManage ? `<button class="ghost" data-edit="${esc(t.id)}">Change</button><button class="ghost" data-toggle="${esc(t.id)}">${t.active ? 'Switch off' : 'Switch on'}</button><button class="no" data-del="${esc(t.id)}">Delete</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">No trainings yet.</td></tr>';
+  const live = trainings.filter((t) => t.active);
+  $('rTraining').innerHTML = live.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  $('recordCard').hidden = !canManage || !live.length;
+  const keep = $('fTraining').value;
+  $('fTraining').innerHTML = `<option value="">All trainings</option>${live.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}`; $('fTraining').value = keep;
+}
+function paintPicks(type, chosen = []) {
+  const wrap = $('ePicksWrap');
+  if (type === 'everyone') { wrap.hidden = true; $('ePicks').innerHTML = ''; return; }
+  const [title, key, empty] = GROUP[type];
+  const rows = (options[key] || []).map((x) => (typeof x === 'string' ? { id: x, name: x } : x));
+  // a choice saved earlier that no longer exists stays visible so it can be unticked
+  for (const c of chosen) if (!rows.some((x) => x.id === c)) rows.push({ id: c, name: `${c} (no longer exists)` });
+  wrap.hidden = false; $('ePicksTitle').textContent = `${title} that must take it`;
+  $('ePicks').innerHTML = rows.map((x) => `<label class="check"><input type="checkbox" data-pick="${esc(x.id)}"${chosen.includes(x.id) ? ' checked' : ''}> ${esc(x.name)}</label>`).join('');
+  $('ePicksHint').textContent = rows.length ? '' : empty;
+}
+function openEdit(t) {
+  editing = t ? t.id : null; const f = $('editForm'); f.reset();
+  $('eTitle').textContent = t ? `Change "${t.name}"` : 'Add a training';
+  if (t) {
+    f.elements.name.value = t.name; f.elements.description.value = t.description || ''; f.elements.audienceType.value = t.audience.type;
+    f.elements.repeatKind.value = t.repeatMonths ? 'repeat' : 'once'; f.elements.repeatMonths.value = t.repeatMonths || ''; f.elements.dueWithinDays.value = t.dueWithinDays; f.elements.link.value = t.link || '';
+  }
+  $('eMonthsLabel').hidden = f.elements.repeatKind.value !== 'repeat';
+  paintPicks(f.elements.audienceType.value, t ? t.audience.values : []);
+  $('editCard').hidden = false; $('editCard').scrollIntoView({ behavior: 'smooth' });
+}
+$('eAudience').addEventListener('change', (e) => paintPicks(e.target.value));
+$('eRepeatKind').addEventListener('change', (e) => { $('eMonthsLabel').hidden = e.target.value !== 'repeat'; });
+$('newBtn').addEventListener('click', () => openEdit(null));
+$('cancelBtn').addEventListener('click', () => { $('editCard').hidden = true; editing = null; });
+$('editForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const btn = e.target.querySelector('button[type="submit"]');
+  const type = f.audienceType.value;
+  const body = {
+    name: f.name.value, description: f.description.value, link: f.link.value, dueWithinDays: f.dueWithinDays.value === '' ? null : Number(f.dueWithinDays.value),
+    repeatMonths: f.repeatKind.value === 'repeat' ? Number(f.repeatMonths.value) : null,
+    audience: { type, values: type === 'everyone' ? [] : [...document.querySelectorAll('[data-pick]:checked')].map((c) => c.dataset.pick) }
+  };
+  if (f.repeatKind.value === 'repeat' && !f.repeatMonths.value) { say('Say how many months between repeats, or choose "Once".', false); return; }
+  btn.disabled = true;
+  try {
+    if (editing) await req('PUT', `/${encodeURIComponent(editing)}`, body); else await req('POST', '', body);
+    say(editing ? 'Saved.' : 'Training added. People who must take it now see it on their own list.'); $('editCard').hidden = true; editing = null; await loadList();
+  } catch (err) { say(err.message, false); } finally { btn.disabled = false; }
+});
+$('recordForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true;
+  try {
+    await req('POST', `/${encodeURIComponent(f.trainingId.value)}/completions`, { userId: f.userId.value, completedOn: f.completedOn.value, note: f.note.value });
+    say('Recorded.'); f.note.value = ''; await loadList();
+  } catch (err) { say(err.message, false); } finally { btn.disabled = false; }
+});
+
+/* ---------- confirming ---------- */
+async function loadConfirm() {
+  const w = await req('GET', '/completions?status=reported');
+  $('waitCount').textContent = w.waiting ? `(${w.waiting})` : '';
+  $('waitRows').innerHTML = w.data.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.training)}</td><td>${esc(day(c.completedOn))}</td><td>${esc(c.note)}</td><td>${esc(day(c.reportedAt))}</td><td class="acts">${canManage ? `<button data-ok="${esc(c.id)}">Confirm</button><button class="no" data-no="${esc(c.id)}">Do not accept</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="hint">Nobody is waiting.</td></tr>';
+  const s = $('cStatus').value;
+  const r = await req('GET', `/completions${s ? `?status=${s}` : ''}`);
+  const WORD = { confirmed: ['Confirmed', 'good'], reported: ['Waiting for you', 'warnTag'], rejected: ['Not accepted', 'badTag'] };
+  $('cRows').innerHTML = r.data.map((c) => { const [w1, c1] = WORD[c.status] || [c.status, 'grey']; return `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.training)}</td><td>${esc(day(c.completedOn))}</td><td>${esc(c.note)}${c.decisionNote ? `<br><span class="hint">${esc(c.decisionNote)}</span>` : ''}</td><td>${tag(w1, c1)}<br><span class="hint">${c.enteredBy === 'employee' ? 'reported by the person' : 'entered by HR'}</span></td><td class="acts">${canManage && c.status === 'confirmed' ? `<button class="no" data-rm="${esc(c.id)}">Entered by mistake</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="6" class="hint">Nothing here.</td></tr>';
+}
+$('cStatus').addEventListener('change', () => loadConfirm().catch((err) => say(err.message, false)));
+
+/* ---------- report ---------- */
+const reportQuery = () => { const q = new URLSearchParams(); if ($('fTraining').value) q.set('trainingId', $('fTraining').value); if ($('fStatus').value) q.set('status', $('fStatus').value); return q; };
+async function loadReport() {
+  const r = await req('GET', `/report?${reportQuery()}`); const s = r.summary;
+  $('stats').innerHTML = [['Overdue', s.overdue], ['Due', s.due], ['Done', s.done], ['Waiting for you to confirm', s.waitingForHr]].map(([k, v]) => `<div class="stat"><div class="hint">${esc(k)}</div><div class="big">${esc(v)}</div></div>`).join('');
+  $('repRows').innerHTML = r.data.map((x) => { const [w, c] = STATUS[x.status]; return `<tr><td><b>${esc(x.name || x.userId)}</b> <span class="hint">${esc(x.employeeId || '')}${x.department ? ` · ${esc(x.department)}` : ''}</span></td><td>${esc(x.training)}<br><span class="hint">${esc(x.repeats)}</span></td><td>${tag(w, c)}${x.daysLate ? ` <span class="hint">${esc(x.daysLate)} day${x.daysLate === 1 ? '' : 's'} late</span>` : ''}${x.waitingForHr ? `<br>${tag('says it is done, not confirmed', 'grey')}` : ''}</td><td>${esc(day(x.lastCompletedOn))}</td><td>${x.status === 'done' && !x.nextDueDate ? '' : esc(day(x.dueDate))}</td></tr>`; }).join('') || '<tr><td colspan="5" class="hint">Nothing to show. Add a training first, or change the filter.</td></tr>';
+}
+$('fTraining').addEventListener('change', () => loadReport().catch((err) => say(err.message, false)));
+$('fStatus').addEventListener('change', () => loadReport().catch((err) => say(err.message, false)));
+$('csvBtn').addEventListener('click', async () => {
+  try {
+    const q = reportQuery(); q.set('format', 'csv');
+    const res = await req('GET', `/report?${q}`, null, true);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = `training-${options.today || 'report'}.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  } catch (err) { say(err.message, false); }
+});
+
+/* ---------- clicks and tabs ---------- */
+document.addEventListener('click', async (e) => {
+  const el = (k) => e.target.closest(`[data-${k}]`);
+  let t;
+  try {
+    if ((t = el('edit'))) openEdit(trainings.find((x) => x.id === t.dataset.edit));
+    else if ((t = el('toggle'))) { const tr = trainings.find((x) => x.id === t.dataset.toggle); await req('PUT', `/${encodeURIComponent(tr.id)}`, { active: !tr.active }); say(tr.active ? 'Switched off. Nobody is asked to take it any more; the records are kept.' : 'Switched on.'); await loadList(); }
+    else if ((t = el('del'))) { if (!window.confirm('Delete this training? This only works if nobody has a record for it.')) return; await req('DELETE', `/${encodeURIComponent(t.dataset.del)}`); say('Deleted.'); await loadList(); }
+    else if ((t = el('ok'))) { await req('POST', `/completions/${encodeURIComponent(t.dataset.ok)}/confirm`, {}); say('Confirmed. It now counts as done.'); await loadConfirm(); }
+    else if ((t = el('no'))) { const note = window.prompt('Tell the person why this is not accepted (they will see it):'); if (!note) return; await req('POST', `/completions/${encodeURIComponent(t.dataset.no)}/reject`, { note }); say('Not accepted. The person can send it again.'); await loadConfirm(); }
+    else if ((t = el('rm'))) { const note = window.prompt('Why is this record being removed?'); if (!note) return; await req('POST', `/completions/${encodeURIComponent(t.dataset.rm)}/remove`, { note }); say('Removed. It no longer counts; the removal is in the activity log.'); await loadConfirm(); }
+  } catch (err) { say(err.message, false); }
+});
+const LOADERS = { list: loadList, confirm: loadConfirm, report: loadReport };
+$('tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-tab]'); if (!b) return;
+  document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  for (const k of Object.keys(LOADERS)) $(`tab-${k}`).hidden = k !== b.dataset.tab;
+  LOADERS[b.dataset.tab]().catch((err) => say(err.message, false));
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try {
+    options = await req('GET', '/options');
+    if (!options.canSeeAll) { say('This page is for HR. Your own trainings are on "My own trainings".', false); return; }
+    canManage = options.canManage; $('newRow').hidden = !canManage;
+    $('rPerson').innerHTML = (options.people || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)}${p.employeeId ? ` (${esc(p.employeeId)})` : ''}</option>`).join('');
+    $('recordForm').elements.completedOn.value = options.today; $('recordForm').elements.completedOn.max = options.today;
+    await loadList();
+  } catch (err) { say(/409|not a US company/.test(err.message) ? 'Training records are for US companies.' : err.message, false); }
+});
+</script>
+</body>
+</html>

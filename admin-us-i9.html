@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Form I-9 | Kylrx AI</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--warn:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1150px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}h3{margin:18px 0 8px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+label.check{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--ink);font-weight:500}
+input,select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;max-width:100%}
+input[type=checkbox],input[type=radio]{width:auto;margin-top:3px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.small{padding:4px 10px;font-size:12px}button:disabled{opacity:.5;cursor:default}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted)}
+.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.tag.ok{background:#dcfce7;color:var(--ok)}.tag.todo{background:#fef3c7;color:var(--warn)}.tag.late{background:#fee2e2;color:var(--bad)}.tag.wait{background:#e2e8f0;color:#475569}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:var(--warn);border-radius:8px;padding:10px 12px}
+.stats{display:flex;gap:22px;flex-wrap:wrap}.stats div b{display:block;font-size:22px}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0}legend{font-weight:700;font-size:13px;padding:0 6px}
+.num{font-family:ui-monospace,Consolas,monospace}.shown{background:#fef9c3;padding:2px 6px;border-radius:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Form I-9: checking the right to work</h1><div><a href="admin-us-i9-report.html">I-9 audit report</a> &nbsp;|&nbsp; <a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="warn" id="note">Confirm with a US compliance advisor.</div>
+
+  <section class="card">
+    <div class="stats" id="stats"></div>
+    <p class="hint">The person fills in Section 1 by their first day of work. You check their documents and fill in Section 2 within 3 business days of the first day. Document numbers are hidden on this page.</p>
+  </section>
+
+  <section class="card">
+    <h2>Work permission that ends soon</h2>
+    <div class="row" style="margin-top:0"><label>Show the next <select id="window"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">180 days</option><option value="365">12 months</option></select></label></div>
+    <table><thead><tr><th>Person</th><th>Ends on</th><th>Time left</th><th></th></tr></thead><tbody id="expiring"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Everyone</h2>
+    <div class="row" style="margin-top:0"><label>Show <select id="show"><option value="all">Everyone</option><option value="action">People who need something from you</option><option value="waiting">Waiting for the person</option><option value="complete">Complete</option></select></label></div>
+    <table><thead><tr><th>Person</th><th>First day</th><th>Section 1 (the person)</th><th>Section 2 (you)</th><th>Documents checked</th><th>Check again by</th><th></th></tr></thead><tbody id="people"></tbody></table>
+  </section>
+
+  <section class="card" id="detail" hidden></section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const day = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+const say = (text, ok) => { const m = $('msg'); m.textContent = text; m.className = text ? (ok ? 'ok' : 'err') : ''; if (text) m.scrollIntoView({ block: 'nearest' }); };
+const STATUS = { us_citizen: 'U.S. citizen', noncitizen_national: 'Noncitizen national of the U.S.', lawful_permanent_resident: 'Lawful permanent resident', alien_authorized_to_work: 'Allowed to work until a set date' };
+const METHOD = { in_person: 'In person', alternative_procedure: 'Remotely (the DHS alternative procedure)' };
+const KIND = { reverification: 'New document: work permission was ending', rehire: 'Rehire', name_change: 'New name' };
+const PART = { section2: 'Section 2', supplement: 'Supplement B' };
+let opts = null; let list = null; let current = null;
+
+async function api(method, path, body) {
+  const form = body instanceof FormData;
+  const res = await fetch(`/api/us${path}`, { method, headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}`, ...(body && !form ? { 'Content-Type': 'application/json' } : {}) }, body: body ? (form ? body : JSON.stringify(body)) : undefined });
+  if (path.endsWith('/download')) { if (!res.ok) throw new Error(`Could not open the file (${res.status})`); return res; }
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(Array.isArray(json.errors) ? json.errors.join('. ') : (typeof json.error === 'string' ? json.error : `Request failed (${res.status})`));
+  return json;
+}
+const left = (n) => (n < 0 ? `${-n} day${n === -1 ? '' : 's'} ago` : n === 0 ? 'today' : `${n} day${n === 1 ? '' : 's'}`);
+
+/* ---------------------------------------------- the lists ---------------------------------------------- */
+function s1Cell(r) {
+  if (r.section1SignedOn) return `<span class="tag ok">Done</span> <span class="hint">${esc(day(r.section1SignedOn))}</span>`;
+  return r.section1Overdue ? `<span class="tag late">Late</span> <span class="hint">was due ${esc(day(r.section1Due))}</span>` : `<span class="tag wait">Not yet</span> <span class="hint">${r.section1Due ? `due ${esc(day(r.section1Due))}` : 'no first day on file'}</span>`;
+}
+function s2Cell(r) {
+  if (r.section2ExaminedOn) return `<span class="tag ok">Done</span> <span class="hint">${esc(day(r.section2ExaminedOn))}${r.section2Late ? ` (late, was due ${esc(day(r.section2Due))})` : ''}</span>`;
+  if (!r.section2Due) return '<span class="hint">No first day on file</span>';
+  if (r.section2Overdue) return `<span class="tag late">Late</span> <span class="hint">was due ${esc(day(r.section2Due))}</span>`;
+  return `<span class="tag ${r.i9State === 'section1_done' ? 'todo' : 'wait'}">${r.i9State === 'section1_done' ? 'To do' : 'After Section 1'}</span> <span class="hint">due ${esc(day(r.section2Due))}${r.section2DaysLeft !== null && r.section2DaysLeft >= 0 ? ` (${left(r.section2DaysLeft)} left)` : ''}</span>`;
+}
+const NEXT = { section2: 'Fill in Section 2', reverify: 'Record a new document', rehire: 'Record the rehire', new_form: 'Open', waiting_section1: 'Open', none: 'Open' };
+function paintLists() {
+  $('note').textContent = list.note;
+  const s = list.summary;
+  $('stats').innerHTML = [[s.total, 'people'], [s.complete, 'forms complete'], [s.waitingSection1, 'waiting for the person'], [s.section2ToDo, 'Section 2 to do'], [s.section2Overdue, 'Section 2 late'], [s.reverifySoon + s.reverifyOverdue, 'to check again'], [s.rehires, 'rehires to record']].map(([n, l]) => `<div><b>${esc(n)}</b>${esc(l)}</div>`).join('');
+  $('expiring').innerHTML = list.expiring.map((e) => `<tr><td><b>${esc(e.name || '')}</b><br><span class="hint">${esc(e.employeeId || '')}</span></td><td>${esc(day(e.reverifyOn))}</td><td><span class="tag ${e.overdue ? 'late' : 'todo'}">${e.overdue ? `Ended ${left(e.daysLeft)}` : `${left(e.daysLeft)} left`}</span></td><td><button class="small ghost" data-open="${esc(e.id)}">${list.canManage && e.canRecord ? 'Record a new document' : 'Open'}</button></td></tr>`).join('') || `<tr><td colspan="4" class="hint">Nobody's work permission ends in the next ${esc(list.window)} days.</td></tr>`;
+  const f = $('show').value;
+  const rows = list.data.filter((r) => (f === 'action' ? ['section2', 'reverify', 'rehire', 'new_form'].includes(r.next) : f === 'waiting' ? r.next === 'waiting_section1' : f === 'complete' ? r.i9State === 'complete' : true));
+  $('people').innerHTML = rows.map((r) => `<tr><td><b>${esc(r.name || '')}</b><br><span class="hint">${esc(r.employeeId || '')}</span>${r.rehire ? '<br><span class="tag todo">Rehired</span>' : ''}</td><td>${esc(day(r.firstDay)) || '<span class="hint">Not set</span>'}</td><td>${s1Cell(r)}</td><td>${s2Cell(r)}</td>
+    <td>${r.documents.map((d) => `${esc(d.title)} <span class="hint">(List ${esc(d.list)}, number ${esc(d.numberMasked)})</span>`).join('<br>') || '<span class="hint">None yet</span>'}${r.latestDocument ? `<br>${esc(r.latestDocument.title)} <span class="hint">(newer, number ${esc(r.latestDocument.numberMasked)})</span>` : ''}</td>
+    <td>${r.reverifyOn ? `${esc(day(r.reverifyOn))}${r.reverifyOverdue ? ' <span class="tag late">Passed</span>' : r.reverifyDaysLeft <= 90 ? ' <span class="tag todo">Soon</span>' : ''}` : '<span class="hint">No need</span>'}</td>
+    <td><button class="small${['section2', 'reverify', 'rehire'].includes(r.next) && list.canManage ? '' : ' ghost'}" data-open="${esc(r.id)}">${esc(list.canManage ? NEXT[r.next] : 'Open')}</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">Nobody matches.</td></tr>';
+}
+async function loadLists() { list = await api('GET', `/i9?days=${encodeURIComponent($('window').value)}`); paintLists(); }
+
+/* ---------------------------------------------- one person ---------------------------------------------- */
+const typeOptions = (key) => opts.lists[key].map((d) => `<option value="${esc(d.key)}">${esc(d.label)}</option>`).join('');
+/** The fields for one document. p = id prefix, key = list letter, or null when the list is chosen in the form (Supplement B) */
+function docFields(p, key, withAuthority) {
+  return `<div class="grid">
+    ${key ? '' : `<label>List <select id="${p}List">${opts.supplementLists.map((l) => `<option value="${l}">List ${l}</option>`).join('')}</select></label>`}
+    <label>Document <select id="${p}Type">${typeOptions(key || opts.supplementLists[0])}</select></label>
+    <label>Document title <input id="${p}Title" maxlength="120"></label>
+    ${withAuthority ? `<label>Issued by <input id="${p}Auth" maxlength="120" placeholder="For example: U.S. Department of State"></label>` : ''}
+    <label>Document number <input id="${p}Number" maxlength="60" autocomplete="off"></label>
+    <label>Expires on (leave empty if it does not expire) <input id="${p}Exp" type="date"></label>
+    ${list.canStoreCopies ? `<label>Copy of the document (optional: PDF or photo, up to 10 MB) <input id="${p}File" type="file" accept=".pdf,.png,.jpg,.jpeg"></label>` : ''}
+  </div>`;
+}
+const readDoc = (p, withAuthority) => ({ type: $(`${p}Type`).value, title: $(`${p}Title`).value.trim(), ...(withAuthority ? { issuingAuthority: $(`${p}Auth`).value.trim() } : {}), number: $(`${p}Number`).value.trim(), expiresOn: $(`${p}Exp`).value || null });
+const fileOf = (p) => { const el = $(`${p}File`); return el && el.files[0] ? el.files[0] : null; };
+const signFields = (p) => `<div class="grid">
+    <label>Date you checked the documents <input id="${p}On" type="date" value="${esc(list.today)}" max="${esc(list.today)}"></label>
+    <label>How you checked them <select id="${p}Method">${opts.methods.map((m) => `<option value="${m}">${esc(METHOD[m] || m)}</option>`).join('')}</select></label>
+    <label>Your full name <input id="${p}Name" maxlength="120" value="${esc(auth.currentUser.displayName || '')}"></label>
+    <label>Your job title <input id="${p}Title2" maxlength="120"></label>
+  </div>
+  <label class="check" style="margin-top:12px"><input type="checkbox" id="${p}Cert"> <span>I looked at the document or documents myself. They appear to be genuine and to belong to this person.</span></label>`;
+const revealBtn = (which, supplementId) => (list.canReveal ? ` <button class="small ghost" data-reveal="${esc(which)}" data-sup="${esc(supplementId || '')}">Show full number</button>` : '');
+const docLine = (label, d, which, supplementId) => `<tr><td>${esc(label)}</td><td>${esc(d.title || '')}${d.issuingAuthority ? `<br><span class="hint">Issued by ${esc(d.issuingAuthority)}</span>` : ''}</td><td><span class="num" data-num="${esc(which)}:${esc(supplementId || '')}">${esc(d.numberMasked)}</span>${d.hasNumber ? revealBtn(which, supplementId) : ''}</td><td>${esc(day(d.expiresOn)) || '<span class="hint">Does not expire</span>'}</td></tr>`;
+
+function paintDetail() {
+  const c = current; const p = c.person; const s1 = c.section1; const s2 = c.section2; const mayWrite = list.canManage && !c.isSelf;
+  let html = `<div class="row" style="margin-top:0;justify-content:space-between"><h2 style="margin:0">${esc(p.name || '')} <span class="hint">${esc(p.employeeId || '')}</span></h2><button class="ghost small" id="closeDetail">Close</button></div>`;
+  if (c.isSelf) html += '<p class="warn">This is your own form. Someone else has to check your documents.</p>';
+  if (p.rehire) html += `<p class="warn">${p.rehire.action === 'new_i9' ? 'This person was rehired and the earlier form is too old to reuse. Ask them to fill in a new Section 1 on their "New hire paperwork" page, then fill in Section 2 here.' : `This person was rehired${p.rehire.startDate ? ` from ${esc(day(p.rehire.startDate))}` : ''}. The earlier form can be reused: record the rehire under Supplement B below.`}</p>`;
+
+  html += '<h3>Section 1: filled in by the person</h3>';
+  if (!s1) html += `<p class="hint">Not filled in yet${p.section1Due ? `. It is due by ${esc(day(p.section1Due))}, their first day of work` : ''}. The person does this on their own "New hire paperwork" page. Section 2 opens here once they have.</p>`;
+  else html += `<table><tbody><tr><th>Status they stated</th><td>${esc(STATUS[s1.citizenshipStatus] || s1.citizenshipStatus)}</td></tr><tr><th>Signed</th><td>${esc(s1.signedName || '')}, ${esc(day(s1.signedAt))}</td></tr>
+    ${s1.workAuthorizationExpires ? `<tr><th>Allowed to work until</th><td>${esc(day(s1.workAuthorizationExpires))}</td></tr>` : ''}
+    ${s1.authorizationNumberLast4 !== undefined ? `<tr><th>Their registration or admission number</th><td><span class="num" data-num="section1:">${s1.authorizationNumberLast4 ? `ends in ${esc(s1.authorizationNumberLast4)}` : 'on file'}</span>${revealBtn('section1')}</td></tr>` : ''}</tbody></table>`;
+
+  html += `<h3>Section 2: the documents you checked</h3><p class="hint">Due ${p.section2Due ? esc(day(p.section2Due)) : 'once a first day is on file'}: within 3 business days of the first day of work.</p>`;
+  if (s2) {
+    html += `<table><thead><tr><th>List</th><th>Document</th><th>Number</th><th>Expires</th></tr></thead><tbody>${['listA', 'listB', 'listC'].filter((k) => s2[k]).map((k) => docLine(`List ${k.slice(-1)}`, s2[k], k)).join('')}</tbody></table>
+      <p class="hint">Checked on ${esc(day(s2.examinedOn))}, ${esc((METHOD[s2.examinationMethod] || '').toLowerCase())}, by ${esc(s2.signerName || '')}${s2.signerTitle ? ` (${esc(s2.signerTitle)})` : ''}.</p>`;
+    if (mayWrite) html += '<div class="row"><button class="ghost small" id="redo2">Correct Section 2</button></div>';
+  }
+  if (s1 && mayWrite) html += `<form id="f2" ${s2 ? 'hidden' : ''} novalidate>
+      <p>The person chooses which documents to show. You may not ask for a particular one.</p>
+      <label class="check"><input type="radio" name="choice" value="A" checked> <span>One document from <b>List A</b> (shows both who they are and that they may work)</span></label>
+      <label class="check"><input type="radio" name="choice" value="BC"> <span>One document from <b>List B</b> (who they are) and one from <b>List C</b> (that they may work)</span></label>
+      <fieldset id="boxA"><legend>List A document</legend>${docFields('a', 'A', true)}</fieldset>
+      <fieldset id="boxB" hidden><legend>List B document</legend>${docFields('b', 'B', true)}</fieldset>
+      <fieldset id="boxC" hidden><legend>List C document</legend>${docFields('c', 'C', true)}</fieldset>
+      ${signFields('s2')}
+      <div class="row"><button type="submit">Save Section 2</button><span class="hint">The lists are short versions of the official ones. ${esc(opts.note)}</span></div>
+    </form>`;
+  else if (!s2 && s1 && !list.canManage) html += '<p class="hint">Not done yet.</p>';
+
+  if (s2) {
+    html += '<h3>Supplement B: checking again, rehire or a new name</h3>';
+    html += s2.supplementB.length ? `<table><thead><tr><th>What</th><th>Document</th><th>Number</th><th>Expires</th><th>Recorded</th></tr></thead><tbody>${s2.supplementB.map((s) => `<tr><td>${esc(KIND[s.kind] || s.kind)}${s.rehireDate ? `<br><span class="hint">Rehired ${esc(day(s.rehireDate))}</span>` : ''}${s.newName ? `<br><span class="hint">New name: ${esc(s.newName)}</span>` : ''}</td>
+        ${s.document ? `<td>${esc(s.document.title)} <span class="hint">(List ${esc(s.document.list)})</span></td><td><span class="num" data-num="supplement:${esc(s.id)}">${esc(s.document.numberMasked)}</span>${revealBtn('supplement', s.id)}</td><td>${esc(day(s.document.expiresOn)) || '<span class="hint">Does not expire</span>'}</td>` : '<td colspan="3" class="hint">No new document</td>'}
+        <td>${esc(day(s.examinedOn))}<br><span class="hint">${esc(s.signerName || '')}</span></td></tr>`).join('')}</tbody></table>` : '<p class="hint">Nothing recorded.</p>';
+    if (mayWrite && !(p.rehire && p.rehire.action === 'new_i9')) html += `<form id="fb" novalidate>
+      <div class="grid">
+        <label>What are you recording? <select id="bKind">${opts.supplementKinds.map((k) => `<option value="${k}" ${p.rehire && k === 'rehire' ? 'selected' : ''}>${esc(KIND[k] || k)}</option>`).join('')}</select></label>
+        <label id="bRehireBox" hidden>Date of rehire <input id="bRehire" type="date" value="${esc((p.rehire && p.rehire.startDate) || '')}"></label>
+        <label id="bNameBox" hidden>New legal name <input id="bNewName" maxlength="120"></label>
+      </div>
+      <label class="check" id="bDocAsk" style="margin-top:12px" hidden><input type="checkbox" id="bHasDoc"> <span>The person also showed a new document</span></label>
+      <fieldset id="bDocBox"><legend>New document (List A or List C)</legend>${docFields('bd', null, false)}</fieldset>
+      ${signFields('sb')}
+      <div class="row"><button type="submit">Save to Supplement B</button><span class="hint">A document from List B (identity only) is never checked again.</span></div>
+    </form>`;
+  }
+
+  html += '<h3>Copies of the documents</h3>';
+  if (c.copiesHidden) html += `<p class="hint">${esc(c.copyCount)} ${c.copyCount === 1 ? 'copy is' : 'copies are'} stored as confidential ${c.copyCount === 1 ? 'file' : 'files'}. Your role cannot open confidential files.</p>`;
+  else html += c.copies.length ? `<table><thead><tr><th>Title</th><th>For</th><th>Stored</th><th>Keep until</th><th></th></tr></thead><tbody>${c.copies.map((d) => `<tr><td>${esc(d.title)}<br><span class="hint">${esc(d.fileName)}, ${Math.max(1, Math.round(d.size / 1024))} KB</span></td><td>${esc(PART[d.part] || '')}, List ${esc(d.list || '')}</td><td>${esc(day(d.uploadedAt))}</td><td>${esc(day(d.retainUntil))}</td><td><button class="small ghost" data-copy="${esc(d.id)}" data-name="${esc(d.fileName)}">Download</button></td></tr>`).join('')}</tbody></table>` : '<p class="hint">No copies stored. Keeping copies is optional; if you keep them, keep them for everyone.</p>';
+  if (s1 && mayWrite && list.canStoreCopies) html += `<form id="fc" class="row" novalidate><label>Add a copy <input id="cFile" type="file" accept=".pdf,.png,.jpg,.jpeg"></label><label>Which list <select id="cList"><option>A</option><option>B</option><option>C</option></select></label><label>Title (optional) <input id="cTitle" maxlength="120"></label><button type="submit" class="ghost">Store the copy</button></form><p class="hint">Copies are stored encrypted as confidential files in the document vault.</p>`;
+
+  $('detail').innerHTML = html; $('detail').hidden = false;
+  for (const [p2, key] of [['a', 'A'], ['b', 'B'], ['c', 'C']]) if ($(`${p2}Type`)) syncTitle(p2);
+  if ($('fb')) { syncSupplementList(); syncKind(); }
+}
+const syncTitle = (p) => { const sel = $(`${p}Type`); $(`${p}Title`).value = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : ''; };
+function syncSupplementList() { $('bdType').innerHTML = typeOptions($('bdList').value); syncTitle('bd'); }
+function syncKind() {
+  const k = $('bKind').value;
+  $('bRehireBox').hidden = k !== 'rehire'; $('bNameBox').hidden = k !== 'name_change'; $('bDocAsk').hidden = k === 'reverification';
+  $('bDocBox').hidden = k !== 'reverification' && !$('bHasDoc').checked;
+}
+async function openPerson(id) {
+  say('');
+  current = await api('GET', `/employees/${encodeURIComponent(id)}/i9`);
+  paintDetail(); $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+async function storeCopy(file, fields) {
+  const f = new FormData(); for (const [k, v] of Object.entries(fields)) if (v) f.append(k, v); f.append('file', file);
+  await api('POST', `/employees/${encodeURIComponent(current.person.id)}/i9/documents`, f);
+}
+/** Saves the copies chosen next to a form; a failed copy does not undo the saved form */
+async function storeCopies(items) {
+  const failed = [];
+  for (const [file, fields] of items) { if (!file) continue; try { await storeCopy(file, fields); } catch (e) { failed.push(`${file.name}: ${e.message}`); } }
+  return failed;
+}
+const sign = (p) => ({ examinedOn: $(`${p}On`).value, examinationMethod: $(`${p}Method`).value, signerName: $(`${p}Name`).value.trim(), signerTitle: $(`${p}Title2`).value.trim(), certification: $(`${p}Cert`).checked });
+async function refresh(text, failed) {
+  const id = current.person.id;
+  await loadLists(); await openPerson(id);
+  say(failed.length ? `${text} But a copy could not be stored: ${failed.join('; ')}` : text, failed.length === 0);
+}
+
+$('detail').addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.name === 'choice') { const a = t.value === 'A'; $('boxA').hidden = !a; $('boxB').hidden = a; $('boxC').hidden = a; }
+  if (['aType', 'bType', 'cType', 'bdType'].includes(t.id)) syncTitle(t.id.replace('Type', ''));
+  if (t.id === 'bdList') syncSupplementList();
+  if (t.id === 'bKind' || t.id === 'bHasDoc') syncKind();
+});
+$('detail').addEventListener('submit', async (e) => {
+  e.preventDefault(); const btn = e.target.querySelector('button[type=submit]'); btn.disabled = true;
+  try {
+    const id = encodeURIComponent(current.person.id);
+    if (e.target.id === 'f2') {
+      const useA = e.target.querySelector('input[name=choice]:checked').value === 'A';
+      const body = { ...(useA ? { listA: readDoc('a', true) } : { listB: readDoc('b', true), listC: readDoc('c', true) }), ...sign('s2') };
+      await api('PUT', `/employees/${id}/i9/section2`, body);
+      const failed = await storeCopies(useA ? [[fileOf('a'), { list: 'A', title: body.listA.title }]] : [[fileOf('b'), { list: 'B', title: body.listB.title }], [fileOf('c'), { list: 'C', title: body.listC.title }]]);
+      await refresh('Section 2 is saved.', failed);
+    } else if (e.target.id === 'fb') {
+      const kind = $('bKind').value; const withDoc = kind === 'reverification' || $('bHasDoc').checked;
+      const body = { kind, ...(kind === 'rehire' ? { rehireDate: $('bRehire').value } : {}), ...(kind === 'name_change' ? { newName: $('bNewName').value.trim() } : {}), ...(withDoc ? { document: { list: $('bdList').value, ...readDoc('bd', false) } } : {}), ...sign('sb') };
+      const out = await api('POST', `/employees/${id}/i9/reverification`, body);
+      const failed = withDoc ? await storeCopies([[fileOf('bd'), { list: body.document.list, part: 'supplement', supplementId: out.supplement.id, title: body.document.title }]]) : [];
+      await refresh('Supplement B is saved.', failed);
+    } else if (e.target.id === 'fc') {
+      const file = $('cFile').files[0]; if (!file) throw new Error('Choose a file first');
+      await storeCopy(file, { list: $('cList').value, title: $('cTitle').value.trim() });
+      await refresh('The copy is stored.', []);
+    }
+  } catch (err) { say(err.message, false); btn.disabled = false; }
+});
+$('detail').addEventListener('click', async (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  try {
+    if (t.id === 'closeDetail') { $('detail').hidden = true; current = null; return; }
+    if (t.id === 'redo2') { $('f2').hidden = false; t.hidden = true; return; }
+    if (t.dataset.copy) {
+      const res = await api('GET', `/vault/documents/${encodeURIComponent(t.dataset.copy)}/download`);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(await res.blob()); a.download = t.dataset.name || 'document'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      return;
+    }
+    if (t.dataset.reveal) {
+      // first click asks why; the answer goes into the activity log with your name
+      const box = document.createElement('span'); box.className = 'row'; box.style.marginTop = '6px';
+      const why = document.createElement('input'); why.placeholder = 'Why do you need the full number?'; why.maxLength = 200; why.size = 34;
+      const go = document.createElement('button'); go.className = 'small'; go.textContent = 'Show'; go.dataset.go = t.dataset.reveal; go.dataset.sup = t.dataset.sup || '';
+      box.append(why, go); t.replaceWith(box); why.focus(); return;
+    }
+    if (t.dataset.go) {
+      const why = t.previousElementSibling.value.trim();
+      if (why.length < 5) throw new Error('Write a short reason (at least 5 characters). It is saved in the activity log.');
+      const out = await api('POST', `/employees/${encodeURIComponent(current.person.id)}/i9/document-number/reveal`, { which: t.dataset.go, supplementId: t.dataset.sup || undefined, reason: why });
+      const cell = $('detail').querySelector(`[data-num="${CSS.escape(`${t.dataset.go}:${t.dataset.sup || ''}`)}"]`);
+      const masked = cell.textContent; cell.textContent = out.number; cell.classList.add('shown'); t.parentElement.remove();
+      setTimeout(() => { cell.textContent = masked; cell.classList.remove('shown'); }, 30000); // hidden again after 30 seconds
+    }
+  } catch (err) { say(err.message, false); }
+});
+document.querySelector('main').addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b) openPerson(b.dataset.open).catch((err) => say(err.message, false)); });
+$('show').addEventListener('change', paintLists);
+$('window').addEventListener('change', () => loadLists().catch((err) => say(err.message, false)));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    opts = await api('GET', '/i9/options');
+    await loadLists();
+    const want = new URLSearchParams(window.location.search).get('person');
+    if (want) await openPerson(want);
+  } catch (e) { say(e.message, false); }
+});
+</script>
+</body>
+</html>

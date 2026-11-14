@@ -4,24 +4,39 @@ const multer = require('multer');
 const router = express.Router();
 const { rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { can, requirePermission } = require('../services/permissions');
 const { requireUsOrg, audit, exists } = require('./us-hr').helpers;
 const { orgInfo } = require('./time').helpers;
 const timeRules = require('../services/time-rules');
 const V = require('../services/vault-rules');
 const store = require('../services/file-store');
 
-const CONFIDENTIAL_ROLES = ['Super Admin', 'super_admin', 'hr_admin'];
+// Who may do what on these routes (services/permissions.js decides which roles hold each permission):
+//   store, change or delete a document                         vault.manage
+//   anything to do with a confidential document, legal hold    vault.confidential (never an auditor)
+//   read a person's documents that are not confidential        people.read (HR, owner, auditor)
+//   read company documents that are not confidential           compliance.view (HR, owner, auditor)
+//   everyone else                                              only documents shared with them
+const MANAGE = requirePermission('vault.manage');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: V.MAX_BYTES + 1, files: 1, fields: 12 } });
 
 router.use(verifyToken);
 
-const norm = (r) => String(r || '').toLowerCase().replace(/[\s_-]+/g, '');
-const hasRole = (user, list) => list.some((r) => norm(r) === norm(user.role));
+/** May this user see (and download) this document? */
+function canSee(doc, user) {
+    if (!doc || !user || doc.deleted) return false;
+    if (doc.confidential) return can(user, 'vault.confidential');
+    if (can(user, 'vault.manage') || can(user, doc.scope === 'employee' ? 'people.read' : 'compliance.view')) return true;
+    if (!doc.shared) return false;
+    return doc.scope === 'company' || (Boolean(user.id) && doc.userId === user.id);
+}
+/** The list of expiring documents is for people who look after records, not for a person's own shared files */
+const EXPIRING = (req, res, next) => (can(req.user, 'vault.manage') || can(req.user, 'compliance.view') ? next() : res.status(403).json({ success: false, error: 'You do not have permission to do this' }));
 const today = async (orgId) => timeRules.localDate(new Date().toISOString(), (await orgInfo(orgId)).tz);
 
 const publicDoc = (id, d) => ({
-    id, scope: d.scope, category: d.category, categoryLabel: (V.categoryOf(d.category) || {}).label, title: d.title, userId: d.userId || null, employeeName: d.employeeName || null,
+    id, scope: d.scope, category: d.category, categoryLabel: (V.categoryOf(d.category) || {}).label || d.categoryLabel || d.category, title: d.title, userId: d.userId || null, employeeName: d.employeeName || null,
     fileName: d.fileName, mime: d.mime, size: d.size, uploadedAt: d.uploadedAt, expiresOn: d.expiresOn || null, retainUntil: d.retainUntil || null,
     shared: Boolean(d.shared), confidential: Boolean(d.confidential), legalHold: Boolean(d.legalHold)
 });
@@ -36,7 +51,7 @@ router.get('/vault/categories', requireUsOrg, (req, res) => {
     res.json({ success: true, note: 'Retention years are suggestions. Confirm the right period for your state with an advisor.', data: V.CATEGORIES });
 });
 
-router.post('/vault/documents', authorize(ADMIN_HR_ROLES), requireUsOrg, (req, res, next) => {
+router.post('/vault/documents', MANAGE, requireUsOrg, (req, res, next) => {
     upload.single('file')(req, res, (err) => {
         if (err && err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ success: false, error: 'The file is larger than 10 MB' });
         if (err) return res.status(400).json({ success: false, error: 'Could not read the upload' });
@@ -46,7 +61,7 @@ router.post('/vault/documents', authorize(ADMIN_HR_ROLES), requireUsOrg, (req, r
     const meta = { ...req.body, shared: req.body.shared === 'true' || req.body.shared === true };
     const { errors, value } = V.validateUpload(meta, req.file);
     if (errors.length) return res.status(400).json({ success: false, errors });
-    if (value.confidential && !hasRole(req.user, CONFIDENTIAL_ROLES)) return res.status(403).json({ success: false, error: 'Only a super admin or HR admin can store confidential documents' });
+    if (value.confidential && !can(req.user, 'vault.confidential')) return res.status(403).json({ success: false, error: 'Only a super admin or HR admin can store confidential documents' });
 
     let employeeName = null;
     if (value.scope === 'employee') {
@@ -75,7 +90,7 @@ router.post('/vault/documents', authorize(ADMIN_HR_ROLES), requireUsOrg, (req, r
 
 router.get('/vault/documents', requireUsOrg, async (req, res) => {
     const snap = await rawCollection('vault_documents').where('orgId', '==', req.orgId).get();
-    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((d) => V.canView(d, req.user));
+    let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((d) => canSee(d, req.user));
     if (req.query.scope) rows = rows.filter((d) => d.scope === req.query.scope);
     if (req.query.userId) rows = rows.filter((d) => d.userId === req.query.userId);
     if (req.query.category) rows = rows.filter((d) => d.category === req.query.category);
@@ -85,7 +100,7 @@ router.get('/vault/documents', requireUsOrg, async (req, res) => {
 
 router.get('/vault/documents/:id/download', requireUsOrg, async (req, res) => {
     const doc = await loadDoc(req, res); if (!doc) return;
-    if (!V.canView({ ...doc.data }, req.user)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!canSee(doc.data, req.user)) return res.status(403).json({ success: false, error: 'Not allowed' });
     let buf;
     try {
         buf = await store.readFile(req.orgId, doc.id);
@@ -98,16 +113,16 @@ router.get('/vault/documents/:id/download', requireUsOrg, async (req, res) => {
     res.send(buf);
 });
 
-router.put('/vault/documents/:id', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/vault/documents/:id', MANAGE, requireUsOrg, async (req, res) => {
     const doc = await loadDoc(req, res); if (!doc) return;
-    if (doc.data.confidential && !hasRole(req.user, CONFIDENTIAL_ROLES)) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (doc.data.confidential && !can(req.user, 'vault.confidential')) return res.status(403).json({ success: false, error: 'Not allowed' });
     const b = req.body || {};
     const patch = {};
     if (b.title !== undefined) { const t = String(b.title).trim(); if (!t) return res.status(400).json({ success: false, error: 'title cannot be empty' }); patch.title = t.slice(0, 120); }
     if (b.expiresOn !== undefined) { if (b.expiresOn && !/^\d{4}-\d{2}-\d{2}$/.test(b.expiresOn)) return res.status(400).json({ success: false, error: 'expiresOn must be YYYY-MM-DD' }); patch.expiresOn = b.expiresOn || null; }
     if (b.shared !== undefined && !doc.data.confidential) patch.shared = b.shared === true;
     if (b.legalHold !== undefined) {
-        if (!hasRole(req.user, CONFIDENTIAL_ROLES)) return res.status(403).json({ success: false, error: 'Only a super admin or HR admin can place a legal hold' });
+        if (!can(req.user, 'vault.confidential')) return res.status(403).json({ success: false, error: 'Only a super admin or HR admin can place a legal hold' });
         patch.legalHold = b.legalHold === true;
     }
     if (!Object.keys(patch).length) return res.status(400).json({ success: false, error: 'Nothing to change' });
@@ -116,8 +131,9 @@ router.put('/vault/documents/:id', authorize(ADMIN_HR_ROLES), requireUsOrg, asyn
     res.json({ success: true, document: publicDoc(doc.id, { ...doc.data, ...patch }) });
 });
 
-router.delete('/vault/documents/:id', authorize(CONFIDENTIAL_ROLES), requireUsOrg, async (req, res) => {
+router.delete('/vault/documents/:id', MANAGE, requireUsOrg, async (req, res) => {
     const doc = await loadDoc(req, res); if (!doc) return;
+    if (doc.data.confidential && !can(req.user, 'vault.confidential')) return res.status(403).json({ success: false, error: 'Not allowed' });
     const check = V.deletionCheck(doc.data, await today(req.orgId));
     if (!check.ok) return res.status(409).json({ success: false, error: check.reason });
     await store.removeFile(req.orgId, doc.id);
@@ -127,13 +143,14 @@ router.delete('/vault/documents/:id', authorize(CONFIDENTIAL_ROLES), requireUsOr
 });
 
 /** Documents (licenses, insurance, certificates) that expire soon or already have */
-router.get('/vault/expiring', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/vault/expiring', EXPIRING, requireUsOrg, async (req, res) => {
     const t = await today(req.orgId);
     const window = Math.min(365, Math.max(1, Number(req.query.days) || 60));
     const snap = await rawCollection('vault_documents').where('orgId', '==', req.orgId).get();
-    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((d) => !d.deleted && d.expiresOn && V.canView(d, req.user))
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((d) => !d.deleted && d.expiresOn && canSee(d, req.user))
         .map((d) => ({ ...publicDoc(d.id, d), daysLeft: V.daysUntil(d.expiresOn, t) })).filter((d) => d.daysLeft <= window).sort((a, b) => a.daysLeft - b.daysLeft);
     res.json({ success: true, window, count: rows.length, data: rows });
 });
 
+router.helpers = { canSee };
 module.exports = router;

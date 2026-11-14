@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { db, rawCollection } = require('../config/firebase');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { can, requirePermission } = require('../services/permissions');
 const { requireUsOrg, audit, exists, PEOPLE_COLLECTIONS } = require('./us-hr').helpers;
 const { orgInfo } = require('./time').helpers;
 const timeRules = require('../services/time-rules');
@@ -13,7 +14,16 @@ const noticeRules = require('../services/notice-template-rules');
 const notices = require('../services/notice-templates');
 const { findEmployee } = require('./us-hr').helpers;
 
-const SENSITIVE_ROLES = ['Super Admin', 'super_admin', 'hr_admin'];
+// Who may do what on these routes (services/permissions.js decides which roles hold each permission):
+//   read notices, notice texts, the injury log and its summary      compliance.view (HR, owner, auditor)
+//   record or change notices and notice texts, set EEO job category  compliance.manage
+//   EEO totals                                                       eeo.report
+//   decide whether an injury is recordable                           safety.manage
+//   EEO self-identification and reporting an injury                  any signed-in person of the company
+const VIEW = requirePermission('compliance.view');
+const MANAGE = requirePermission('compliance.manage');
+const EEO_REPORT = requirePermission('eeo.report');
+const SAFETY = requirePermission('safety.manage');
 
 router.use(verifyToken);
 
@@ -33,7 +43,7 @@ const csv = (res, name, columns, rows) => {
 
 /* ---------------------------------- workplace notices ---------------------------------- */
 
-router.get('/postings', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/postings', VIEW, requireUsOrg, async (req, res) => {
     const [t, people, snap] = await Promise.all([todayFor(req.orgId), loadActivePeople(req.orgId), rawCollection('posting_records').where('orgId', '==', req.orgId).get()]);
     const entries = Object.fromEntries(snap.docs.map((d) => [d.data().key, d.data().entry]));
     const states = [...(req.org.usProfile && req.org.usProfile.workStates || []), ...people.map((d) => d.data().usProfile && d.data().usProfile.workState).filter(Boolean)];
@@ -41,7 +51,7 @@ router.get('/postings', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res
     res.json({ success: true, today: t, headcount: people.length, note: 'A tracker, not legal advice. Check the current list of required notices with the U.S. Department of Labor and your state labor department.', ...tracker });
 });
 
-router.put('/postings/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/postings/:key', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key);
     if (!posters.FEDERAL.some((f) => f.key === key) && !/^state_[A-Z]{2}$/.test(key)) return res.status(404).json({ success: false, error: 'Unknown notice' });
     const { errors, value } = posters.validateEntry(req.body);
@@ -57,32 +67,32 @@ router.put('/postings/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req
 const companyNameOf = (org) => (org.usProfile && org.usProfile.legalName) || org.legalName || org.name || org.companyName || '';
 const failList = (res, errors) => res.status(400).json({ success: false, errors });
 
-router.get('/notice-templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/notice-templates', VIEW, requireUsOrg, async (req, res) => {
     const lib = await notices.list(req.orgId);
     res.json({ success: true, note: noticeRules.REVIEW_NOTE, mark: noticeRules.DRAFT_BANNER, fields: noticeRules.MERGE_FIELDS, ...lib });
 });
 
-router.put('/notice-defaults', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/notice-defaults', MANAGE, requireUsOrg, async (req, res) => {
     const r = await notices.saveDefaults(req.orgId, req.body, req.user.id);
     if (r.errors) return failList(res, r.errors);
     audit(req.orgId, req, 'notice_defaults_updated', req.orgId, { fields: Object.keys(req.body || {}).filter((k) => noticeRules.DEFAULT_KEYS.includes(k)) });
     res.json({ success: true, defaults: r.defaults });
 });
 
-router.post('/notice-templates', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/notice-templates', MANAGE, requireUsOrg, async (req, res) => {
     const r = await notices.create(req.orgId, req.body, req.user.id);
     if (r.errors) return failList(res, r.errors);
     audit(req.orgId, req, 'notice_template_created', r.key, { title: r.template.title });
     res.status(201).json({ success: true, template: r.template });
 });
 
-router.get('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/notice-templates/:key', VIEW, requireUsOrg, async (req, res) => {
     const t = await notices.get(req.orgId, String(req.params.key));
     if (!t) return res.status(404).json({ success: false, error: 'Notice text not found' });
     res.json({ success: true, note: noticeRules.REVIEW_NOTE, template: t });
 });
 
-router.put('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/notice-templates/:key', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key);
     const r = await notices.save(req.orgId, key, req.body, req.user.id);
     if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
@@ -91,7 +101,7 @@ router.put('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, as
     res.json({ success: true, changed: r.changed, template: r.template });
 });
 
-router.post('/notice-templates/:key/reviewed', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/notice-templates/:key/reviewed', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key);
     const r = await notices.markReviewed(req.orgId, key, req.body, req.user.id, await todayFor(req.orgId));
     if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
@@ -101,7 +111,7 @@ router.post('/notice-templates/:key/reviewed', authorize(ADMIN_HR_ROLES), requir
     res.json({ success: true, template: r.template });
 });
 
-router.post('/notice-templates/:key/restore', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/notice-templates/:key/restore', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key);
     const r = await notices.restoreVersion(req.orgId, key, req.body && req.body.version, req.user.id);
     if (r.notFound) return res.status(404).json({ success: false, error: 'Notice text not found' });
@@ -110,7 +120,7 @@ router.post('/notice-templates/:key/restore', authorize(ADMIN_HR_ROLES), require
     res.json({ success: true, template: r.template });
 });
 
-router.delete('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.delete('/notice-templates/:key', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key);
     const r = await notices.remove(req.orgId, key);
     if (r.notFound) return res.status(404).json({ success: false, error: 'There is no saved copy of this notice text to remove' });
@@ -120,7 +130,7 @@ router.delete('/notice-templates/:key', authorize(ADMIN_HR_ROLES), requireUsOrg,
 });
 
 /** The notice with the fill-ins filled for one person (or nobody), ready to read, copy or print */
-router.post('/notice-templates/:key/render', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.post('/notice-templates/:key/render', MANAGE, requireUsOrg, async (req, res) => {
     const key = String(req.params.key); const b = req.body || {};
     let person = null;
     if (b.userId) {
@@ -135,7 +145,7 @@ router.post('/notice-templates/:key/render', authorize(ADMIN_HR_ROLES), requireU
 });
 
 /** Attach a notice text to a tracked workplace notice (templateKey: null detaches) */
-router.put('/postings/:key/template', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/postings/:key/template', MANAGE, requireUsOrg, async (req, res) => {
     const postingKey = String(req.params.key); const templateKey = req.body ? req.body.templateKey : undefined;
     if (templateKey !== null && typeof templateKey !== 'string') return failList(res, ['templateKey is required (or null to detach)']);
     const r = await notices.attach(req.orgId, postingKey, templateKey, req.user.id);
@@ -165,7 +175,7 @@ router.put('/eeo/me', requireUsOrg, async (req, res) => {
     res.json({ success: true });
 });
 
-router.put('/eeo/job-category/:userId', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/eeo/job-category/:userId', MANAGE, requireUsOrg, async (req, res) => {
     const key = String((req.body && req.body.jobCategory) || '');
     if (!eeo.JOB_CATEGORIES.some((c) => c.key === key)) return res.status(400).json({ success: false, error: 'jobCategory is not valid' });
     const ref = rawCollection('users').doc(req.params.userId);
@@ -177,7 +187,7 @@ router.put('/eeo/job-category/:userId', authorize(ADMIN_HR_ROLES), requireUsOrg,
 });
 
 /** EEO-1 style totals. Totals only: no one's individual answers are ever shown. */
-router.get('/eeo/report', authorize(SENSITIVE_ROLES), requireUsOrg, async (req, res) => {
+router.get('/eeo/report', EEO_REPORT, requireUsOrg, async (req, res) => {
     const [docs, selfSnap] = await Promise.all([loadActivePeople(req.orgId), rawCollection('eeo_selfid').where('orgId', '==', req.orgId).get()]);
     const self = new Map(selfSnap.docs.map((d) => [d.data().userId, d.data().record]));
     const people = docs.map((d) => ({ jobCategory: d.data().usProfile && d.data().usProfile.eeoJobCategory, selfId: self.get(d.id) || null }));
@@ -211,14 +221,14 @@ router.post('/osha/report', requireUsOrg, async (req, res) => {
 
 router.get('/osha/incidents', requireUsOrg, async (req, res) => {
     const snap = await rawCollection('osha_incidents').where('orgId', '==', req.orgId).get();
-    const staff = ADMIN_HR_ROLES.some((r) => String(r).toLowerCase().replace(/[\s_-]+/g, '') === String(req.user.role).toLowerCase().replace(/[\s_-]+/g, ''));
+    const staff = can(req.user, 'compliance.view'); // everyone else sees only what they reported themselves
     let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (!staff) rows = rows.filter((r) => r.userId === req.user.id).map((r) => ({ id: r.id, dateOfIncident: r.dateOfIncident, description: r.description, location: r.location, status: r.status, reportedAt: r.reportedAt }));
     rows.sort((a, b) => String(b.reportedAt).localeCompare(String(a.reportedAt)));
     res.json({ success: true, count: rows.length, data: rows.slice(0, 300) });
 });
 
-router.put('/osha/incidents/:id/classify', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.put('/osha/incidents/:id/classify', SAFETY, requireUsOrg, async (req, res) => {
     const ref = rawCollection('osha_incidents').doc(req.params.id);
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Incident not found' });
@@ -234,7 +244,7 @@ async function incidentsForYear(orgId, year) {
     return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((i) => i.status === 'classified' && String(i.dateOfIncident).startsWith(String(year)));
 }
 
-router.get('/osha/log', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/osha/log', VIEW, requireUsOrg, async (req, res) => {
     const year = yearOf(req.query.year, Number((await todayFor(req.orgId)).slice(0, 4)));
     const rows = osha.logRows(await incidentsForYear(req.orgId, year), year);
     if (req.query.format === 'csv') {
@@ -243,7 +253,7 @@ router.get('/osha/log', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res
     res.json({ success: true, year, note: 'Whether a case is recordable, and who must keep or electronically submit these forms, depends on OSHA rules for your industry and size. Confirm on osha.gov.', count: rows.length, data: rows });
 });
 
-router.get('/osha/summary', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/osha/summary', VIEW, requireUsOrg, async (req, res) => {
     const year = yearOf(req.query.year, Number((await todayFor(req.orgId)).slice(0, 4)));
     const [incidents, weeks, people] = await Promise.all([
         incidentsForYear(req.orgId, year), rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get(), loadActivePeople(req.orgId)

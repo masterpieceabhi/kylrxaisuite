@@ -196,12 +196,31 @@ function validateI9Section2(input, firstDayIso) {
     return { errors, value };
 }
 
-/** Earliest expiry among the documents and the work-authorization date that need reverification */
+// People whose right to work does not end are not reverified (USCIS: never U.S. citizens or noncitizen nationals,
+// and not a permanent resident who showed a Permanent Resident Card). Confirm with a US compliance advisor.
+const I9_NO_REVERIFY_STATUSES = ['us_citizen', 'noncitizen_national'];
+const I9_NO_REVERIFY_DOCUMENTS = ['permanent_resident_card'];
+
+/** The newest Supplement B entry that recorded a document (reverification or rehire), or null */
+function latestSupplementDocument(section2) {
+    const list = section2 && Array.isArray(section2.supplementB) ? section2.supplementB.filter((s) => s && s.document) : [];
+    return list.length ? list[list.length - 1] : null;
+}
+
+/**
+ * The date by which work authorization must be checked again, or null.
+ * Once a Supplement B entry has recorded a newer document, that document's expiry replaces the earlier dates
+ * (no expiry on it means nothing more to reverify). Otherwise: the earliest expiry among the Section 1
+ * work-authorization date and the List A / List C documents.
+ */
 function reverificationDate(section1, section2) {
+    if (section1 && I9_NO_REVERIFY_STATUSES.includes(section1.citizenshipStatus)) return null;
+    const newest = latestSupplementDocument(section2);
+    if (newest) return newest.document.expiresOn || null;
     const dates = [];
     if (section1 && section1.workAuthorizationExpires) dates.push(section1.workAuthorizationExpires);
     if (section2) {
-        ['listA', 'listC'].forEach((k) => { if (section2[k] && section2[k].expiresOn) dates.push(section2[k].expiresOn); });
+        ['listA', 'listC'].forEach((k) => { if (section2[k] && section2[k].expiresOn && !I9_NO_REVERIFY_DOCUMENTS.includes(section2[k].type)) dates.push(section2[k].expiresOn); });
     }
     return dates.length ? dates.sort()[0] : null;
 }
@@ -254,5 +273,6 @@ function onboardingStatus({ firstDay, w4, i9, todayIso, options = {} }) {
 module.exports = {
     W4_FILING_STATUSES, I9_CITIZENSHIP, I9_LIST_A, I9_LIST_B, I9_LIST_C,
     parseIsoDate, isoDate, federalHolidays, addBusinessDays,
-    validateW4, validateI9Section1, validateI9Section2, reverificationDate, retainUntil, onboardingStatus
+    validateW4, validateI9Section1, validateI9Section2, validateDocument, reverificationDate, latestSupplementDocument, retainUntil, onboardingStatus,
+    I9_NO_REVERIFY_STATUSES, I9_NO_REVERIFY_DOCUMENTS
 };

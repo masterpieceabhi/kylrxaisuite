@@ -193,11 +193,17 @@ function leaveLiabilityReport(rows, peopleById) {
 const ISSUE_TEXT = {
     no_start_date: 'No start date', no_taxpayer_id: 'No SSN or ITIN on file', no_work_state: 'No work state', no_pay_rate: 'No pay rate', no_classification: 'No worker type',
     no_direct_deposit: 'No direct deposit', w4_missing: 'W-4 missing', i9_section1_missing: 'I-9 Section 1 missing', i9_section2_missing: 'I-9 Section 2 missing',
-    i9_reverification_due: 'I-9 expires within 90 days', i9_reverification_overdue: 'I-9 expired', i9_purge_ok: 'I-9 can be disposed of (retention period passed)'
+    i9_reverification_due: 'I-9 expires within 90 days', i9_reverification_overdue: 'I-9 expired', i9_purge_ok: 'I-9 can be disposed of (retention period passed)',
+    training_overdue: 'Training overdue'
 };
 
-/** Paperwork and data problems per person, for compliance and data-quality review */
-function complianceReport(people, asOf) {
+/**
+ * Paperwork and data problems per person, for compliance and data-quality review.
+ * extra.training (optional): Map of person id -> { overdue: [training names] } from services/training-rules.js byPerson().
+ * A current employee with an overdue training gets the "Training overdue" problem, with the names in the text.
+ */
+function complianceReport(people, asOf, extra = {}) {
+    const training = extra && extra.training instanceof Map ? extra.training : null;
     const rows = [];
     for (const p of people) {
         const left = p.periods.length > 0 && !isActiveOn(p, asOf) && p.periods.every((per) => per.end && per.end < asOf);
@@ -223,7 +229,9 @@ function complianceReport(people, asOf) {
                 if (st.flags.includes('i9_reverification_overdue')) issues.push('i9_reverification_overdue');
             }
         }
-        if (issues.length) rows.push({ id: p.id, employeeId: p.employeeId, name: p.name, department: p.department, issues, issueText: issues.map((i) => ISSUE_TEXT[i]), reverifyOn: reverificationDate(f.i9 && f.i9.section1, f.i9 && f.i9.section2) });
+        const lateTraining = !left && training && training.get(p.id) ? (training.get(p.id).overdue || []) : [];
+        if (lateTraining.length) issues.push('training_overdue');
+        if (issues.length) rows.push({ id: p.id, employeeId: p.employeeId, name: p.name, department: p.department, issues, issueText: issues.map((i) => (i === 'training_overdue' ? `${ISSUE_TEXT[i]}: ${lateTraining.join(', ')}` : ISSUE_TEXT[i])), ...(lateTraining.length ? { trainingOverdue: lateTraining } : {}), reverifyOn: reverificationDate(f.i9 && f.i9.section1, f.i9 && f.i9.section2) });
     }
     const counts = {};
     rows.forEach((r) => r.issues.forEach((i) => { counts[i] = (counts[i] || 0) + 1; }));

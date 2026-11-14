@@ -30,6 +30,11 @@ async function context(req) {
     return { info, today: timeRules.localDate(new Date().toISOString(), info.tz) };
 }
 
+/** Overdue trainings per person for the paperwork report. A problem reading them never breaks the report. */
+async function trainingExtra(orgId) {
+    try { return { training: await require('./us-training').helpers.statusByPerson(orgId) }; } catch (e) { require('../utils/logger').error(`Paperwork report: training records could not be read: ${e.message}`); return {}; }
+}
+
 function sendCsv(res, name, columns, rows) {
     res.set('Content-Type', 'text/csv; charset=utf-8');
     res.set('Content-Disposition', `attachment; filename="${name}.csv"`);
@@ -42,7 +47,7 @@ router.get('/reports/summary', async (req, res) => {
     const { people } = await loadPeople(req.orgId);
     const hc = R.headcountReport(people, today, 6);
     const t = R.turnoverReport(people, addDays(today, -89), today);
-    const comp = R.complianceReport(people, today);
+    const comp = R.complianceReport(people, today, await trainingExtra(req.orgId));
     const weeksSnap = await rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get();
     const weeks = weeksSnap.docs.map((d) => d.data());
     res.json({
@@ -123,7 +128,7 @@ router.get('/reports/leave', async (req, res) => {
 router.get('/reports/compliance', async (req, res) => {
     const { today } = await context(req);
     const { people } = await loadPeople(req.orgId);
-    const report = R.complianceReport(people, today);
+    const report = R.complianceReport(people, today, await trainingExtra(req.orgId));
     if (req.query.format === 'csv') {
         return sendCsv(res, 'paperwork-and-data-issues', [['employeeId', 'Employee ID'], ['name', 'Name'], ['department', 'Department'], ['problems', 'Problems'], ['reverifyOn', 'I-9 expiry']].map(([key, label]) => ({ key, label })),
             report.list.map((r) => ({ ...r, problems: r.issueText.join('; ') })));
@@ -144,13 +149,13 @@ router.get('/reports/i9-audit', async (req, res) => {
 });
 
 router.get('/reports/time', async (req, res) => {
-    const { today } = await context(req);
+    const { today, info } = await context(req);
     const since = addDays(today, -7 * Math.min(26, Math.max(1, Number(req.query.weeks) || 8)));
     const [wsnap, csnap] = await Promise.all([
         rawCollection('timesheet_weeks').where('orgId', '==', req.orgId).get(),
         rawCollection('punch_corrections').where('orgId', '==', req.orgId).get()
     ]);
-    const weeks = wsnap.docs.map((d) => d.data()).filter((w) => w.weekStart >= timeRules.weekStart(since));
+    const weeks = wsnap.docs.map((d) => d.data()).filter((w) => w.weekStart >= timeRules.weekStartFor(since, info.workweek));
     const corrections = csnap.docs.map((d) => d.data()).filter((c) => String(c.createdAt).slice(0, 10) >= since);
     const report = R.timeReport(weeks, corrections, today);
     if (req.query.format === 'csv') {

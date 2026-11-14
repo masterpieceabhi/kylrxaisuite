@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { db, rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
-const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { requirePermission } = require('../services/permissions');
 const { requireUsOrg, findEmployee, audit, PEOPLE_COLLECTIONS } = require('./us-hr').helpers;
 const { orgInfo, punchesSince } = require('./time').helpers;
 const { balanceFor, loadPolicies, hireDateOf } = require('./us-leave').helpers;
@@ -16,7 +17,12 @@ const exitRules = require('../services/exit-interview-rules');
 const exitInterviews = require('../services/exit-interviews');
 const reports = require('../services/us-reports');
 
-const OFFBOARD_ROLES = ['Super Admin', 'super_admin', 'hr_admin', 'Admin'];
+// Who may do what on these routes (services/permissions.js decides which roles hold each permission):
+//   see who is leaving and what is left to finish            people.read (HR, owner, auditor)
+//   record or cancel a termination, bring someone back       people.write
+//   exit interview answers                                   HR and the owner only (exit-interview-rules.canViewAnswers)
+const READ = requirePermission('people.read');
+const WRITE = requirePermission('people.write');
 
 const todayIn = (tz) => timeRules.localDate(new Date().toISOString(), tz);
 const isTerminated = (d) => /^terminated$/i.test(String(d.status || ''));
@@ -50,7 +56,7 @@ if (process.env.NODE_ENV !== 'test') {
 router.use(verifyToken);
 
 /** Everyone who is leaving or has left, with their checklist progress */
-router.get('/offboarding', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/offboarding', READ, requireUsOrg, async (req, res) => {
     await applyDueTerminations();
     const info = await orgInfo(req.orgId);
     const today = todayIn(info.tz);
@@ -69,7 +75,7 @@ router.get('/offboarding', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, 
     res.json({ success: true, today, data: rows });
 });
 
-router.post('/offboarding/:id/terminate', authorize(OFFBOARD_ROLES), requireUsOrg, async (req, res) => {
+router.post('/offboarding/:id/terminate', WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
     if (emp.id === req.user.id) return res.status(403).json({ success: false, error: 'You cannot end your own employment' });
@@ -93,7 +99,7 @@ router.post('/offboarding/:id/terminate', authorize(OFFBOARD_ROLES), requireUsOr
 });
 
 /** Take back a scheduled termination before the last day has passed */
-router.post('/offboarding/:id/cancel', authorize(OFFBOARD_ROLES), requireUsOrg, async (req, res) => {
+router.post('/offboarding/:id/cancel', WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
     if (emp.data.terminationStatus !== 'scheduled') return res.status(409).json({ success: false, error: 'Only a termination that has not taken effect can be cancelled. Use rehire for someone who has left.' });
@@ -106,7 +112,7 @@ router.post('/offboarding/:id/cancel', authorize(OFFBOARD_ROLES), requireUsOrg, 
 });
 
 /** What HR needs to finish: leave to pay out, I-9 retention date, hours in the last two weeks */
-router.get('/offboarding/:id/summary', authorize(ADMIN_HR_ROLES), requireUsOrg, async (req, res) => {
+router.get('/offboarding/:id/summary', READ, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
     const t = emp.data.usProfile && emp.data.usProfile.termination;
@@ -130,7 +136,7 @@ router.get('/offboarding/:id/summary', authorize(ADMIN_HR_ROLES), requireUsOrg, 
 });
 
 /** Bring a former employee back. Returns a new temporary password once. */
-router.post('/offboarding/:id/rehire', authorize(OFFBOARD_ROLES), requireUsOrg, async (req, res) => {
+router.post('/offboarding/:id/rehire', WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
     if (!isTerminated(emp.data)) return res.status(409).json({ success: false, error: 'Only someone who has left can be rehired' });
@@ -142,11 +148,13 @@ router.post('/offboarding/:id/rehire', authorize(OFFBOARD_ROLES), requireUsOrg, 
     }
     const access = await svc.restoreAccess(emp);
     const history = [...(emp.data.employmentHistory || []), { startDate: hireDateOf(emp), endDate: t.lastDay, type: t.type, reason: t.reason }];
+    const i9 = svc.i9RehireAction((emp.data.usForms || {}).i9, start);
     await emp.ref.update({
         status: 'Active', terminationStatus: null, joiningDate: start, password: access.hash, must_change_password: true, is_temporary_password: true, invite_status: 'pending',
-        employmentHistory: history, 'usProfile.termination': null, 'usProfile.startDate': start, 'usProfile.previousTermination': t
+        employmentHistory: history, 'usProfile.termination': null, 'usProfile.startDate': start, 'usProfile.previousTermination': t,
+        // the I-9 screen shows this until HR records the rehire on Supplement B or the person fills in a new form
+        'usForms.i9.rehire': { action: i9.action, reason: i9.reason, startDate: start, recordedAt: new Date().toISOString() }
     });
-    const i9 = svc.i9RehireAction((emp.data.usForms || {}).i9, start);
     await store.createChecklist(req.orgId, emp, 'rehire', start, { skipFederalHolidays: Boolean(req.org.usProfile && req.org.usProfile.i9SkipFederalHolidays) });
     audit(req.orgId, req, 'us_rehired', emp.id, { startDate: start, i9: i9.action });
     res.set('Cache-Control', 'no-store');

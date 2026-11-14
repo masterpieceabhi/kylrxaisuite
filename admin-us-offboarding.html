@@ -108,7 +108,7 @@ document.addEventListener('click', async (e) => {
       const r = rowsData.find((x) => x.userId === userId); let body = { startDate };
       if (r && r.rehireEligible === false) { const reason = window.prompt('This person was marked not eligible for rehire. Why are you rehiring them?'); if (!reason) return; body = { ...body, override: true, reason }; }
       const out = await api('POST', `/offboarding/${userId}/rehire`, body);
-      $('reOut').innerHTML = `Rehired. Temporary password, shown once: <code>${out.temporaryPassword}</code><br>I-9: <b>${out.i9.action === 'update_section_3' ? 'update Section 3 of the old form' : 'complete a new I-9'}</b> (${out.i9.reason}).`;
+      $('reOut').innerHTML = `Rehired. Temporary password, shown once: <code>${out.temporaryPassword}</code><br>I-9: <b>${out.i9.action === 'update_section_3' ? 'record the rehire on the old form (Supplement B) on the Form I-9 page' : 'complete a new I-9'}</b> (${out.i9.reason}).`;
       say('Rehired.'); await load();
     }
   } catch (err) { say(err.message, false); }

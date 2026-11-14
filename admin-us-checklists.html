@@ -31,7 +31,23 @@ tr.offrow td{color:#94a3b8}
 <header><h1>Checklists</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-offboarding.html">Offboarding</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
 <main>
   <div id="msg" role="status"></div>
-  <div class="tabs"><button data-tab="todo" class="on">To do <span id="todoCount"></span></button><button data-tab="lists">What is on each checklist</button></div>
+  <div class="tabs"><button data-tab="todo" class="on">To do <span id="todoCount"></span></button><button data-tab="one">One person's checklist</button><button data-tab="lists">What is on each checklist</button></div>
+
+  <div id="tab-one" class="pane">
+    <section class="card">
+      <h2>One person's checklist</h2>
+      <p class="hint">See what is on a person's lists and add a task for that person only. Tasks added here do not change the checklists other people get.</p>
+      <div class="row" style="margin-top:0"><label>Person<select id="onePerson"><option value="">Choose a person</option></select></label></div>
+      <div id="oneLists" style="margin-top:12px"></div>
+      <form id="oneForm" hidden><h3>Add a task for this person</h3><div class="grid">
+        <label>Checklist<select name="listId" required></select></label>
+        <label>Task<input name="title" required minlength="3" maxlength="120" placeholder="Bring your food handler card"></label>
+        <label>Done by<select name="assignee"><option value="employee">The employee</option><option value="hr">HR</option><option value="manager">Their manager</option></select></label>
+        <label>Due on (empty means today)<input name="dueDate" type="date"></label>
+        <label class="chk"><input type="checkbox" name="required"> Required</label>
+      </div><div class="row"><button type="submit">Add task</button></div></form>
+    </section>
+  </div>
 
   <div id="tab-todo" class="pane on">
     <section class="card">
@@ -103,9 +119,43 @@ $('save').addEventListener('click', async () => {
   try { tpl = (await req('PUT', '/templates', { settings })).templates; changed = false; $('dirty').textContent = ''; paint(); say('Saved. New checklists use these tasks. Lists that already exist are not changed.'); } catch (e) { say(e.message, false); }
 });
 window.addEventListener('beforeunload', (e) => { if (changed) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ---------- one person's checklist: look, and add a task for that person only ---------- */
+let onePeopleLoaded = false;
+async function loadOnePeople() {
+  if (onePeopleLoaded) return;
+  const res = await fetch('/api/us/employees', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((typeof json.error === 'string' && json.error) || `Could not load people (${res.status})`);
+  onePeopleLoaded = true;
+  $('onePerson').insertAdjacentHTML('beforeend', (json.data || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map((p) => `<option value="${esc(p.id)}">${esc(p.name || p.email || p.id)}${p.employeeId ? ` (${esc(p.employeeId)})` : ''}</option>`).join(''));
+}
+async function loadOne() {
+  const id = $('onePerson').value; const form = $('oneForm');
+  if (!id) { $('oneLists').innerHTML = ''; form.hidden = true; return; }
+  const r = await req('GET', `/person/${encodeURIComponent(id)}`);
+  const state = (t) => (t.done ? '<span class="tag good">done</span>' : t.skipped ? '<span class="tag grey">skipped</span>' : t.overdue ? '<span class="tag badTag">late</span>' : '<span class="tag warnTag">open</span>');
+  $('oneLists').innerHTML = r.lists.map((l) => `<h3>${esc(KIND[l.kind] || l.kind)} checklist${l.anchorDate ? ` <span class="hint">counted from ${esc(day(l.anchorDate))}</span>` : ''}</h3>
+    <table><thead><tr><th>Due</th><th>Task</th><th>Done by</th><th></th></tr></thead><tbody>${(l.tasks || []).map((t) => `<tr><td>${esc(day(t.dueDate))}</td><td><b>${esc(t.title)}</b>${t.custom ? ' <span class="tag grey">added for this person</span>' : ''}${t.required ? '' : ' <span class="hint">(optional)</span>'}</td><td>${esc(WHO[t.assignee] || t.assignee)}</td><td>${state(t)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No tasks.</td></tr>'}</tbody></table>`).join('')
+    || '<p class="hint">This person has no checklist. A new-hire checklist is made when a person starts; a leaving checklist is made on the Offboarding page. A task can only be added to a checklist that exists.</p>';
+  form.hidden = !r.lists.length;
+  form.elements.listId.innerHTML = r.lists.map((l) => `<option value="${esc(l.id)}">${esc(KIND[l.kind] || l.kind)}</option>`).join('');
+}
+$('onePerson').addEventListener('change', () => loadOne().catch((e) => say(e.message, false)));
+$('oneForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = e.target.elements; const id = $('onePerson').value; const btn = e.target.querySelector('button[type="submit"]');
+  if (!id) return;
+  btn.disabled = true;
+  try {
+    await req('POST', `/person/${encodeURIComponent(id)}/${encodeURIComponent(f.listId.value)}/tasks`, { title: f.title.value.trim(), assignee: f.assignee.value, dueDate: f.dueDate.value || undefined, required: f.required.checked });
+    const keep = f.listId.value; e.target.reset(); await loadOne(); e.target.elements.listId.value = keep;
+    say('Task added to this person\'s checklist.'); loadTodo().catch(() => {});
+  } catch (err) { say(err.message, false); } finally { btn.disabled = false; }
+});
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+  if (b.dataset.tab === 'one') loadOnePeople().catch((e) => say(e.message, false));
 }));
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }

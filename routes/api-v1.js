@@ -254,9 +254,11 @@ H.timeList = async (req, res) => {
     const person = await people.getPersonDoc(req.orgId, q.person_id);
     if (!person) return fail(req, res, 404, 'not_found', 'No person with that id in your company.');
     const approvedStarts = new Set(weeks.map((w) => w.weekStart));
-    const { punchesSince } = require('./time').helpers;
+    const { punchesSince, orgInfo } = require('./time').helpers;
     const punches = (await punchesSince(req.orgId, person.id, new Date(`${q.from}T00:00:00Z`).toISOString())).filter((p) => p.localDate >= q.from && p.localDate <= q.to);
-    const days = C.dailyFromPunches(punches).filter((d) => approvedStarts.has(timeRules.weekStart(d.date)));
+    // a day counts when the company's workweek it falls in is approved (the workweek may start on any day, see time-rules.weekRange)
+    const { workweek } = await orgInfo(req.orgId);
+    const days = C.dailyFromPunches(punches).filter((d) => approvedStarts.has(timeRules.weekStartFor(d.date, workweek)));
     return send(req, res, { data: days.map((d) => C.toDailyTimeEntry(person.id, person.data.employeeId, d)), next_cursor: null, has_more: false });
 };
 

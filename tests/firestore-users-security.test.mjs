@@ -27,6 +27,16 @@ function makeEmulatorToken({ uid, role = 'Employee', orgId = 'org_test_1', super
     );
 }
 
+// These checks talk to the running Firestore emulator (the security rules live there, not in the app). They are
+// skipped when no emulator answers. The two documents they create are removed before and after, so the suite can be
+// run again and leaves nothing behind in the emulator's users collection.
+const emulatorUp = await fetch(`http://${host}/`, { signal: AbortSignal.timeout(1500) }).then(() => true).catch(() => false);
+const removeRuleTestDocs = async () => {
+    for (const id of ['usr_emp_rule_test_01', 'usr_another_target_003']) {
+        await fetch(`http://${host}/v1/projects/${projectId}/databases/(default)/documents/users/${id}`, { method: 'DELETE', headers: { Authorization: 'Bearer owner' } }).catch(() => {});
+    }
+};
+
 describe('authController.register Role Protection & Firestore Security Rules Suite', () => {
     let server;
     let baseUrl;
@@ -153,9 +163,12 @@ describe('authController.register Role Protection & Firestore Security Rules Sui
         });
     });
 
-    describe('Firestore Security Rules under Emulator', () => {
+    describe('Firestore Security Rules under Emulator', { skip: emulatorUp ? false : 'the Firestore emulator is not running' }, () => {
         const empUid = 'usr_emp_rule_test_01';
         const empToken = makeEmulatorToken({ uid: empUid, role: 'Employee' });
+
+        before(removeRuleTestDocs);
+        after(removeRuleTestDocs);
 
         it('allows a user to create their document with role: Employee', async () => {
             const res = await fetch(

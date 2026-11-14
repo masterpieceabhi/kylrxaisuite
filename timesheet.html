@@ -61,14 +61,14 @@ input,select{width:100%;padding:14px;border:2px solid var(--line);border-radius:
 import { auth, onAuthStateChanged } from './firebase-config.js';
 
 const T = {
-  en: { title: 'My hours', prev: 'Previous week', week: 'Week of', open: 'Open', submitted: 'Sent to your manager', approved: 'Approved', rejected: 'Needs a fix', tot: 'hours', reg: 'regular', ot: 'overtime', worked: 'worked',
+  en: { title: 'My hours', prev: 'Previous week', week: 'Week of', to: 'to', open: 'Open', submitted: 'Sent to your manager', approved: 'Approved', rejected: 'Needs a fix', tot: 'hours', reg: 'regular', ot: 'overtime', worked: 'worked',
     submit: 'Send my hours for approval', submitHelp: 'Clock out first. Your manager will check your hours.', sentOk: 'Hours sent.', locked: 'This week is approved and cannot be changed.', openShift: 'You are still clocked in.',
     noPunch: 'No punches this day.', brk: 'break', fixThis: 'Wrong time? Tap a punch to fix it.', forgot: 'I forgot to punch', fixT: 'Fix a punch', fixAdd: 'Add a missing punch', fixPunch: 'Change the time of this punch: {p}',
     lDate: 'Day', lType: 'What did you forget?', lTime: 'Right time', lWhy: 'What happened?', go: 'Send to my manager', cancel: 'Never mind', hCor: 'My fix requests', none: 'None yet.', cancelReq: 'Cancel',
     in: 'Clock in', out: 'Clock out', break_start: 'Start break', break_end: 'End break', pending: 'Waiting', denied: 'Not approved', cancelled: 'Cancelled', corSent: 'Fix request sent.',
     missed_meal_break: 'No full meal break', missed_rest_break: 'Rest break not taken (you reported this)',
     holPay: 'Paid holiday hours: {h}', premPay: 'Extra paid hours for missed breaks: {h}', restQ: 'Your company gives a {m}-minute paid rest break for every {e} hours worked. Were you able to take your rest breaks this week?', restYes: 'Yes, all of them', restNo: 'No, I missed some', restWhich: 'Which days?', restNeed: 'Please say whether you took your rest breaks.', restNeedDays: 'Please choose the days you missed a rest break.', restSaidYes: 'Rest breaks: you said you took them all.', restSaidNo: 'Rest breaks: you reported missing one on {d}.', fail: 'Could not reach the server.', back: 'Back', change: 'change', add: 'add', remove: 'remove', rejNote: 'Your manager says: {n}' },
-  es: { title: 'Mis horas', prev: 'Semana anterior', week: 'Semana del', open: 'Abierta', submitted: 'Enviada a su supervisor', approved: 'Aprobada', rejected: 'Necesita corrección', tot: 'horas', reg: 'regulares', ot: 'extra', worked: 'trabajadas',
+  es: { title: 'Mis horas', prev: 'Semana anterior', week: 'Semana del', to: 'al', open: 'Abierta', submitted: 'Enviada a su supervisor', approved: 'Aprobada', rejected: 'Necesita corrección', tot: 'horas', reg: 'regulares', ot: 'extra', worked: 'trabajadas',
     submit: 'Enviar mis horas para aprobación', submitHelp: 'Primero registre su salida. Su supervisor revisará sus horas.', sentOk: 'Horas enviadas.', locked: 'Esta semana está aprobada y no se puede cambiar.', openShift: 'Todavía está registrado como adentro.',
     noPunch: 'Sin registros este día.', brk: 'descanso', fixThis: '¿Hora incorrecta? Toque un registro para corregirlo.', forgot: 'Olvidé registrar', fixT: 'Corregir un registro', fixAdd: 'Agregar un registro que falta', fixPunch: 'Cambiar la hora de este registro: {p}',
     lDate: 'Día', lType: '¿Qué olvidó?', lTime: 'Hora correcta', lWhy: '¿Qué pasó?', go: 'Enviar a mi supervisor', cancel: 'Cancelar', hCor: 'Mis solicitudes de corrección', none: 'Ninguna todavía.', cancelReq: 'Cancelar',
@@ -83,7 +83,6 @@ const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x]
 let week = null, weekStart = null, cors = [];
 
 const addDays = (iso, n) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
-const mondayOf = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
 const fmtDay = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
 const hm = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`; };
 const hhmm12 = (t) => { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
@@ -104,7 +103,7 @@ function paint() {
   $('submit').textContent = tr('submit'); $('submitHelp').textContent = tr('submitHelp'); $('forgot').textContent = tr('forgot'); $('hCor').textContent = tr('hCor');
   ['lDate', 'lType', 'lTime', 'lWhy'].forEach((k) => { $(k).textContent = tr(k); }); $('fixGo').textContent = tr('go'); $('fixCancel').textContent = tr('cancel');
   $('oIn').textContent = tr('in'); $('oOut').textContent = tr('out'); $('oBs').textContent = tr('break_start'); $('oBe').textContent = tr('break_end');
-  if (weekStart) $('range').textContent = `${tr('week')} ${fmtDay(weekStart)}`;
+  if (week && week.weekStart) $('range').textContent = `${tr('week')} ${fmtDay(week.weekStart)} ${tr('to')} ${fmtDay(week.weekEnd)}`;
   $('cors').innerHTML = cors.length ? cors.map((c) => `<div class="row"><div>${tr(c.kind === 'add' ? 'add' : c.kind === 'change' ? 'change' : 'remove')}: ${tr(c.type)} ${c.localDate} ${c.localTime ? hhmm12(c.localTime) : ''}<div class="s">${c.reason}</div></div><div><span class="chip ${c.status === 'approved' ? 'approved' : c.status === 'pending' ? 'submitted' : 'rejected'}">${tr(c.status)}</span>${c.status === 'pending' ? ` <button class="link" data-cc="${c.id}">${tr('cancelReq')}</button>` : ''}</div></div>`).join('') : `<p class="s">${tr('none')}</p>`;
   if (!week) return;
   const st = week.status; $('chip').textContent = tr(st); $('chip').className = `chip ${st}`;
@@ -123,7 +122,8 @@ function paint() {
 }
 
 async function load() {
-  week = await api('GET', `/weeks/${weekStart}`);
+  week = await api('GET', `/weeks/${weekStart || 'current'}`);
+  weekStart = week.weekStart;
   cors = (await api('GET', '/corrections?scope=mine')).data;
   paint();
 }
@@ -134,7 +134,7 @@ function openFix(mode, p) {
   $('fixT').textContent = tr('fixT');
   $('fixP').textContent = mode === 'change' ? tr('fixPunch', { p: `${tr(p.type)} ${hhmm12(p.time)}` }) : tr('fixAdd');
   $('fTypeL').style.display = mode === 'add' ? 'grid' : 'none';
-  f.localDate.value = p ? p.date : weekStart; f.localDate.min = weekStart; f.localDate.max = addDays(weekStart, 6);
+  f.localDate.value = p ? p.date : weekStart; f.localDate.min = weekStart; f.localDate.max = week.weekEnd || addDays(weekStart, 6);
   if (p) f.localTime.value = p.time;
   $('fixCard').style.display = 'block'; $('fixCard').scrollIntoView({ behavior: 'smooth' });
 }
@@ -180,17 +180,16 @@ $('submit').onclick = async () => {
     await api('POST', `/weeks/${weekStart}/submit`, body); show('ok', tr('sentOk')); await load();
   } catch (err) { show('err', err.message); }
 };
-$('prev').onclick = async () => { weekStart = addDays(weekStart, -7); await load().catch((e) => show('err', e.message)); };
-$('next').onclick = async () => { const next = addDays(weekStart, 7); if (next > mondayOf(week.today)) return; weekStart = next; await load().catch((e) => show('err', e.message)); };
+$('prev').onclick = async () => { if (!week) return; weekStart = week.prevWeekStart || addDays(weekStart, -7); await load().catch((e) => show('err', e.message)); };
+$('next').onclick = async () => { if (!week) return; const next = week.nextWeekStart || addDays(weekStart, 7); if (next > (week.currentWeekStart || week.today)) return; weekStart = next; await load().catch((e) => show('err', e.message)); };
 $('back').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'punch.html'; };
 document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }; });
 paint();
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   try {
-    const today = new Intl.DateTimeFormat('en-CA').format(new Date());
-    weekStart = mondayOf(today);
-    const first = await api('GET', `/weeks/${weekStart}`); weekStart = mondayOf(first.today); await load();
+    weekStart = null; // the server works out the week running now, in the time zone of the place this person works
+    await load();
   } catch (err) { show('err', err.message); }
 });
 </script>
