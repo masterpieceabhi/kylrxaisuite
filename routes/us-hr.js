@@ -14,12 +14,14 @@ const {
 // Who may do what on these routes (services/permissions.js decides which roles hold each permission):
 //   read the company profile (EIN, entity, industry, fiscal year)   org.settings or payroll.view
 //   change the company profile                                       org.settings
-//   list people / read a person's US profile                         people.read (a person always sees their own)
+//   list people (names, employee numbers, class, work state)         people.read or people.read_pay (the pay roles need the list to pick a
+//                                                                    person on the pay and payroll pages; they do not get the SSN digits)
+//   read a person's US profile                                       people.read (a person always sees their own)
 //   change a person's US profile                                     people.write
 //   see a full SSN or ITIN                                           pii.reveal
 const COMPANY_READ = requireAnyPermission('org.settings', 'payroll.view');
 const COMPANY_WRITE = requirePermission('org.settings');
-const PEOPLE_READ = requirePermission('people.read');
+const PEOPLE_LIST = requireAnyPermission('people.read', 'people.read_pay');
 const PEOPLE_WRITE = requirePermission('people.write');
 const PII_REVEAL = requirePermission('pii.reveal');
 
@@ -139,7 +141,8 @@ router.put('/company/profile', COMPANY_WRITE, requireUsOrg, async (req, res) => 
 });
 
 /** List employees with their US profile status (never returns taxpayer IDs) */
-router.get('/employees', PEOPLE_READ, requireUsOrg, async (req, res) => {
+router.get('/employees', PEOPLE_LIST, requireUsOrg, async (req, res) => {
+    const seesId = can(req.user, 'people.read'); // the last digits of the SSN are an HR record, not a pay record
     const snaps = await Promise.all(PEOPLE_COLLECTIONS.map((name) => db.collection(name).get()));
     const rows = snaps.flatMap((s) => s.docs)
         .filter((d) => d.data().orgId === req.orgId && d.data().employeeId)
@@ -149,7 +152,7 @@ router.get('/employees', PEOPLE_READ, requireUsOrg, async (req, res) => {
             return {
                 id: row.id, employeeId: row.employeeId, name: row.name, email: row.email,
                 classification: row.classification || null, workState: row.workState || null,
-                taxpayerIdMasked: row.taxpayerIdMasked, profileComplete: row.profileComplete
+                taxpayerIdMasked: seesId ? row.taxpayerIdMasked : null, profileComplete: row.profileComplete
             };
         });
     res.json({ success: true, count: rows.length, data: rows });

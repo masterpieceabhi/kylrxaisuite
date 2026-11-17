@@ -112,6 +112,76 @@ function createMockGusto(options = {}) {
         if (!p) return res.status(404).json({ error: 'unknown payment' });
         p.status = 'Funded'; p.may_cancel = false; return res.json({ ok: true });
     });
+    // app-integration testing: a company that already exists at the provider, and whose admin will approve the application
+    ctl.post('/app-company', (req, res) => {
+        const b = req.body || {};
+        const c = { uuid: uuid(), name: b.name || 'Mock Customer LLC', trade_name: null, ein: null, contractor_only: false, admin: { first_name: 'Ada', last_name: 'Admin', email: 'ada@example.test' }, terms_accepted: true, approved: true, onboarding_completed: true, finished: true, version: ver(), federal: null, industry: null, bankVerified: true };
+        S.companies.set(c.uuid, c);
+        S.authorizeAs = c.uuid;
+        res.json({ uuid: c.uuid, name: c.name });
+    });
+    ctl.post('/deny-next-authorize', (req, res) => { S.denyNext = true; res.json({ ok: true }); });
+    // an employee who already exists in the customer's account (with a primary job unless job:false)
+    ctl.post('/app-employee', (req, res) => {
+        const b = req.body || {};
+        const c = S.companies.get(b.company_uuid || S.authorizeAs);
+        if (!c) return res.status(404).json({ error: 'unknown company' });
+        const e = { uuid: uuid(), company_uuid: c.uuid, first_name: b.first_name || 'Ann', middle_initial: '', last_name: b.last_name || 'Alpha', email: b.email || null, work_email: b.work_email || null, date_of_birth: b.date_of_birth || null, ssn: null, onboarded: true, onboarding_status: 'onboarding_completed', terminated: Boolean(b.terminated), current_employment_status: 'full_time', department_uuid: null, payment_method: 'Check', version: ver() };
+        S.employees.set(e.uuid, e);
+        let job = null;
+        if (b.job !== false) { job = { uuid: uuid(), employee_uuid: e.uuid, title: b.title || 'Team member', hire_date: '2026-01-05', primary: true, version: ver() }; S.jobs.set(job.uuid, job); }
+        return res.json({ uuid: e.uuid, job_uuid: job ? job.uuid : null });
+    });
+    ctl.get('/time-sheets', (req, res) => res.json([...(S.timeSheets || new Map()).values()]));
+    ctl.post('/time-sheet-on-payroll', (req, res) => {
+        const t = (S.timeSheets || new Map()).get((req.body || {}).uuid);
+        if (!t) return res.status(404).json({ error: 'unknown time sheet' });
+        t.synced_to_payroll_at = new Date().toISOString(); return res.json({ ok: true });
+    });
+    // app-integration testing, payroll side: a pay schedule in the customer's account (open payrolls are generated from it),
+    // a change to an employee made inside the provider, a payroll the customer already ran there, and payroll syncs
+    ctl.post('/app-pay-schedule', (req, res) => {
+        const b = req.body || {};
+        const c = S.companies.get(b.company_uuid || S.authorizeAs);
+        if (!c) return res.status(404).json({ error: 'unknown company' });
+        const s = { uuid: uuid(), company_uuid: c.uuid, frequency: b.frequency || 'Every week', anchor_pay_date: b.anchor_pay_date, anchor_end_of_pay_period: b.anchor_end_of_pay_period, day_1: null, day_2: null, name: b.frequency || 'Every week', active: true, version: ver() };
+        S.schedules.set(s.uuid, s);
+        return res.json(s);
+    });
+    ctl.post('/app-employee-change', (req, res) => {
+        const b = req.body || {};
+        const e = S.employees.get(b.uuid);
+        if (!e) return res.status(404).json({ error: 'unknown employee' });
+        if (b.remove) { S.employees.delete(e.uuid); return res.json({ ok: true }); }
+        if (b.terminated !== undefined) e.terminated = Boolean(b.terminated);
+        let job = null;
+        if (b.new_job) {
+            for (const j of S.jobs.values()) if (j.employee_uuid === e.uuid) j.primary = false;
+            job = { uuid: uuid(), employee_uuid: e.uuid, title: b.title || 'New role', hire_date: '2026-06-01', primary: true, version: ver() };
+            S.jobs.set(job.uuid, job);
+        }
+        bump(e);
+        return res.json({ ok: true, job_uuid: job ? job.uuid : null });
+    });
+    ctl.post('/app-payroll-processed', (req, res) => {
+        const b = req.body || {};
+        const c = S.companies.get(b.company_uuid || S.authorizeAs);
+        if (!c) return res.status(404).json({ error: 'unknown company' });
+        const p = makePayroll(c, null, b.start_date, b.end_date, b.check_date);
+        const m = (v) => (Math.round((Number(v) || 0) * 100) / 100).toFixed(2);
+        p.employee_compensations = (b.people || []).map((x) => ({
+            employee_uuid: x.employee_uuid, excluded: false, gross_pay: m(x.gross), net_pay: m(x.net), payment_method: 'Check',
+            hourly_compensations: [{ name: 'Regular Hours', hours: String(x.hours || 0), compensation_multiplier: 1 }], fixed_compensations: [], paid_time_off: [],
+            ...(b.with_taxes === false ? {} : { taxes: [{ name: 'Federal Income Tax', employer: false, amount: m(x.tax || 0) }, { name: 'Social Security', employer: true, amount: m(x.employer_tax || 0) }], deductions: [], benefits: [] })
+        }));
+        const sum = (k) => m((b.people || []).reduce((s, x) => s + (Number(x[k]) || 0), 0));
+        p.totals = { gross_pay: sum('gross'), net_pay: sum('net'), employee_taxes: sum('tax'), employer_taxes: sum('employer_tax') };
+        if (b.off_cycle) { p.off_cycle = true; p.payroll_type = 'off_cycle'; }
+        p.processed = true; p.processed_date = b.check_date; p.processing_request = { status: 'submit_success' };
+        return res.json({ payroll_uuid: p.payroll_uuid });
+    });
+    ctl.get('/payroll-syncs', (req, res) => res.json([...(S.payrollSyncs || new Map()).values()]));
+    ctl.post('/payroll-sync-result', (req, res) => { S.nextSyncResult = { status: String((req.body || {}).status || 'success'), errors: (req.body || {}).errors || [], warnings: (req.body || {}).warnings || [] }; res.json({ ok: true }); });
     app.use('/__mock', ctl);
     function addTaxForm(b) {
         const dup = [...S.taxForms.values()].find((x) => x.name === (b.name || 'US_W-2') && x.year === (b.year || null) && x.employee_uuid === (b.employee_uuid || null) && x.contractor_uuid === (b.contractor_uuid || null));
@@ -214,8 +284,51 @@ function createMockGusto(options = {}) {
             S.stats.refreshes += 1;
             return res.json(issue('company', r.companyUuid));
         }
+        if (b.grant_type === 'authorization_code') {
+            const c = S.codes && S.codes.get(b.code);
+            if (!c || c.used || c.expiresAt <= Date.now() || c.redirectUri !== b.redirect_uri) return err(res, 400, 'invalid_grant', 'The authorization code is invalid, expired, already used, or the return address does not match');
+            c.used = true;
+            return res.json(issue('company', c.companyUuid));
+        }
         return err(res, 400, 'unsupported_grant_type', 'Unsupported grant_type');
     });
+
+    // Cancel a token. An access token stops working; a refresh token can no longer be used; either way the company's
+    // other tokens made from the same approval die with it.
+    app.post('/oauth/revoke', (req, res) => {
+        const b = req.body || {};
+        if (b.client_id !== cfg.clientId || b.client_secret !== cfg.clientSecret) return err(res, 401, 'invalid_client', 'Client authentication failed');
+        const a = S.access.get(b.token); const r = S.refresh.get(b.token);
+        const companyUuid = (a && a.companyUuid) || (r && r.companyUuid) || null;
+        if (companyUuid) {
+            for (const [k, v] of S.access) if (v.companyUuid === companyUuid) S.access.delete(k);
+            for (const v of S.refresh.values()) if (v.companyUuid === companyUuid) v.revoked = true;
+            S.stats.revoked = (S.stats.revoked || 0) + 1;
+        }
+        return res.status(200).json({});
+    });
+
+    // App integration: where a company admin approves the application. The mock approves at once, for the company
+    // made with POST /__mock/app-company (or ?company=<uuid>), and sends the browser back with a one-time code.
+    app.get('/oauth/authorize', (req, res) => {
+        const q = req.query || {};
+        if (q.client_id !== cfg.clientId) return err(res, 401, 'invalid_client', 'Unknown application');
+        if (q.response_type !== 'code' || !q.redirect_uri) return err(res, 400, 'invalid_request', 'response_type=code and redirect_uri are required');
+        let back;
+        try { back = new URL(String(q.redirect_uri)); } catch (_) { return err(res, 400, 'invalid_request', 'redirect_uri is not a valid address'); }
+        if (q.state) back.searchParams.set('state', String(q.state));
+        if (S.denyNext) { S.denyNext = false; back.searchParams.set('error', 'access_denied'); return res.redirect(302, back.toString()); }
+        const companyUuid = String(q.company || S.authorizeAs || '');
+        if (!S.companies.has(companyUuid)) return err(res, 400, 'invalid_request', 'No company to approve for: POST /__mock/app-company first');
+        const code = tok();
+        if (!S.codes) S.codes = new Map();
+        S.codes.set(code, { companyUuid, redirectUri: String(q.redirect_uri), used: false, expiresAt: Date.now() + 10 * 60 * 1000 });
+        back.searchParams.set('code', code);
+        return res.redirect(302, back.toString());
+    });
+    app.get('/v1/token_info', needs('any'), (req, res) => res.json(req.tok.type === 'company'
+        ? { scope: 'companies:read employees:read public', resource: { type: 'Company', uuid: req.tok.companyUuid }, resource_owner: { type: 'CompanyAdmin', uuid: 'mock-company-admin' } }
+        : { scope: 'public', resource: { type: 'Oauth::Application', uuid: 'mock-application' }, resource_owner: null }));
 
     /* ------------------------------- companies ------------------------------- */
     app.post('/v1/partner_managed_companies', needs('system'), (req, res) => {
@@ -315,8 +428,88 @@ function createMockGusto(options = {}) {
         res.json(bump(s));
     });
 
+    /* time sheets (app integrations): one per shift, hours classified */
+    const CLASSIFICATIONS = ['Regular', 'Overtime', 'Double overtime'];
+    const sheets = () => { if (!S.timeSheets) S.timeSheets = new Map(); return S.timeSheets; };
+    const sheetProblem = (b, c, creating) => {
+        if (creating || b.entity_uuid !== undefined) { const e = S.employees.get(b.entity_uuid); if (!e || e.company_uuid !== c) return 'entity_uuid is not an employee of this company'; }
+        if (creating && b.entity_type !== 'Employee' && b.entity_type !== 'Contractor') return 'entity_type must be Employee or Contractor';
+        if (creating && !b.time_zone) return 'time_zone is required';
+        if (creating && !b.shift_started_at) return 'shift_started_at is required';
+        for (const k of ['shift_started_at', 'shift_ended_at']) if (b[k] !== undefined && b[k] !== null && Number.isNaN(Date.parse(b[k]))) return `${k} is not a date-time`;
+        if (b.shift_started_at && b.shift_ended_at && !(Date.parse(b.shift_ended_at) > Date.parse(b.shift_started_at))) return 'shift_ended_at must be after shift_started_at';
+        if (b.job_uuid !== undefined && b.job_uuid !== null) { const j = S.jobs.get(b.job_uuid); if (!j || (b.entity_uuid && j.employee_uuid !== b.entity_uuid)) return 'job_uuid is not a job of this employee'; }
+        for (const x of b.entries || []) {
+            if (!CLASSIFICATIONS.includes(x.pay_classification)) return 'pay_classification must be Regular, Overtime or Double overtime';
+            if (!(Number(x.hours_worked) >= 0.001)) return 'hours_worked must be at least 0.001';
+        }
+        return null;
+    };
+    const entriesOf = (list) => (list || []).map((x) => ({ uuid: uuid(), hours_worked: Number(x.hours_worked).toFixed(3), pay_classification: x.pay_classification }));
+    app.post(...asCompany('/v1/companies/:cid/time_tracking/time_sheets', (req, res, c) => {
+        const b = req.body || {};
+        const bad = sheetProblem(b, c.uuid, true);
+        if (bad) return err(res, 422, 'invalid_attribute_value', bad);
+        const now = new Date().toISOString();
+        const t = { uuid: uuid(), status: 'approved', company_uuid: c.uuid, time_zone: b.time_zone, entity_type: b.entity_type, entity_uuid: b.entity_uuid, version: ver(), job_uuid: b.job_uuid || null, shift_started_at: b.shift_started_at, shift_ended_at: b.shift_ended_at || null, created_at: now, updated_at: now, synced_to_payroll_at: null, metadata: b.metadata || {}, entries: entriesOf(b.entries) };
+        sheets().set(t.uuid, t);
+        return res.status(201).json(t);
+    }));
+    app.get(...asCompany('/v1/companies/:cid/time_tracking/time_sheets', (req, res, c) => res.json([...sheets().values()].filter((t) => t.company_uuid === c.uuid))));
+    const sheetFor = (req, res) => {
+        const t = sheets().get(req.params.tid);
+        if (!t || t.company_uuid !== req.tok.companyUuid) { err(res, 404, 'not_found', 'Time sheet not found'); return null; }
+        return t;
+    };
+    app.get('/v1/time_tracking/time_sheets/:tid', needs('company'), (req, res) => { const t = sheetFor(req, res); if (t) res.json(t); });
+    app.put('/v1/time_tracking/time_sheets/:tid', needs('company'), (req, res) => {
+        const t = sheetFor(req, res); if (!t) return undefined;
+        if (!checkVersion(req, res, t)) return undefined;
+        if (t.synced_to_payroll_at) return err(res, 422, 'invalid_operation', 'This time sheet has already been synced to payroll');
+        const b = req.body || {};
+        const bad = sheetProblem(b, t.company_uuid, false);
+        if (bad) return err(res, 422, 'invalid_attribute_value', bad);
+        for (const k of ['entity_uuid', 'entity_type', 'job_uuid', 'time_zone', 'shift_started_at', 'shift_ended_at', 'metadata']) if (b[k] !== undefined) t[k] = b[k];
+        if (b.entries !== undefined) t.entries = entriesOf(b.entries);
+        t.updated_at = new Date().toISOString();
+        return res.json(bump(t));
+    });
+    app.delete('/v1/time_tracking/time_sheets/:tid', needs('company'), (req, res) => {
+        const t = sheetFor(req, res); if (!t) return undefined;
+        if (String(req.query.version || '') !== t.version) return err(res, 422, 'invalid_attribute_value', `Version '${String(req.query.version || '')}' does not match the latest version of this object`);
+        if (t.synced_to_payroll_at) return err(res, 422, 'invalid_operation', 'This time sheet has already been synced to payroll');
+        sheets().delete(t.uuid);
+        return res.status(204).end();
+    });
+
+    /* payroll syncs (app integrations): put the time sheets of one pay period on its payroll. Answers at once with
+       "pending"; the work is finished the first time the sync is read (success unless /__mock/payroll-sync-result says otherwise). */
+    const syncs = () => { if (!S.payrollSyncs) S.payrollSyncs = new Map(); return S.payrollSyncs; };
+    const sheetsInPeriod = (c, a, z) => [...sheets().values()].filter((t) => t.company_uuid === c && !t.synced_to_payroll_at && String(t.shift_started_at).slice(0, 10) >= addDays(a, -1) && String(t.shift_started_at).slice(0, 10) <= addDays(z, 1));
+    app.post(...asCompany('/v1/companies/:cid/time_tracking/payroll_syncs', (req, res, c) => {
+        const b = req.body || {};
+        if (b.kind !== 'regular' || !rules.parseIso(b.pay_period_start_date) || !rules.parseIso(b.pay_period_end_date)) return err(res, 422, 'invalid_attribute_value', 'kind must be regular, and both pay period dates are required');
+        const s = S.schedules.get(b.pay_schedule_uuid);
+        if (!s || s.company_uuid !== c.uuid) return err(res, 422, 'payroll_sync_invalid_pay_schedule', 'The pay schedule is not valid for this company.');
+        if (![...S.employees.values()].some((e) => e.company_uuid === c.uuid && !e.terminated)) return err(res, 422, 'payroll_sync_no_employees', 'There are no employees to run payroll for in the selected pay period.');
+        if (!sheetsInPeriod(c.uuid, b.pay_period_start_date, b.pay_period_end_date).length) return err(res, 422, 'payroll_sync_empty_export', 'There are no hours to sync to payroll for the selected pay period.');
+        const y = { uuid: uuid(), company_uuid: c.uuid, status: 'pending', kind: 'regular', pay_schedule_uuid: s.uuid, pay_period_start_date: b.pay_period_start_date, pay_period_end_date: b.pay_period_end_date, submitted_at: new Date().toISOString(), completed_at: null, errors: [], warnings: [] };
+        syncs().set(y.uuid, y);
+        return res.status(202).json(y);
+    }));
+    app.get('/v1/time_tracking/payroll_syncs/:sid', needs('company'), (req, res) => {
+        const y = syncs().get(req.params.sid);
+        if (!y || y.company_uuid !== req.tok.companyUuid) return err(res, 404, 'not_found', 'Payroll sync not found');
+        if (y.status === 'pending') {
+            const want = S.nextSyncResult || { status: 'success', errors: [], warnings: [] }; S.nextSyncResult = null;
+            y.status = want.status; y.errors = want.errors; y.warnings = want.warnings; y.completed_at = new Date().toISOString();
+            if (y.status === 'success' || y.status === 'partial_success') for (const t of sheetsInPeriod(y.company_uuid, y.pay_period_start_date, y.pay_period_end_date)) t.synced_to_payroll_at = y.completed_at;
+        }
+        return res.json(y);
+    });
+
     /* employees */
-    const pubEmp = (e) => { const { ssn, ...rest } = e; return { ...rest, has_ssn: Boolean(ssn), jobs: [...S.jobs.values()].filter((j) => j.employee_uuid === e.uuid).map(pubJob) }; };
+    const pubEmp =(e) => { const { ssn, ...rest } = e; return { ...rest, has_ssn: Boolean(ssn), jobs: [...S.jobs.values()].filter((j) => j.employee_uuid === e.uuid).map(pubJob) }; };
     const pubJob = (j) => ({ ...j, compensations: [...S.comps.values()].filter((c) => c.job_uuid === j.uuid) });
     app.post(...asCompany('/v1/companies/:cid/employees', (req, res, c) => {
         const b = req.body || {};

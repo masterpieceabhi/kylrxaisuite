@@ -19,3 +19,6 @@ serviceAccountKey.json
 *.key
 scratch/
 __pycache__/
+
+# US end-to-end run: companies and sign-ins it made locally
+scripts/e2e-us/.state/

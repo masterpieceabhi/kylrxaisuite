@@ -274,6 +274,9 @@ app.use("/api/policies", policiesRoutes);
 app.use("/api/assets", assetsRoutes);
 app.use("/api/exits", exitsRoutes);
 app.use("/api/org", require("./routes/org"));
+// Public, and attached before the /api/us groups below: each of those asks for a sign-in on every /api/us address,
+// and Gusto sends the browser back here without one. The handler trusts only its own one-time state.
+app.get("/api/us/gusto/oauth/callback", require("./routes/us-gusto").oauthCallback);
 app.use("/api/us", require("./routes/us-hr"));
 app.use("/api/us", require("./routes/us-forms"));
 app.use("/api/us", require("./routes/us-people"));

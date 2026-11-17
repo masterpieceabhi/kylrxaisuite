@@ -192,8 +192,11 @@ function simulate(policy, ctx) {
 
 function finish(policy, out, ctx) {
     out.eligibleToUse = Boolean(out.usageEligibleOn) && out.usageEligibleOn <= ctx.asOf;
-    let avail = out.balance - out.pendingHours;
-    if (policy.annualUseCap !== null && policy.annualUseCap !== undefined) avail = Math.min(avail, policy.annualUseCap - out.usedThisYear - out.pendingHours);
+    // Hours already promised come off what can still be asked for: requests waiting for a decision, and approved
+    // time off on days that have not come yet (it is taken off the balance itself only on the day it is used).
+    const promised = out.pendingHours + out.scheduledHours;
+    let avail = out.balance - promised;
+    if (policy.annualUseCap !== null && policy.annualUseCap !== undefined) avail = Math.min(avail, policy.annualUseCap - out.usedThisYear - promised);
     out.availableBalance = Math.max(0, round4(avail)); // ignores the waiting period
     out.availableToUse = out.eligibleToUse ? out.availableBalance : 0;
     for (const k of ['balance', 'accruedThisYear', 'usedThisYear', 'forfeited', 'scheduledHours', 'pendingHours', 'availableToUse', 'availableBalance']) out[k] = round2(out[k]);

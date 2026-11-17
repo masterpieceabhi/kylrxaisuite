@@ -297,6 +297,23 @@ function zonedToUtcIso(dateIso, timeHHMM, tz) {
     return new Date(utc).toISOString();
 }
 
+/**
+ * When work began and ended on one local day, as UTC instants: { startAt, endAt }, both null for a day without work.
+ * `dayPunches` are that local day's punches, oldest first. Used when a day's approved hours are sent on as one shift.
+ * Work that carries over midnight begins (or ends) at the local midnight, because the hours are split there too.
+ */
+function shiftSpan(dateIso, workedMinutes, dayPunches, tz) {
+    if (!(workedMinutes > 0)) return { startAt: null, endAt: null };
+    const list = dayPunches || [];
+    const first = list[0]; const last = list[list.length - 1];
+    const startsHere = first && (first.type === 'in' || first.type === 'break_end');
+    const endsHere = last && (last.type === 'out' || last.type === 'break_start');
+    return {
+        startAt: startsHere ? new Date(first.at).toISOString() : zonedToUtcIso(dateIso, '00:00', tz),
+        endAt: endsHere ? new Date(last.at).toISOString() : zonedToUtcIso(addDaysIso(dateIso, 1), '00:00', tz)
+    };
+}
+
 /** First invalid step in a list of punches (oldest first), or null when the sequence is valid */
 function validateSequence(punches) {
     const seen = [];
@@ -323,5 +340,5 @@ module.exports = {
     PUNCH_TYPES, LONG_SHIFT_HOURS, localDate, stateOf, allowedActions, checkPunch, totals,
     isForgottenClockOut, weekStart, timesheet, employeeIdFromKeypad, validPin,
     WEEKDAYS, DEFAULT_WORKWEEK, addDaysIso, weekdayOf, normalizeWorkweek, weekRange, weekStartFor, isWeekStart, isRealDate, pickTimeZone,
-    tzOffsetMinutes, zonedToUtcIso, validateSequence
+    tzOffsetMinutes, zonedToUtcIso, shiftSpan, validateSequence
 };

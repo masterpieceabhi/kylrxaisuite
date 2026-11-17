@@ -21,7 +21,11 @@ const COL = {
     connections: 'gusto_connections', locks: 'gusto_locks', links: 'gusto_links',
     errors: 'gusto_errors', events: 'gusto_events', payrolls: 'gusto_payrolls',
     // records kept by the extra payroll features (same shape rules: top-level, every doc has orgId)
-    contractorPayments: 'gusto_contractor_payments', garnishments: 'payroll_garnishments', deductionRuns: 'gusto_deduction_runs'
+    contractorPayments: 'gusto_contractor_payments', garnishments: 'payroll_garnishments', deductionRuns: 'gusto_deduction_runs',
+    // one record per person per day sent to a customer's own Gusto account as a time sheet (services/gusto/time-sheets.js)
+    timeSheets: 'gusto_time_sheets',
+    // one record per request to put a pay period's hours on its payroll in Gusto (services/gusto/app-payroll.js)
+    payrollSyncs: 'gusto_payroll_syncs'
 };
 
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));

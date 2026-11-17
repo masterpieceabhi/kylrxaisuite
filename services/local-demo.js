@@ -54,4 +54,13 @@ function handler(req, res) {
     res.status(r.status).json(r.body);
 }
 
-module.exports = { ACCOUNTS, enabled, isLocalRequest, respond, handler };
+/**
+ * The limit a sign-in or password rate limiter should use. Normally the limit it was written with. The local
+ * end-to-end run (scripts/e2e-us) makes one company and many people from one machine, so a server started with
+ * E2E_RELAX_LIMITS=true may use a high limit, and only where enabled() is true: against the emulators, never in production.
+ */
+function relaxedLimit(env, normal) {
+    return env && env.E2E_RELAX_LIMITS === 'true' && enabled(env) ? 100000 : normal;
+}
+
+module.exports = { ACCOUNTS, enabled, isLocalRequest, respond, handler, relaxedLimit };

@@ -94,6 +94,7 @@ async function weekView(orgId, user, weekStart, info, attest = null) {
     });
     const days = pay.days.map((d) => ({
         date: d.date, workedHours: hours(d.workedMinutes), regularHours: hours(d.regularMinutes), overtimeHours: hours(d.overtimeMinutes),
+        ...rules.shiftSpan(d.date, d.workedMinutes, punches.filter((p) => p.localDate === d.date), info.tz),
         doubleTimeHours: hours(d.doubleTimeMinutes), flags: d.flags, restBreaksDue: d.restBreaksDue, premiumHours: hours(d.premiumMinutes),
         breakMinutes: (dayRows.find((x) => x.date === d.date) || {}).breakMinutes || 0,
         punches: punches.filter((p) => p.localDate === d.date).map((p) => ({ id: p.id, type: p.type, time: localTimeOf(p.at, info.tz), source: p.source }))
@@ -233,6 +234,15 @@ router.get('/approvals', APPROVAL_VIEWER, requireOrg, async (req, res) => {
         data: rows.slice(0, 300).map((w) => ({ ...w, weekEnd: weekEndOf(w) })) });
 });
 
+/**
+ * After a week is approved, rejected or reopened: if the company connects its own Gusto account and has switched
+ * automatic sending on, its hours go to Gusto now (or are taken back). Not awaited, so the answer to the approver
+ * never waits for Gusto; the service never throws and writes any failure to the Gusto error list.
+ */
+function hoursToPayrollProvider(orgId, weekStart, actor) {
+    try { Promise.resolve(require('../services/gusto/time-sheets').afterWeekChange(orgId, weekStart, { actor })).catch(() => {}); } catch (_) { /* never fail the decision */ }
+}
+
 router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
     if (!parseIsoDate(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a date (YYYY-MM-DD)' });
@@ -254,12 +264,15 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
         if (view.openShift) return res.status(409).json({ success: false, error: 'This person is still clocked in' });
         patch.totals = view.totals; patch.flags = view.flags; patch.exempt = view.exempt; patch.rulesUsed = info.rules; patch.holidayPay = view.holidayPay;
         patch.weekEnd = view.weekEnd; patch.timeZone = info.tz;
+        // each day as it was approved, so the same hours can later be sent on shift by shift (payroll providers that want time sheets)
+        patch.days = view.days.map((d) => ({ date: d.date, workedHours: d.workedHours, regularHours: d.regularHours, overtimeHours: d.overtimeHours, doubleTimeHours: d.doubleTimeHours, premiumHours: d.premiumHours, startAt: d.startAt, endAt: d.endAt }));
     }
     await ref.update(patch);
     audit(req.orgId, req, decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', userId, { weekStart });
     require('../services/events').emit(req.orgId, decision === 'approve' ? 'timesheet.approved' : 'timesheet.rejected', decision === 'approve'
         ? { person_id: userId, week_start: weekStart, worked_hours: (patch.totals && patch.totals.workedHours) ?? null, overtime_hours: (patch.totals && patch.totals.overtimeHours) ?? null }
         : { person_id: userId, week_start: weekStart });
+    hoursToPayrollProvider(req.orgId, weekStart, req.user.id);
     res.json({ success: true, status: patch.status });
 });
 
@@ -275,6 +288,7 @@ router.post('/weeks/:userId/:weekStart/reopen', perms.requirePermission('time.ap
     if (!['approved', 'submitted'].includes(was)) return res.status(409).json({ success: false, error: 'This week is already open' });
     await ref.update({ status: 'open', reopenedAt: new Date().toISOString(), reopenedBy: req.user.id, reopenReason: reason.slice(0, 300), reopenedFrom: was });
     audit(req.orgId, req, 'timesheet_reopened', userId, { weekStart, reason: reason.slice(0, 200), was });
+    if (was === 'approved') hoursToPayrollProvider(req.orgId, weekStart, req.user.id);
     res.json({ success: true, status: 'open', was });
 });
 

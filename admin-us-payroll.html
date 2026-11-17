@@ -43,7 +43,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <div class="danger" id="cfgWarn" hidden></div>
   </section>
 
-  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="offcycle">Off-cycle pay</button><button data-tab="contractors">Contractors</button><button data-tab="deduct">Deductions and garnishments</button><button data-tab="forms">W-2 and 1099</button><button data-tab="stubs">Pay stubs</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button></div>
+  <div class="tabs" id="tabs"><button data-tab="setup" class="on">1. Company setup</button><button data-tab="people">2. People</button><button data-tab="run">3. Run payroll</button><button data-tab="offcycle">Off-cycle pay</button><button data-tab="contractors">Contractors</button><button data-tab="deduct">Deductions and garnishments</button><button data-tab="forms">W-2 and 1099</button><button data-tab="stubs">Pay stubs</button><button data-tab="history">History and taxes</button><button data-tab="health">Problems and connection</button><button data-tab="hours" hidden>Hours to Gusto</button></div>
 
   <div id="tab-setup" style="display:grid;gap:20px">
     <section class="card" id="connectCard" hidden>
@@ -54,6 +54,17 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
         <label>Payroll contact last name<input name="lastName" required></label>
         <label>Contact email (leave empty to use yours)<input name="email" type="email"></label>
       </div><div class="row"><button type="submit">Connect to Gusto</button></div></form>
+    </section>
+    <section class="card" id="appConnectCard" hidden>
+      <h2>Connect your Gusto account</h2>
+      <p class="hint">You will be sent to Gusto to sign in and approve the connection, then brought back here. Use a Gusto account that is an administrator of this company. Payroll is still reviewed and run in Gusto.</p>
+      <div class="row"><button type="button" id="appConnect">Connect to Gusto</button></div>
+    </section>
+    <section class="card" id="appConnectedCard" hidden>
+      <h2>Connected to Gusto</h2>
+      <p class="hint" id="appConnectedNote"></p>
+      <div class="row"><button type="button" class="ghost" id="appDisconnect">Disconnect</button></div>
+      <p class="hint">Disconnecting stops this product from sending anything to Gusto and asks Gusto to cancel its access. It does not delete anything in Gusto.</p>
     </section>
     <section class="card" id="stepsCard" hidden>
       <h2>Setup steps</h2>
@@ -76,6 +87,44 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <h2 id="stateTaxTitle">State tax answers</h2>
       <p class="hint" id="stateTaxNote"></p>
       <div id="stateTaxBody"></div>
+    </section>
+  </div>
+
+  <div id="tab-hours" hidden style="display:grid;gap:20px">
+    <section class="card">
+      <h2>1. Match your people to Gusto</h2>
+      <p class="hint">Hours can only be sent for a person once you have confirmed who they are in your Gusto account. Nothing is created or changed in Gusto by matching.</p>
+      <div class="row" style="margin:0 0 12px"><button id="matchConfirm" hidden>Confirm the suggested matches</button><button class="ghost" id="matchReload">Check again</button></div>
+      <table><thead><tr><th>Person here</th><th>In Gusto</th><th>Agrees on</th><th>State</th><th></th></tr></thead><tbody id="matchRows"></tbody></table>
+      <div id="matchNote" class="hint" style="margin-top:10px"></div>
+    </section>
+    <section class="card">
+      <h2>2. Send approved hours</h2>
+      <p class="hint">Each approved day of work goes to Gusto as one time sheet, already split into regular, overtime and double overtime. Then put the hours on a payroll in step 3. Salaried people, holiday pay and extra pay for missed breaks are not sent.</p>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin:0 0 12px;font-weight:400"><input type="checkbox" id="autoSend" style="width:auto;margin-top:3px"><span>Send hours by themselves as soon as a week is approved. If a week is rejected or reopened later, its hours are taken back out of Gusto.</span></label>
+      <div id="autoSendNote" class="hint" style="margin:0 0 12px"></div>
+      <div class="grid"><label>From<input type="date" id="hoursFrom"></label><label>To<input type="date" id="hoursTo"></label></div>
+      <div class="row"><button class="ghost" id="hoursPreview">Show what will be sent</button><button id="hoursSend" hidden>Send to Gusto</button></div>
+      <div id="hoursIssues" style="margin-top:12px;display:grid;gap:8px"></div>
+      <table id="hoursTable" hidden><thead><tr><th>Person</th><th>Day</th><th>Regular</th><th>Overtime</th><th>Double overtime</th><th>What happens</th></tr></thead><tbody id="hoursRows"></tbody></table>
+      <div id="hoursOut" class="hint" style="margin-top:10px"></div>
+    </section>
+    <section class="card">
+      <h2>3. Put the hours on a payroll</h2>
+      <p class="hint">Choose a pay period and Gusto adds the hours you sent to that period's payroll. This does not run the payroll and nobody is paid: you still review and run it in Gusto.</p>
+      <div class="grid"><label>Pay period<select id="syncPeriod"><option value="">Choose...</option></select></label></div>
+      <div class="row"><button id="syncStart" hidden>Put these hours on the payroll</button><button class="ghost" id="syncReload">Check with Gusto</button></div>
+      <div id="syncIssues" style="margin-top:12px;display:grid;gap:8px"></div>
+      <table id="syncTable" hidden><thead><tr><th>Pay period</th><th>Asked</th><th>State</th><th>What Gusto said</th></tr></thead><tbody id="syncRows"></tbody></table>
+      <div id="syncOut" class="hint" style="margin-top:10px"></div>
+    </section>
+    <section class="card">
+      <h2>4. What was paid</h2>
+      <p class="hint">Reads the payrolls you have run in Gusto, so pay shows in your reports here. People paid in Gusto who are not matched in step 1 are left out.</p>
+      <div class="grid"><label>Pay periods from<input type="date" id="paidFrom"></label><label>To<input type="date" id="paidTo"></label></div>
+      <div class="row"><button id="paidPull" hidden>Read from Gusto</button></div>
+      <table id="paidTable" hidden><thead><tr><th>Pay date</th><th>Pay period</th><th>People</th><th>Hours</th><th>Gross pay</th><th>Net pay</th><th>Employee taxes</th><th>Company taxes</th><th>Total cost</th></tr></thead><tbody id="paidRows"></tbody></table>
+      <div id="paidOut" class="hint" style="margin-top:10px"></div>
     </section>
   </div>
 
@@ -267,8 +316,15 @@ async function loadStatus() {
   const cw = $('cfgWarn');
   cw.hidden = status.configured;
   cw.textContent = status.configured ? '' : `Gusto is not set up on this server yet: ${status.configProblems.join('; ')}`;
-  $('connectCard').hidden = c.connected || !status.can.connect;
-  $('stepsCard').hidden = !c.connected;
+  const appMode = status.integration === 'app';
+  $('connectCard').hidden = appMode || c.connected || !status.can.connect;
+  $('appConnectCard').hidden = !appMode || c.connected || !status.can.connect;
+  $('stepsCard').hidden = appMode || !c.connected;
+  // with a customer's own Gusto account, payroll is run in Gusto: only the tabs that work in that mode are shown
+  document.querySelectorAll('#tabs button').forEach((b) => { b.hidden = appMode ? !['setup', 'hours'].includes(b.dataset.tab) : b.dataset.tab === 'hours'; });
+  $('appConnectedCard').hidden = !appMode || !c.connected;
+  $('appConnectedNote').textContent = c.connected ? `This company is connected to ${c.companyName || 'a Gusto account'}${c.connectedAt ? ` since ${when(c.connectedAt)}` : ''}. Open "Hours to Gusto" to match people and send approved hours.` : '';
+  $('appDisconnect').hidden = !status.can.connect;
   $('discCard').hidden = !c.connected || !status.can.connect;
   for (const id of ['syncPeople', 'pullPeople', 'syncTimeOff', 'prepare', 'poll']) $(id).hidden = !status.can.run;
   $('subscribe').hidden = !status.can.connect;
@@ -314,6 +370,169 @@ $('steps').addEventListener('submit', async (ev) => {
   const form = ev.target; const btn = form.querySelector('button'); btn.disabled = true;
   try { await req('POST', `/setup/${form.dataset.step}`, stepBody(form)); say('Saved.'); await loadStatus(); await loadSetup(true); } catch (e) { say(e.message, false); btn.disabled = false; }
 });
+/* ---------- a customer's own Gusto account: matching people and sending hours ---------- */
+let matches = null;
+const hrs = (n) => (n ? String(n) : '');
+async function loadMatches() {
+  matches = await req('GET', '/match');
+  const STATE = { matched: tag('Matched', 'good'), suggested: tag('Suggested, not confirmed', 'warnTag'), unmatched: tag('Not matched', 'badTag'), missing_in_gusto: tag('No longer in Gusto', 'badTag') };
+  $('matchRows').innerHTML = matches.rows.map((r) => {
+    const linked = r.state === 'matched' || r.state === 'missing_in_gusto';
+    const pick = !linked && r.state === 'unmatched' && r.candidates && r.candidates.length ? `<select data-pick="${esc(r.userId)}" aria-label="Who ${esc(r.name || '')} is in Gusto"><option value="">Choose...</option>${r.candidates.map((x) => `<option value="${esc(x.gustoUuid)}">${esc(x.name)} (agrees on ${esc(x.agreesOn.join(', '))})</option>`).join('')}</select>` : '';
+    const act = !status.can.run ? '' : linked ? `<button class="ghost" data-unmatch="${esc(r.userId)}">Remove match</button>` : pick ? `<button class="ghost" data-usepick="${esc(r.userId)}">Use this person</button>` : '';
+    return `<tr><td><b>${esc(r.name || '')}</b></td><td>${pick || esc(r.gustoName || '-')}</td><td>${esc((r.matchedBy || []).join(', '))}</td><td>${r.leftGusto ? tag('Dismissed in Gusto', 'warnTag') : STATE[r.state] || ''}${r.leftGusto ? '<div class="hint">Hours for their last days are still sent.</div>' : ''}${r.note ? `<div class="hint">${esc(r.note)}</div>` : ''}</td><td>${act}</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="hint">There are no employees here to match yet.</td></tr>';
+  $('matchConfirm').hidden = !status.can.run || !matches.totals.suggested;
+  $('matchConfirm').textContent = `Confirm the ${matches.totals.suggested} suggested ${matches.totals.suggested === 1 ? 'match' : 'matches'}`;
+  $('matchNote').textContent = `${matches.totals.matched} of ${matches.totals.people} people matched. Gusto has ${matches.totals.inGusto}.${matches.unmatchedInGusto.length ? ` In Gusto but not matched here: ${matches.unmatchedInGusto.map((u) => u.name).join(', ')}.` : ''}`;
+}
+async function loadHours() {
+  if (!status) await loadStatus(); // the tab can be pressed before the first status answer is back
+  if (!status.connection.connected) { $('matchRows').innerHTML = '<tr><td colspan="5" class="hint">Connect your Gusto account first, on the Company setup tab.</td></tr>'; $('matchNote').textContent = ''; return; }
+  if (!$('hoursTo').value) { const d = new Date(); const iso = (x) => x.toISOString().slice(0, 10); $('hoursTo').value = iso(d); d.setDate(d.getDate() - 13); $('hoursFrom').value = iso(d); }
+  $('paidTo').value = $('paidTo').value || $('hoursTo').value;
+  if (!$('paidFrom').value) { const d = new Date(); d.setDate(d.getDate() - 90); $('paidFrom').value = d.toISOString().slice(0, 10); }
+  $('syncStart').hidden = !status.can.run; $('paidPull').hidden = !status.can.run;
+  await loadMatches();
+  // each part below stands alone: one that Gusto refuses (a missing permission, say) must not hide the others
+  const part = async (fn, outId) => { try { await fn(); } catch (e) { $(outId).textContent = e.message; } };
+  await Promise.all([part(loadAutoSend, 'autoSendNote'), part(() => loadSyncs(false), 'syncOut'), part(loadPaid, 'paidOut')]);
+}
+$('matchReload').addEventListener('click', guard(async () => {
+  if (!status.can.run) { await loadMatches(); return; }
+  const out = await req('POST', '/match/refresh');
+  await loadMatches();
+  const names = (list) => list.map((x) => x.name || 'someone').join(', ');
+  const news = [out.jobChanged.length ? `New job in Gusto: ${names(out.jobChanged)}.` : '', out.left.length ? `Dismissed in Gusto: ${names(out.left)}.` : '', out.missing.length ? `No longer in Gusto: ${names(out.missing)}.` : '', out.back.length ? `Back in Gusto: ${names(out.back)}.` : ''].filter(Boolean).join(' ');
+  say(`Checked ${out.checked} matched ${out.checked === 1 ? 'person' : 'people'} against Gusto. ${news || 'Nothing has changed.'}`, !out.missing.length);
+}));
+
+/* sending by itself */
+async function loadAutoSend() {
+  const s = await req('GET', '/time-sheets/settings');
+  $('autoSend').checked = s.autoSend; $('autoSend').disabled = !status.can.run;
+  const l = s.lastSend;
+  $('autoSendNote').textContent = l ? `Last sent ${when(l.at)}${l.auto ? ', by itself' : ''}: ${l.created} new, ${l.updated} changed, ${l.removed} removed${l.failed + l.locked ? `, ${l.failed + l.locked} not sent (see "Show what will be sent")` : ''}.` : '';
+}
+$('autoSend').addEventListener('change', async (ev) => {
+  const box = ev.currentTarget; const want = box.checked;
+  box.disabled = true;
+  try { await req('PUT', '/time-sheets/settings', { autoSend: want }); say(want ? 'Hours will now be sent to Gusto as soon as a week is approved.' : 'Hours are now sent only when you press "Send to Gusto".'); }
+  catch (e) { box.checked = !want; say(e.message, false); }
+  finally { box.disabled = false; }
+});
+
+/* hours onto a payroll */
+const SYNC_STATE = { pending: ['Gusto is working on it', 'warnTag'], in_progress: ['Gusto is working on it', 'warnTag'], success: ['On the payroll', 'good'], partial_success: ['Partly on the payroll', 'warnTag'], failure: ['Not done', 'badTag'] };
+function showSyncs(list) {
+  $('syncTable').hidden = !list.length;
+  $('syncRows').innerHTML = list.map((s) => { const st = SYNC_STATE[s.status] || [s.status, 'warnTag']; return `<tr><td>${day(s.periodStart)} to ${day(s.periodEnd)}</td><td>${when(s.submittedAt)}</td><td>${tag(st[0], st[1])}</td><td>${esc([...(s.errors || []), ...(s.warnings || [])].join(' ')) || (s.status === 'success' ? 'Review and run the payroll in Gusto.' : '')}</td></tr>`; }).join('');
+}
+async function loadSyncs(askGusto) {
+  const sel = $('syncPeriod'); const keep = sel.value;
+  showSyncs((await req('GET', `/payroll-syncs${askGusto ? '?refresh=true' : ''}`)).data);
+  const periods = (await req('GET', '/pay-periods')).data;
+  sel.innerHTML = `<option value="">${periods.length ? 'Choose...' : 'Gusto shows no open pay period'}</option>${periods.map((p) => `<option value="${esc([p.payScheduleUuid, p.start, p.end].join('|'))}">${day(p.start)} to ${day(p.end)}${p.checkDate ? `, paid ${day(p.checkDate)}` : ''}${p.ended ? '' : ' (not finished yet)'}</option>`).join('')}`;
+  if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  $('syncOut').textContent = '';
+}
+$('syncReload').addEventListener('click', guard(async () => { await loadSyncs(true); say('Checked with Gusto. The list below shows where each request stands.'); }));
+$('syncStart').addEventListener('click', guard(async () => {
+  const [payScheduleUuid, start, end] = $('syncPeriod').value.split('|');
+  if (!payScheduleUuid) throw new Error('Choose a pay period first.');
+  $('syncIssues').innerHTML = '';
+  const out = await req('POST', '/payroll-syncs', { payScheduleUuid, start, end });
+  $('syncIssues').innerHTML = (out.notIncluded || []).map((i) => `<div class="warn">Not on this payroll. ${esc(i.message)}</div>`).join('');
+  say(`Gusto is putting the hours for ${day(start)} to ${day(end)} on the payroll. Press "Check with Gusto" in a moment, then review and run the payroll in Gusto.`);
+  await loadSyncs(false);
+}));
+
+/* what was paid */
+async function loadPaid() {
+  const out = await req('GET', '/pay-results');
+  $('paidTable').hidden = !out.payrolls.length;
+  $('paidRows').innerHTML = out.payrolls.map((p) => `<tr><td>${day(p.payDate)}${p.status === 'paid' ? '' : ' (not paid yet)'}</td><td>${day(p.periodStart)} to ${day(p.periodEnd)}</td><td>${p.people}</td><td>${p.hours}</td><td>${money(p.gross)}</td><td>${money(p.net)}</td><td>${money(p.employeeTaxes)}${p.estimated ? ' (estimate)' : ''}</td><td>${money(p.employerTaxes)}${p.estimated ? ' (estimate)' : ''}</td><td>${money(p.employerCost)}</td></tr>`).join('');
+  const l = out.lastPull;
+  $('paidOut').textContent = l ? `Last read ${when(l.at)}: ${l.payrolls} ${l.payrolls === 1 ? 'payroll' : 'payrolls'}.${l.unmatched ? ` ${l.unmatched} ${l.unmatched === 1 ? 'person' : 'people'} paid in Gusto ${l.unmatched === 1 ? 'is' : 'are'} not matched here and left out.` : ''}${l.failed ? ` ${l.failed} could not be read.` : ''}` : 'Nothing has been read from Gusto yet.';
+}
+$('paidPull').addEventListener('click', guard(async () => {
+  const start = $('paidFrom').value; const end = $('paidTo').value;
+  if (!start || !end) throw new Error('Choose both dates.');
+  const out = await req('POST', '/pay-results/pull', { start, end });
+  await loadPaid();
+  say(out.payrolls || out.failed ? `Read ${out.payrolls} ${out.payrolls === 1 ? 'payroll' : 'payrolls'} from Gusto, ${out.rows} pay ${out.rows === 1 ? 'record' : 'records'}.${out.failed ? ` ${out.failed} could not be read: ${out.problems[0].message}` : ''}` : 'Gusto has no processed payroll in these dates.', !out.failed);
+}));
+$('matchConfirm').addEventListener('click', guard(async () => {
+  const pairs = matches.rows.filter((r) => r.state === 'suggested').map((r) => ({ userId: r.userId, gustoUuid: r.gustoUuid }));
+  const out = await req('POST', '/match/confirm', { pairs });
+  say(`Matched ${out.saved}.${out.refused.length ? ` Not matched: ${out.refused.length}. ${out.refused[0].reason}` : ''}`, !out.refused.length);
+  await loadMatches();
+}));
+$('matchRows').addEventListener('click', async (ev) => {
+  const un = ev.target.closest('button[data-unmatch]'); const use = ev.target.closest('button[data-usepick]');
+  if (!un && !use) return;
+  try {
+    if (un) { await req('DELETE', `/match/${encodeURIComponent(un.dataset.unmatch)}`); say('Match removed.'); }
+    else {
+      const sel = $('matchRows').querySelector(`select[data-pick="${CSS.escape(use.dataset.usepick)}"]`);
+      if (!sel || !sel.value) throw new Error('Choose who this person is in Gusto first.');
+      const out = await req('POST', '/match/confirm', { pairs: [{ userId: use.dataset.usepick, gustoUuid: sel.value }] });
+      if (out.refused.length) throw new Error(out.refused[0].reason);
+      say('Matched.');
+    }
+    await loadMatches();
+  } catch (e) { say(e.message, false); }
+});
+const period = () => { const start = $('hoursFrom').value; const end = $('hoursTo').value; if (!start || !end) throw new Error('Choose both dates.'); return { start, end }; };
+function showIssues(list) {
+  const CLS = { blocker: 'danger', warning: 'warn', info: 'hint' };
+  $('hoursIssues').innerHTML = (list || []).map((i) => `<div class="${CLS[i.severity] || 'hint'}">${esc(i.message)}</div>`).join('');
+}
+async function previewHours() {
+  const { start, end } = period();
+  const p = await req('GET', `/time-sheets/preview?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+  showIssues(p.issues);
+  const WHAT = { send: tag('Will be sent', 'warnTag'), update: tag('Changed here: will be updated', 'warnTag'), none: tag('Already sent', 'good'), remove: tag('No longer approved: will be removed', 'badTag') };
+  const part = (r, k) => hrs(((r.entries || []).find((e) => e.classification === k) || {}).hours);
+  const rows = p.rows.map((r) => `<tr><td><b>${esc(r.name || '')}</b></td><td>${day(r.date)}</td><td>${part(r, 'Regular')}</td><td>${part(r, 'Overtime')}</td><td>${part(r, 'Double overtime')}</td><td>${WHAT[r.action] || ''}</td></tr>`)
+    .concat(p.toRemove.map((r) => `<tr><td><b>${esc(r.name || '')}</b></td><td>${day(r.date)}</td><td></td><td></td><td></td><td>${WHAT.remove}</td></tr>`));
+  $('hoursTable').hidden = !rows.length;
+  $('hoursRows').innerHTML = rows.join('');
+  const todo = p.counts.send + p.counts.update + p.counts.remove;
+  $('hoursSend').hidden = !status.can.run || !todo;
+  $('hoursOut').textContent = rows.length ? `${p.totals.shifts} days of work for ${p.totals.people} ${p.totals.people === 1 ? 'person' : 'people'}: ${p.totals.regularHours} regular, ${p.totals.overtimeHours} overtime, ${p.totals.doubleTimeHours} double overtime hours. ${todo ? `${todo} to send or change.` : 'Nothing new to send.'}` : 'There are no approved hours to send for these dates.';
+}
+$('hoursPreview').addEventListener('click', guard(previewHours));
+$('hoursSend').addEventListener('click', guard(async () => {
+  const { start, end } = period();
+  const out = await req('POST', '/time-sheets/send', { start, end });
+  const bad = out.failed + out.locked;
+  say(`Sent ${out.created}, updated ${out.updated}, removed ${out.removed}, already there ${out.unchanged}${bad ? `, not sent ${bad}: ${out.problems[0].name}, ${out.problems[0].date}: ${out.problems[0].message}` : ''}. Next, put them on a payroll in step 3.`, !bad);
+  await previewHours();
+  await loadAutoSend().catch(() => {});
+}));
+$('appDisconnect').addEventListener('click', guard(async (ev) => {
+  const b = ev.currentTarget;
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Press again to disconnect'; return; }
+  const off = await req('POST', '/disconnect', { confirm: true });
+  delete b.dataset.sure; b.textContent = 'Disconnect';
+  say(off.revokedAtGusto === false ? 'Disconnected here, but Gusto could not be told. Remove this app inside Gusto as well.' : 'Disconnected from Gusto.', off.revokedAtGusto !== false); await loadStatus();
+}));
+
+$('appConnect').addEventListener('click', guard(async () => {
+  const out = await req('POST', '/oauth/start');
+  window.location.assign(out.url);
+}));
+// back from Gusto: the server sends a short fixed code, never free text
+(() => {
+  const p = new URLSearchParams(window.location.search);
+  const g = p.get('gusto');
+  if (!g) return;
+  const WHY = { declined: 'The connection was not approved in Gusto.', state_expired: 'That took too long. Please connect again.', bad_state: 'That connection request was not recognised. Please connect again.', bad_code: 'Gusto did not finish the connection. Please connect again.', no_company: 'Gusto did not say which company approved. Use an administrator of this company and try again.', auth_failed: 'Gusto did not accept this application\'s details. Tell the person who runs this server.', not_configured: 'Gusto is not set up on this server yet.' };
+  window.history.replaceState(null, '', window.location.pathname);
+  window.addEventListener('load', () => setTimeout(() => say(g === 'connected' ? 'Connected to Gusto.' : (WHY[p.get('why')] || 'The connection to Gusto did not finish. Please try again.'), g === 'connected'), 600));
+})();
+
 $('connectForm').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const o = Object.fromEntries(new FormData(ev.target).entries());
@@ -655,7 +874,7 @@ $('stubRows').addEventListener('click', (ev) => {
 });
 
 /* ---------- tabs ---------- */
-const LOADERS = { setup: () => loadSetup(false), people: loadPeople, run: async () => {}, offcycle: loadOffCycle, contractors: loadContractors, deduct: loadGarnishments, forms: async () => {}, stubs: loadStubPeople, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
+const LOADERS = { hours: () => loadHours(), setup: () => (status && status.integration === 'app' ? Promise.resolve() : loadSetup(false)), people: loadPeople, run: async () => {}, offcycle: loadOffCycle, contractors: loadContractors, deduct: loadGarnishments, forms: async () => {}, stubs: loadStubPeople, history: async () => { await loadHistory(); await loadCost(); await loadTaxes(); }, health: loadHealth };
 function show(tab) {
   document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   for (const t of Object.keys(LOADERS)) $(`tab-${t}`).hidden = t !== tab;
@@ -665,7 +884,7 @@ $('tabs').addEventListener('click', (ev) => { const b = ev.target.closest('butto
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = 'login.html'; return; }
-  try { await loadStatus(); await loadSetup(false); } catch (e) { say(e.status === 409 ? 'Payroll through Gusto is for US companies.' : e.message, false); }
+  try { await loadStatus(); if (status.integration !== 'app') await loadSetup(false); } catch (e) { say(e.status === 409 ? 'Payroll through Gusto is for US companies.' : e.message, false); }
 });
 </script>
 </body>

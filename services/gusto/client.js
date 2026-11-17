@@ -136,6 +136,27 @@ function createClient({ orgId, opts, store, log, fetchImpl, sleep = defaultSleep
         return app.systemPromise;
     }
 
+    /** App integration: swap the one-time code Gusto sent back for that company's access and refresh tokens. */
+    async function exchangeCode(code, redirectUri) {
+        const d = await oauth({ grant_type: 'authorization_code', code, redirect_uri: redirectUri });
+        emit('info', 'company_token_issued', { expiresInSec: d.expires_in });
+        return d;
+    }
+
+    /**
+     * Tell Gusto a token is no longer to be used (POST /oauth/revoke: client_id, client_secret, token; 200 on success.
+     * "After revoking, this token can no longer be used to make requests nor can it be refreshed." Read 2026-11-17).
+     * Returns true when Gusto accepted it. Never throws: disconnecting here must work even when Gusto cannot be reached.
+     */
+    async function revokeToken(token) {
+        if (!token) return false;
+        try {
+            const r = await rawFetch('POST', '/oauth/revoke', { body: { client_id: opts.clientId, client_secret: opts.clientSecret, token } });
+            emit(r.status < 400 ? 'info' : 'warn', 'token_revoke', { status: r.status });
+            return r.status < 400;
+        } catch (_) { emit('warn', 'token_revoke', { status: 0 }); return false; }
+    }
+
     const tokenUsable = (t) => t && t.accessToken && t.expiresAt - opts.tokenSkewSec * 1000 > now();
 
     /** Refresh the company's tokens once, no matter how many callers ask at the same time (in this process or another). */
@@ -163,7 +184,8 @@ function createClient({ orgId, opts, store, log, fetchImpl, sleep = defaultSleep
                     app.stats.refreshes += 1;
                     let d;
                     try {
-                        d = await oauth({ grant_type: 'refresh_token', refresh_token: current.refreshToken });
+                        // an app integration must send the same return address when it refreshes (Gusto's OAuth2 page)
+                        d = await oauth({ grant_type: 'refresh_token', refresh_token: current.refreshToken, ...(opts.integration === 'app' && opts.redirectUri ? { redirect_uri: opts.redirectUri } : {}) });
                     } catch (e) {
                         if (e.code === 'auth_failed') {
                             await store.saveConnection(orgId, { status: 'reauth_required', statusNote: 'Gusto rejected the refresh token. Reconnect the company.' });
@@ -330,7 +352,7 @@ function createClient({ orgId, opts, store, log, fetchImpl, sleep = defaultSleep
     }
 
     return {
-        orgId, opts, request, get, post, put, del, paginate, putVersioned, systemToken, companyToken, download,
+        orgId, opts, request, get, post, put, del, paginate, putVersioned, systemToken, companyToken, exchangeCode, revokeToken, download,
         stats: () => ({ ...app.stats, windowSize: app.limiter.size })
     };
 }

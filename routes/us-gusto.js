@@ -33,9 +33,13 @@ const garnishments = require('../services/gusto/garnishments');
 const garnishmentRules = require('../services/garnishment-rules');
 const benefitDeductions = require('../services/gusto/benefits');
 const mapping = require('../services/gusto/mapping');
+const appConnect = require('../services/gusto/app-connect');
+const timeSheets = require('../services/gusto/time-sheets');
+const appPayroll = require('../services/gusto/app-payroll');
 const timeRules = require('../services/time-rules');
 
 const NOTE = 'Gusto calculates pay, files payroll taxes and moves the money. Review every total before you submit: a submitted payroll pays real people.';
+const APP_NOTE = 'This company connects its own Gusto account. Gusto calculates pay, files payroll taxes and moves the money; payroll is reviewed and run in Gusto.';
 const VIEW = [requirePermission('payroll.view'), requireUsOrg];
 const RUN = [requirePermission('payroll.run'), requireUsOrg];
 const CONNECT = [requirePermission('payroll.connect'), requireUsOrg];
@@ -78,7 +82,40 @@ const publicConnection = (conn) => (!conn || !conn.companyUuid ? { connected: fa
     bankLast4: (conn.onboarding && conn.onboarding.bankLast4) || null, approved: Boolean(conn.onboarding && conn.onboarding.approvedAt)
 });
 
+/* ------------------------------- return address for a customer's own Gusto account ------------------------------- */
+
+// Public on purpose: Gusto sends the owner's browser here after they approve, and that request carries no sign-in
+// token of ours. The one-time `state` made at POST /oauth/start is what ties it to a company and a person; the
+// service refuses anything it did not issue, anything older than ten minutes, and anything used before.
+// Nothing from the request is echoed back: the browser is sent to the payroll page with a short fixed code.
+const PAYROLL_PAGE = '/admin-us-payroll.html';
+async function oauthCallback(req, res) {
+    const one = (v) => (typeof v === 'string' ? v.slice(0, 4000) : '');
+    const q = req.query || {};
+    res.set('Cache-Control', 'no-store');
+    res.set('Referrer-Policy', 'no-referrer');
+    try {
+        const out = await appConnect.completeAuthorization({ state: one(q.state), code: one(q.code), error: one(q.error) });
+        logger.info(`[Gusto] company connected through its own Gusto account ${JSON.stringify({ orgId: out.orgId })}`);
+        return res.redirect(303, `${PAYROLL_PAGE}?gusto=connected`);
+    } catch (e) {
+        const why = e && e.name === 'GustoError' && /^[a-z_]{1,40}$/.test(String(e.code || '')) ? e.code : 'failed';
+        logger.warn(`[Gusto] connecting a Gusto account did not finish ${JSON.stringify({ why })}`);
+        return res.redirect(303, `${PAYROLL_PAGE}?gusto=failed&why=${why}`);
+    }
+}
+router.get('/oauth/callback', oauthCallback);
+
 router.use(verifyToken);
+
+// With GUSTO_INTEGRATION=app the customer runs payroll in their own Gusto account, and Gusto does not let an app
+// integration set up a company, run payroll, fetch pay stubs or tax forms, or pay contractors. Those routes exist
+// for Embedded Payroll only, so here they are refused before they can call Gusto and fail halfway.
+const APP_ROUTES = [/^\/status$/, /^\/oauth\/start$/, /^\/disconnect$/, /^\/people$/, /^\/sync\/pull$/, /^\/errors(\/|$)/, /^\/match(\/|$)/, /^\/time-sheets(\/|$)/, /^\/pay-periods$/, /^\/payroll-syncs(\/|$)/, /^\/pay-results(\/|$)/];
+router.use((req, res, next) => {
+    if (config.integration() !== 'app' || APP_ROUTES.some((r) => r.test(req.path))) return next();
+    return res.status(409).json({ success: false, code: 'app_integration', error: 'This server connects to each customer\'s own Gusto account, where payroll is run. This action is only available with Gusto Embedded Payroll.' });
+});
 
 /* ------------------------------- status and connection ------------------------------- */
 
@@ -86,12 +123,22 @@ router.get('/status', ...VIEW, run(async (req, res) => {
     const ctx = await ctxFor(req, { needConfig: false });
     const problems = config.validateForMode(ctx.opts);
     const errors = await ctx.store.listErrors(req.orgId);
-    const setup = await onboarding.getOnboarding(ctx, { live: false });
+    const appMode = ctx.opts.integration === 'app';
+    // company setup steps belong to Embedded Payroll; a customer's own Gusto account is already set up there
+    const setup = appMode ? {} : await onboarding.getOnboarding(ctx, { live: false });
     res.json({
-        success: true, note: NOTE, mode: ctx.opts.mode, configured: problems.length === 0, configProblems: problems,
+        success: true, note: appMode ? APP_NOTE : NOTE, integration: ctx.opts.integration, mode: ctx.opts.mode, configured: problems.length === 0, configProblems: problems,
         connection: publicConnection(ctx.conn), setup: { next: setup.next || null, approved: Boolean(setup.approved), checkedAt: setup.checkedAt || null },
         openErrors: errors.length, can: { run: can(req.user, 'payroll.run'), connect: can(req.user, 'payroll.connect') }
     });
+}));
+
+// Step 1 of connecting a customer's own Gusto account: the page sends the browser to the address returned here.
+router.post('/oauth/start', ...CONNECT, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    const out = await appConnect.startAuthorization(ctx, { actor: actorOf(req) });
+    await audit(req.orgId, req, 'gusto_connect_started', req.orgId, { mode: ctx.opts.mode });
+    res.json({ success: true, url: out.url, expiresAt: new Date(out.expiresAt).toISOString() });
 }));
 
 router.post('/connect', ...CONNECT, run(async (req, res) => {
@@ -110,9 +157,10 @@ router.post('/connect', ...CONNECT, run(async (req, res) => {
 router.post('/disconnect', ...CONNECT, run(async (req, res) => {
     if ((req.body || {}).confirm !== true) return res.status(400).json({ success: false, error: 'Send confirm=true to disconnect this company from Gusto.' });
     const ctx = await ctxFor(req, { needConfig: false });
-    await onboarding.disconnect(ctx);
-    await audit(req.orgId, req, 'gusto_disconnected', req.orgId, {});
-    return res.json({ success: true, connection: publicConnection(ctx.conn) });
+    // a customer's own Gusto account: Gusto is also asked to cancel the tokens we hold (best effort; they are forgotten here either way)
+    const out = ctx.opts.integration === 'app' ? await appConnect.disconnect(ctx) : await onboarding.disconnect(ctx);
+    await audit(req.orgId, req, 'gusto_disconnected', req.orgId, out && out.revokedAtGusto !== undefined ? { revokedAtGusto: out.revokedAtGusto } : {});
+    return res.json({ success: true, connection: publicConnection(ctx.conn), ...(out && out.revokedAtGusto !== undefined ? { revokedAtGusto: out.revokedAtGusto, note: out.revokedAtGusto ? null : 'Gusto could not be told. Remove this application inside Gusto as well.' } : {}) });
 }));
 
 /* ------------------------------- company setup steps ------------------------------- */
@@ -134,6 +182,110 @@ router.post('/setup/:step', ...CONNECT, run(async (req, res) => {
     const out = await onboarding.runStep(ctx, step, input);
     await audit(req.orgId, req, 'gusto_setup_step', step, {});
     return res.json({ success: true, ...out });
+}));
+
+/* ------------------------------- a customer's own Gusto account: matching people and sending hours ------------------------------- */
+
+router.get('/match', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    res.json({ success: true, ...(await timeSheets.getMatches(ctx)) });
+}));
+
+router.post('/match/confirm', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    const out = await timeSheets.confirmMatches(ctx, (req.body || {}).pairs, actorOf(req));
+    await audit(req.orgId, req, 'gusto_people_matched', req.orgId, { saved: out.saved, refused: out.refused.length });
+    res.json({ success: true, ...out });
+}));
+
+router.delete('/match/:userId', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    const out = await timeSheets.removeMatch(ctx, String(req.params.userId));
+    await audit(req.orgId, req, 'gusto_match_removed', String(req.params.userId), {});
+    res.json({ success: true, ...out });
+}));
+
+router.get('/time-sheets/preview', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    res.json({ success: true, ...(await timeSheets.preview(ctx, String(req.query.start || ''), String(req.query.end || ''))) });
+}));
+
+router.get('/time-sheets', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    res.json({ success: true, data: await timeSheets.listSent(ctx, String(req.query.start || ''), String(req.query.end || '')), lastSend: ctx.conn.lastHoursSend || null });
+}));
+
+// Sends hours to the customer's Gusto account. It does not run payroll or move money: in Gusto the owner still
+// chooses "Sync hours to payroll" and reviews the payroll there.
+router.post('/time-sheets/send', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    const b = req.body || {};
+    const out = await timeSheets.send(ctx, String(b.start || ''), String(b.end || ''), { actor: actorOf(req) });
+    await audit(req.orgId, req, 'gusto_hours_sent', req.orgId, { start: out.periodStart, end: out.periodEnd, created: out.created, updated: out.updated, removed: out.removed, failed: out.failed, locked: out.locked });
+    res.json({ success: true, ...out });
+}));
+
+// Looks again at every matched person in Gusto: a changed job is picked up, a person who left or is gone is marked.
+router.post('/match/refresh', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    const out = await timeSheets.refreshMatches(ctx);
+    await audit(req.orgId, req, 'gusto_matches_checked', req.orgId, { checked: out.checked, changed: out.changed, left: out.left.length, missing: out.missing.length });
+    res.json({ success: true, ...out });
+}));
+
+// The company's choice to send hours by themselves when a week is approved, rejected or reopened. Off by default.
+router.get('/time-sheets/settings', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    res.json({ success: true, autoSend: ctx.conn.autoSendHours === true, lastSend: ctx.conn.lastHoursSend || null, lastMatchCheck: ctx.conn.lastMatchRefresh || null });
+}));
+router.put('/time-sheets/settings', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    const out = await timeSheets.setAutoSend(ctx, (req.body || {}).autoSend, actorOf(req));
+    await audit(req.orgId, req, 'gusto_auto_send_set', req.orgId, { autoSend: out.autoSend });
+    res.json({ success: true, ...out });
+}));
+
+/* ------------------------------- a customer's own Gusto account: hours onto a payroll, and what was paid ------------------------------- */
+
+// Neither of these runs a payroll or moves money. The owner reviews and runs the payroll in Gusto.
+router.get('/pay-periods', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    res.json({ success: true, data: await appPayroll.openPayPeriods(ctx) });
+}));
+
+router.get('/payroll-syncs', ...VIEW, run(async (req, res) => {
+    const refresh = req.query.refresh === 'true';
+    const ctx = await ctxFor(req, { needConfig: refresh });
+    res.json({ success: true, data: await appPayroll.listPayrollSyncs(ctx, { refresh }) });
+}));
+
+router.post('/payroll-syncs', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    ctx.today = await todayFn(req.orgId);
+    const out = await appPayroll.startPayrollSync(ctx, req.body || {}, { actor: actorOf(req) });
+    await audit(req.orgId, req, 'gusto_hours_put_on_payroll', out.sync.id, { start: out.sync.periodStart, end: out.sync.periodEnd, status: out.sync.status });
+    res.status(202).json({ success: true, ...out });
+}));
+
+router.get('/payroll-syncs/:id', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    res.json({ success: true, sync: await appPayroll.refreshPayrollSync(ctx, String(req.params.id)) });
+}));
+
+router.get('/pay-results', ...VIEW, run(async (req, res) => {
+    const ctx = await ctxFor(req, { needConfig: false });
+    const out = await appPayroll.listPayResults(ctx, { from: req.query.from ? String(req.query.from) : undefined, to: req.query.to ? String(req.query.to) : undefined });
+    await audit(req.orgId, req, 'payroll_cost_viewed', null, { from: req.query.from || null, to: req.query.to || null, source: 'gusto_app' });
+    res.json({ success: true, note: APP_NOTE, ...out });
+}));
+
+router.post('/pay-results/pull', ...RUN, run(async (req, res) => {
+    const ctx = await ctxFor(req);
+    ctx.today = await todayFn(req.orgId);
+    const b = req.body || {};
+    const out = await appPayroll.pullPayResults(ctx, { start: b.start ? String(b.start) : undefined, end: b.end ? String(b.end) : undefined }, { actor: actorOf(req) });
+    await audit(req.orgId, req, 'gusto_pay_results_read', req.orgId, { from: out.from, to: out.to, payrolls: out.payrolls, rows: out.rows, unmatched: out.unmatched, failed: out.failed });
+    res.json({ success: true, ...out });
 }));
 
 /* ------------------------------- people ------------------------------- */
@@ -565,5 +717,6 @@ function startJobs() {
 
 module.exports = router;
 module.exports.webhookReceiver = webhookReceiver;
+module.exports.oauthCallback = oauthCallback;
 module.exports.startJobs = startJobs;
 module.exports.STEPS = STEPS;

@@ -26,7 +26,7 @@ const svc = require('../services/us-people-service');
 const L = require('../services/access-link-rules');
 
 const WINDOW_MS = 15 * 60 * 1000;
-const limit = (max, message) => rateLimit({ windowMs: WINDOW_MS, max, standardHeaders: true, legacyHeaders: false, message: { success: false, error: message } });
+const limit = (max, message) => rateLimit({ windowMs: WINDOW_MS, max: require('../services/local-demo').relaxedLimit(process.env, max), standardHeaders: true, legacyHeaders: false, message: { success: false, error: message } });
 const lookLimiter = limit(120, 'Too many tries. Wait 15 minutes and try again.');
 const actLimiter = limit(30, 'Too many tries. Wait 15 minutes and try again.');
 const passwordLimiter = limit(30, 'Too many tries. Wait 15 minutes and try again.');

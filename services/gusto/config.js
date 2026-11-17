@@ -8,6 +8,12 @@
  */
 const MODES = ['mock', 'demo', 'production'];
 
+// How this server works with Gusto (GUSTO_INTEGRATION, one setting for the whole server):
+//   embedded  Gusto Embedded Payroll: we create the company at Gusto and run payroll inside this product
+//   app       Gusto App Integration: the customer has their own Gusto account and connects it by approving
+//             this application there (services/gusto/app-connect.js). Payroll is run in Gusto, not here.
+const INTEGRATIONS = ['embedded', 'app'];
+
 const BASE_URLS = {
     demo: 'https://api.gusto-demo.com',
     production: 'https://api.gusto.com'
@@ -15,6 +21,8 @@ const BASE_URLS = {
 
 // Pinned API version (a date). Gusto ships dated versions; change deliberately and re-run the sandbox checks.
 const DEFAULT_API_VERSION = '2025-06-15';
+// The time sheet and employee references for App Integrations name this version (read 2026-11-16).
+const APP_API_VERSION = '2026-06-15';
 
 function env(name, fallback) {
     const v = process.env[name];
@@ -24,6 +32,16 @@ function env(name, fallback) {
 function num(name, fallback) {
     const n = Number(process.env[name]);
     return Number.isFinite(n) && process.env[name] !== '' ? n : fallback;
+}
+
+function integration() {
+    const v = String(env('GUSTO_INTEGRATION', 'embedded')).toLowerCase();
+    return INTEGRATIONS.includes(v) ? v : 'embedded';
+}
+
+/** Where Gusto sends the owner back after they approve. Must match, letter for letter, an address registered for the application at dev.gusto.com. */
+function redirectUri() {
+    return env('GUSTO_REDIRECT_URI', `http://localhost:${env('PORT', '3000')}/api/us/gusto/oauth/callback`);
 }
 
 function baseUrlFor(mode) {
@@ -52,7 +70,7 @@ function resolve(stored = {}) {
         baseUrl: baseUrlFor(mode),
         clientId,
         clientSecret,
-        apiVersion: env('GUSTO_API_VERSION', DEFAULT_API_VERSION),
+        apiVersion: env('GUSTO_API_VERSION', integration() === 'app' ? APP_API_VERSION : DEFAULT_API_VERSION),
         idempotencyHeader: env('GUSTO_IDEMPOTENCY_HEADER', 'Idempotency-Key'), // unconfirmed name: see docs/GUSTO.md
         timeoutMs: num('GUSTO_TIMEOUT_MS', 20000),
         maxRetries: num('GUSTO_MAX_RETRIES', 4),
@@ -64,6 +82,10 @@ function resolve(stored = {}) {
         pageSize: num('GUSTO_PAGE_SIZE', 100),
         achBusinessDays: num('GUSTO_ACH_BUSINESS_DAYS', 4),
         sendSsn: env('GUSTO_SEND_SSN', 'true') !== 'false',
+        integration: integration(),
+        redirectUri: redirectUri(),
+        // Gusto's pages name only the production address for this page. The demo one mirrors the API host (checked 2026-11-16: it redirects to the demo sign-in).
+        authorizeUrl: env('GUSTO_AUTHORIZE_URL', `${baseUrlFor(mode)}/oauth/authorize`),
         publicBaseUrl: env('PUBLIC_BASE_URL', null)
     };
 }
@@ -75,7 +97,13 @@ function validateForMode(opts) {
     if (opts.mode !== 'mock' && (!opts.clientId || !opts.clientSecret)) errors.push(`GUSTO_CLIENT_ID and GUSTO_CLIENT_SECRET are required in ${opts.mode} mode`);
     if (opts.mode === 'production' && env('GUSTO_ALLOW_PRODUCTION', 'false') !== 'true') errors.push('production mode is switched off: set GUSTO_ALLOW_PRODUCTION=true after Gusto approves the application');
     if (opts.mode === 'mock' && process.env.NODE_ENV === 'production') errors.push('mock mode is not allowed when NODE_ENV=production');
+    if (opts.integration === 'app') {
+        let u = null;
+        try { u = new URL(String(opts.redirectUri)); } catch (_) { u = null; }
+        if (!u) errors.push('GUSTO_REDIRECT_URI is not a valid address');
+        else if (opts.mode === 'production' && u.protocol !== 'https:') errors.push('GUSTO_REDIRECT_URI must start with https:// in production');
+    }
     return errors;
 }
 
-module.exports = { MODES, BASE_URLS, DEFAULT_API_VERSION, resolve, validateForMode, baseUrlFor };
+module.exports = { MODES, INTEGRATIONS, BASE_URLS, DEFAULT_API_VERSION, resolve, validateForMode, baseUrlFor, integration, redirectUri };

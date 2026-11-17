@@ -6,7 +6,9 @@ const { register, registerOrganization, login, refreshToken, unlockAccount, veri
 const rateLimit = require('express-rate-limit');
 const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 mins
-    max: 10, // Max 10 attempts
+    // 10 attempts. The local end-to-end run signs up and signs in more often than that from one machine; it may raise
+    // the limit, but only on a server that runs against the emulators and is not production (services/local-demo.js).
+    max: require('../services/local-demo').relaxedLimit(process.env, 10),
     message: { success: false, error: 'Too many authentication attempts, please try again later' }
 });
 

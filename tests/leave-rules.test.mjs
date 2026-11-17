@@ -127,3 +127,18 @@ test('policy validation rejects bad input', () => {
     assert.ok(L.validatePolicy({ name: 'x', type: 'pto', accrual: { method: 'hours_worked', earnHours: 1 } }).errors.some((e) => /perHours/.test(e)));
     assert.ok(L.validatePolicy({ name: 'x', type: 'sick', accrual: { method: 'monthly', monthlyHours: 5 }, maxBalance: -1 }).errors.some((e) => /maxBalance/.test(e)));
 });
+
+test('approved time off on days still to come cannot be asked for a second time', () => {
+    const p = policy({ type: 'pto', accrual: { method: 'front_load', grantHours: 20 }, annualAccrualCap: null, annualUseCap: null, maxBalance: null, carryoverCap: null });
+    const b = L.simulate(p, { hireDate: '2026-01-05', asOf: '2026-03-02', usage: [{ date: '2026-04-01', hours: 8 }, { date: '2026-04-02', hours: 8 }] });
+    assert.equal(b.balance, 20); // nothing has been used yet
+    assert.equal(b.scheduledHours, 16);
+    assert.equal(b.availableBalance, 4); // 20 granted less 16 already approved
+    const again = L.validateRequest(p, { startDate: '2026-05-04', endDate: '2026-05-04', hoursPerDay: 5 }, b, '2026-03-02');
+    assert.ok(again.errors.some((e) => e.includes('not enough balance')), JSON.stringify(again.errors));
+    const fits = L.validateRequest(p, { startDate: '2026-05-04', endDate: '2026-05-04', hoursPerDay: 4 }, b, '2026-03-02');
+    assert.deepEqual(fits.errors, []);
+    // waiting and approved hours are both counted
+    const both = L.simulate(p, { hireDate: '2026-01-05', asOf: '2026-03-02', pendingHours: 2, usage: [{ date: '2026-04-01', hours: 8 }] });
+    assert.equal(both.availableBalance, 10);
+});

@@ -98,3 +98,12 @@ test('the sign-in page no longer carries any demo account or password', () => {
     assert.equal(guard.isBlocked('/routes/auth.js'), true);
     assert.equal(guard.isBlocked('/scripts/seed-emulator.js'), true);
 });
+
+test('sign-in limits can be raised only for a local run on the emulators, and only when asked', () => {
+    assert.equal(D.relaxedLimit(EMU, 10), 10); // not asked
+    assert.equal(D.relaxedLimit({ ...EMU, E2E_RELAX_LIMITS: 'true' }, 10), 100000);
+    assert.equal(D.relaxedLimit({ ...EMU, E2E_RELAX_LIMITS: 'yes' }, 10), 10); // only the exact word
+    assert.equal(D.relaxedLimit({ ...EMU, E2E_RELAX_LIMITS: 'true', NODE_ENV: 'production' }, 10), 10);
+    assert.equal(D.relaxedLimit({ NODE_ENV: 'development', E2E_RELAX_LIMITS: 'true' }, 30), 30); // no emulators
+    assert.equal(D.relaxedLimit(undefined, 30), 30);
+});
