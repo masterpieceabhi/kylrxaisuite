@@ -91,6 +91,9 @@ router.post('/me/notices/:id/read', requireUsOrg, async (req, res) => {
     res.json({ success: true });
 });
 
+// A personal one-time QR to sign in with: made here by HR or the owner for one person, or by anyone for themself
+router.use(require('./qr-signin').staff);
+
 /** The role catalog with what each role can do (owner only) */
 router.get('/roles', requirePermission('security.manage'), requireUsOrg, async (req, res) => {
     const users = await store.listByOrg('users', req.orgId);
