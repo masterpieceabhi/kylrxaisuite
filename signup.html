@@ -419,10 +419,10 @@
             <!-- Password & Confirm Password -->
             <div class="form-grid-2" style="margin-top: 0.5rem;">
               <div class="form-group">
-                <label for="password">Password *</label>
+                <label for="password">Choose a PIN *</label>
                 <div class="input-wrapper">
                   <i data-lucide="lock" class="icon-left"></i>
-                  <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="new-password">
+                  <input type="password" id="password" name="password" placeholder="4 to 6 digits" inputmode="numeric" maxlength="6" required autocomplete="new-password">
                   <button type="button" class="eye-btn" data-target="password">
                     <i data-lucide="eye"></i>
                   </button>
@@ -430,10 +430,10 @@
               </div>
 
               <div class="form-group">
-                <label for="confirmPassword">Confirm Password *</label>
+                <label for="confirmPassword">Type the PIN again *</label>
                 <div class="input-wrapper">
                   <i data-lucide="lock" class="icon-left"></i>
-                  <input type="password" id="confirmPassword" name="confirmPassword" placeholder="••••••••" required autocomplete="new-password">
+                  <input type="password" id="confirmPassword" name="confirmPassword" placeholder="4 to 6 digits" inputmode="numeric" maxlength="6" required autocomplete="new-password">
                   <button type="button" class="eye-btn" data-target="confirmPassword">
                     <i data-lucide="eye"></i>
                   </button>
@@ -442,8 +442,9 @@
               </div>
             </div>
 
-            <!-- 6-Point Password Strength Meter -->
-            <div class="strength-container" style="margin-top: 0.25rem;">
+            <p class="field-hint" style="margin-top:.4rem">You sign in with your email and this PIN. Not one digit repeated, and not a run like 1234. No password needed.</p>
+            <!-- the old password strength meter, kept hidden so the script that fills it still finds its parts -->
+            <div class="strength-container" style="display:none">
               <div class="strength-bar"><div class="strength-bar-fill bg-danger" id="strengthFill"></div></div>
               <div class="strength-text" id="strengthText">Password Strength: None</div>
               <ul class="strength-checklist">

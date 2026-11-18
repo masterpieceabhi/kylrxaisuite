@@ -21,7 +21,7 @@
  */
 
 import { auth, storage } from "./firebase-config.js";
-import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { signInWithEmailAndPassword, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
 // Stepper State
@@ -230,20 +230,19 @@ function validateStep1() {
         return false;
     }
 
-    const hasLength = pw.length >= 8;
-    const hasUpper = /[A-Z]/.test(pw);
-    const hasLower = /[a-z]/.test(pw);
-    const hasNumber = /[0-9]/.test(pw);
-    const hasSpecial = /[@$!%*?&#]/.test(pw);
-
-    if (!(hasLength && hasUpper && hasLower && hasNumber && hasSpecial)) {
-        showError("Password does not meet all 5 security requirements.");
+    // a PIN: the same rules the server checks (services/pin-signin.js weakPin)
+    const steps = pw.split('').slice(1).map((d, i) => Number(d) - Number(pw[i]));
+    const why = !/^\d{4,6}$/.test(pw) ? 'A PIN is 4 to 6 digits.'
+        : /^(\d)\1+$/.test(pw) ? 'Choose a PIN that is not one digit repeated.'
+        : (steps.every((x) => x === 1) || steps.every((x) => x === -1)) ? 'Choose a PIN that is not a run like 1234.' : '';
+    if (why) {
+        showError(why);
         passwordInput.focus();
         return false;
     }
 
     if (pw !== cpw) {
-        showError("Passwords do not match. Please verify.");
+        showError("The two PINs are not the same.");
         confirmPasswordInput.focus();
         return false;
     }
@@ -497,11 +496,11 @@ function evaluateConfirmPassword() {
     }
 
     if (pw === cpw) {
-        confirmFeedback.textContent = '✓ Passwords match';
+        confirmFeedback.textContent = '✓ The PINs match';
         confirmFeedback.className = 'validation-feedback valid';
         confirmFeedback.style.color = '#10b981';
     } else {
-        confirmFeedback.textContent = '✗ Passwords do not match';
+        confirmFeedback.textContent = '✗ The PINs are not the same';
         confirmFeedback.className = 'validation-feedback invalid';
         confirmFeedback.style.color = '#ef4444';
     }
@@ -599,8 +598,8 @@ function setupDemoDataAutofill() {
             // Section A: CEO Account
             nameInput.value = "John Doe";
             emailInput.value = `ceo@kylrx.ai`;
-            passwordInput.value = "Kylrx@Enterprise2026!";
-            confirmPasswordInput.value = "Kylrx@Enterprise2026!";
+            passwordInput.value = "4826";
+            confirmPasswordInput.value = "4826";
             termsInput.checked = true;
 
             // Section B: Company Profile
@@ -704,7 +703,7 @@ async function executeRegistrationAndOrganizationSetup() {
             body: JSON.stringify({
                 fullName,
                 email: officialEmail,
-                password,
+                pin: password, // the field is the PIN now
                 organization: {
                     legalName, displayName, organizationType: orgType, industry, website,
                     officialPhone: phone, logoUrl, country, state, city, pinCode,
@@ -728,7 +727,7 @@ async function executeRegistrationAndOrganizationSetup() {
         console.log(`✅ Organization ${orgId} and Super Admin ${result.uid} provisioned`);
 
         // Sign in so the session carries the new super_admin custom claims
-        await signInWithEmailAndPassword(auth, officialEmail, password);
+        await (result.token ? signInWithCustomToken(auth, result.token) : signInWithEmailAndPassword(auth, officialEmail, password));
         console.log(`✅ Signed in as ${officialEmail}`);
 
         // Step 5: Start a fresh session - drop everything left over from any previous

@@ -86,16 +86,24 @@ exports.registerOrganization = async (req, res, next) => {
         return res.status(503).json({ success: false, error: 'Firebase Admin SDK is not configured on the server' });
     }
 
-    const { fullName, email, password, organization = {} } = req.body || {};
+    const { fullName, email, organization = {} } = req.body || {};
+    // The owner chooses a PIN (the sign-in page has no password box). A password is still accepted from older callers.
+    const pin = typeof (req.body || {}).pin === 'string' ? req.body.pin : '';
+    const usePin = Boolean(pin);
+    const password = usePin ? null : (req.body || {}).password;
+    if (usePin) {
+        const weak = require('../services/pin-signin').weakPin(pin);
+        if (weak) return res.status(400).json({ success: false, code: 'weak_pin', error: weak });
+    }
     const officialEmail = String(email || '').trim().toLowerCase();
     const name = String(fullName || '').trim();
     const legalName = String(organization.legalName || '').trim();
     const displayName = String(organization.displayName || '').trim();
 
-    if (!name || !officialEmail || !password || !(legalName || displayName)) {
-        return res.status(400).json({ success: false, error: 'Name, email, password and company name are required' });
+    if (!name || !officialEmail || !(usePin || password) || !(legalName || displayName)) {
+        return res.status(400).json({ success: false, error: 'Name, email, a PIN and company name are required' });
     }
-    if (String(password).length < 8) {
+    if (!usePin && String(password).length < 8) {
         return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
     }
 
@@ -134,7 +142,8 @@ exports.registerOrganization = async (req, res, next) => {
         }
 
         try {
-            const userRecord = await admin.auth().createUser({ email: officialEmail, password: String(password), displayName: name });
+            // with a PIN the account gets a password nobody knows
+            const userRecord = await admin.auth().createUser({ email: officialEmail, password: usePin ? require('../services/us-people-service').unknownPassword() : String(password), displayName: name });
             uid = userRecord.uid;
         } catch (authErr) {
             if (authErr.code === 'auth/email-already-exists') {
@@ -144,6 +153,18 @@ exports.registerOrganization = async (req, res, next) => {
                 return res.status(400).json({ success: false, error: authErr.message });
             }
             throw authErr;
+        }
+
+        // With a PIN: it is stored hashed, and this device is remembered so the PIN signs in here next time
+        let pinFields = null; let deviceToken = null;
+        if (usePin) {
+            const crypto = require('crypto');
+            const held = /(?:^|;\s*)onnhr_device=([a-f0-9]{64})(?:;|$)/.exec(String(req.headers.cookie || ''));
+            deviceToken = held ? held[1] : crypto.randomBytes(32).toString('hex');
+            pinFields = {
+                pinHash: await bcrypt.hash(pin, 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: new Date().toISOString(),
+                signinDevices: [{ h: crypto.createHash('sha256').update(deviceToken).digest('hex'), at: new Date().toISOString() }]
+            };
         }
 
         // Set claims straight away so the onUserCreated Cloud Function sees them and skips
@@ -188,6 +209,7 @@ exports.registerOrganization = async (req, res, next) => {
                 department: 'Executive Leadership',
                 designation: 'CEO & Founder',
                 status: 'active',
+                ...(pinFields || {}),
                 createdAt: ts,
                 updatedAt: ts
             }, { merge: true });
@@ -265,7 +287,12 @@ exports.registerOrganization = async (req, res, next) => {
         })]).finally(() => clearTimeout(timer));
 
         logger.info(`Organization signup completed: ${orgId} by ${uid}`);
-        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency });
+        let token;
+        if (usePin) {
+            res.cookie('onnhr_device', deviceToken, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
+            token = await admin.auth().createCustomToken(uid); // the page signs in with this; no password exists to type
+        }
+        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency, ...(token ? { token } : {}) });
     } catch (error) {
         // Roll back the Auth user so the person can retry with the same email
         if (uid) {

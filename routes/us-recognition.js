@@ -166,6 +166,7 @@ async function move(req, res, action, status, name) {
     const patch = { status, updatedAt: at, updatedBy: me(req), ...(action === 'publish' ? { publishedAt: at, publishedBy: me(req), publishedByName: who(req) } : { archivedAt: at }) };
     if (!(await guardedUpdate(res, a, patch))) return;
     audit(req.orgId, req, name, a.id, { title: a.data.title });
+    if (action === 'publish') require('../services/events').emit(req.orgId, 'announcement.published', { announcement_id: a.id, title: a.data.title, published_by: me(req) });
     res.json({ success: true, announcement: annView({ ...a.data, ...patch }, await places(req.orgId), { status }) });
 }
 router.post('/announcements/:id/publish', requireUsOrg, (req, res) => move(req, res, 'publish', 'published', 'announcement_published'));

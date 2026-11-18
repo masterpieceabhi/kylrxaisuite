@@ -164,6 +164,7 @@ router.post('/policies/:id/publish', requireUsOrg, async (req, res) => {
     const patch = { status: 'published', versions: P.addVersion(p.data, v), draft: { ...p.data.draft, changeNote: '' }, updatedAt: at, updatedBy: me(req) };
     if (!(await guardedUpdate(res, p, patch))) return;
     audit(req.orgId, req, 'policy_published', p.id, { version: v.version, minor: v.minor, requireAck: v.requireAck });
+    if (!minor) require('../services/events').emit(req.orgId, 'policy.published', { policy_id: p.id, title: (p.data.draft && p.data.draft.title) || p.data.title || '', version: v.version, require_ack: Boolean(v.requireAck), published_by: me(req) });
     res.json({ success: true, policy: pub({ ...p.data, ...patch }, { full: true }) });
 });
 

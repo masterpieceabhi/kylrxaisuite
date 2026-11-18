@@ -29,6 +29,8 @@ const CATALOG = {
     'document.uploaded': { description: 'A document was added to the vault', payload: ['document_id', 'category', 'person_id'] },
     'document.signed': { description: 'A document was signed', payload: ['document_id', 'person_id', 'signed_at'] },
     'payroll.run.completed': { description: 'A payroll was submitted to the payroll provider', payload: ['run_id', 'pay_date', 'period_start', 'period_end'] },
+    'announcement.published': { description: 'A company announcement was published', payload: ['announcement_id', 'title', 'published_by'] },
+    'policy.published': { description: 'A company policy was published or updated', payload: ['policy_id', 'title', 'version', 'require_ack', 'published_by'] },
     'connector.sync.failed': { description: 'A connector sync run ended with errors', payload: ['connection_id', 'connector', 'errors'] },
     'webhook.test': { description: 'Sent when an admin presses "Send test event"', payload: ['message'] }
 };
@@ -58,6 +60,8 @@ function emit(orgId, type, payload) {
         const event = buildEvent(orgId, type, payload);
         const { rawCollection } = require('../config/firebase');
         if (typeof rawCollection !== 'function') return event.id;
+        // email notices (services/email-notices.js): their own failures stay there
+        try { require('./email-notices').fromEvent(orgId, type, event.data).catch(() => {}); } catch (_) { /* never affects the caller */ }
         Promise.resolve(rawCollection('event_outbox').doc(event.id).set({ orgId, type, event, status: 'pending', createdAt: event.created_at, attempts: 0 }))
             .then(() => { try { require('./webhooks').kick(); } catch (_) { /* worker not loaded */ } })
             .catch((e) => { try { require('../utils/logger').warn(`events.emit write failed: ${e.message}`); } catch (_) { /* ignore */ } });
