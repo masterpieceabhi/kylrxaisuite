@@ -261,6 +261,44 @@ async function completeSetup(token, password) {
     return { ok: true, orgId: found.link.data.orgId, uid: found.link.data.uid, email: found.user.email };
 }
 
+/** A password nobody knows, for an account whose owner signs in with a PIN, a code or a QR instead. */
+const unknownPassword = () => `${crypto.randomBytes(36).toString('base64url')}aA1!`;
+
+/**
+ * The person opens their personal set-up link and chooses a PIN (not a password). The link is used up, the device they
+ * are on is remembered (the link itself proved who they are, as a code by email would), and the answer carries a
+ * sign-in token so they go straight in. Any password the account had is replaced by one nobody knows.
+ *   heldDevice: the device token this browser already holds, if any (two people can share one screen)
+ */
+async function completeSetupWithPin(token, pin, heldDevice) {
+    const found = await setupInfo(token);
+    if (!found) return { ok: false, status: 404, error: DEAD_LINK };
+    const problem = require('./pin-signin').weakPin(pin);
+    if (problem) return { ok: false, status: 400, error: problem };
+    const linkOrg = found.link.data.orgId;
+    const won = await runWithTenant(linkOrg, () => admin.firestore().runTransaction(async (tx) => {
+        const snap = await tx.get(found.link.ref);
+        if (!snap.exists || L.linkState(snap.data()) !== 'active') return false;
+        tx.set(found.link.ref, { usedAt: nowIso(), orgId: linkOrg }, { merge: true });
+        return true;
+    }));
+    if (!won) return { ok: false, status: 404, error: DEAD_LINK };
+    const uid = found.link.data.uid;
+    try {
+        const deviceToken = /^[a-f0-9]{64}$/.test(String(heldDevice || '')) ? String(heldDevice) : crypto.randomBytes(32).toString('hex');
+        const h = crypto.createHash('sha256').update(deviceToken).digest('hex');
+        const had = Array.isArray(found.user.signinDevices) ? found.user.signinDevices : [];
+        await storePassword(uid, unknownPassword(), {
+            pinHash: await bcrypt.hash(String(pin), 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: nowIso(),
+            signinDevices: [{ h, at: nowIso() }, ...had.filter((d) => d && d.h !== h)].slice(0, 10)
+        });
+        return { ok: true, orgId: linkOrg, uid, email: found.user.email, deviceToken, signinToken: await admin.auth().createCustomToken(uid) };
+    } catch (error) {
+        await found.link.ref.set({ usedAt: null }, { merge: true }).catch(() => {}); // the person can try again
+        throw error;
+    }
+}
+
 /**
  * HR gives a person a new way in. Whatever they had before stops working: open set-up links are revoked, the old
  * password is replaced, and their sessions are ended.
@@ -430,6 +468,6 @@ async function rejectJoinRequest(orgId, request, actorId) {
 
 module.exports = {
     ALLOWED_ROLES, LINKS, JOIN_REQUESTS, temporaryPassword, allocateEmployeeIds, validatePerson, emailTaken, createPerson,
-    createSetupLink, revokeSetupLinks, setupInfo, completeSetup, reissueAccess, changeOwnPassword, listAccess,
+    createSetupLink, revokeSetupLinks, setupInfo, completeSetup, completeSetupWithPin, unknownPassword, reissueAccess, changeOwnPassword, listAccess,
     listJoinLinks, createJoinLink, revokeJoinLink, joinInfo, submitJoinRequest, listJoinRequests, getJoinRequest, approveJoinRequest, rejectJoinRequest
 };

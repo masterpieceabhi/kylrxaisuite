@@ -46,6 +46,7 @@ The extra local company made for the Gusto demo test ("Gusto Demo Test Co", not 
 | Owner | superadmin@gusto.demo.local | PIN 7392 |
 | Employee | employee@gusto.demo.local | PIN 4826 |
 | Employee added through the team import page (Jordan Avery) | jordan.avery@gusto.demo.local | PIN 5927 |
+| Employee who chose a PIN on their personal set-up link (Mia Donovan) | mia.donovan@gusto.demo.local | PIN 6184 |
 
 The one-click demo buttons still sign in with the seed password; that path exists only on a local demo server.
 

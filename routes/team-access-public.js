@@ -3,9 +3,11 @@
  *
  *   No sign-in needed (the link is the key; all rate limited per address):
  *     POST /team/setup/info      { token }             who the personal set-up link is for
- *     POST /team/setup/complete  { token, password }   the person chooses their password; the link is used up
+ *     POST /team/setup/complete  { token, pin }        the person chooses their PIN; the link is used up and they are signed in
+ *                                { token, password }   the older form, kept for callers that still send a password
  *     POST /team/join/info       { token }             which company the join link belongs to
- *     POST /team/join/request    { token, firstName, lastName, email, phone, password }   ask to join; HR must approve
+ *     POST /team/join/request    { token, firstName, lastName, email, phone }   ask to join; HR must approve. No password is
+ *                                asked for: once approved the person signs in with a code and chooses a PIN.
  *   Signed in:
  *     GET  /password-status      does this person still have a temporary password?
  *     POST /change-password      { currentPassword, newPassword }
@@ -65,6 +67,15 @@ router.post('/team/setup/info', lookLimiter, async (req, res) => {
 router.post('/team/setup/complete', actLimiter, async (req, res) => {
     noStore(res);
     const b = req.body || {};
+    if (typeof b.pin === 'string' && b.pin) {
+        // the same cookie, path and lifetime as routes/pin-signin.js: this device is now known for the PIN sign-in
+        const held = /(?:^|;\s*)onnhr_device=([a-f0-9]{64})(?:;|$)/.exec(String(req.headers.cookie || ''));
+        const p = await svc.completeSetupWithPin(b.token, b.pin.slice(0, 12), held ? held[1] : '');
+        if (!p.ok) return res.status(p.status).json({ success: false, error: p.status === 404 ? DEAD_LINK : p.error });
+        auditFor(p.orgId, req, 'us_setup_link_used', p.uid);
+        res.cookie('onnhr_device', p.deviceToken, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
+        return res.json({ success: true, email: p.email, next: 'us-onboarding.html', token: p.signinToken });
+    }
     const r = await svc.completeSetup(b.token, typeof b.password === 'string' ? b.password : '');
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.status === 404 ? DEAD_LINK : r.error });
     auditFor(r.orgId, req, 'us_setup_link_used', r.uid);
@@ -85,10 +96,13 @@ router.post('/team/join/request', actLimiter, async (req, res) => {
     const b = req.body || {};
     if (!(await svc.joinInfo(b.token))) return res.status(404).json({ success: false, error: DEAD_LINK });
     const { errors, value } = L.validateJoinRequest(b);
-    const problem = L.passwordProblem(typeof b.password === 'string' ? b.password : '', { email: value.email });
+    // A password is no longer asked for. One that is sent is still checked; without one the account gets a password
+    // nobody knows, and the person signs in with a code and chooses a PIN once they are approved.
+    const sentPassword = typeof b.password === 'string' && b.password !== '';
+    const problem = sentPassword ? L.passwordProblem(b.password, { email: value.email }) : null;
     if (problem) errors.push(problem);
     if (errors.length) return res.status(400).json({ success: false, errors });
-    const r = await svc.submitJoinRequest(b.token, value, b.password, req.ip);
+    const r = await svc.submitJoinRequest(b.token, value, sentPassword ? b.password : svc.unknownPassword(), req.ip);
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.status === 404 ? DEAD_LINK : r.error });
     if (r.created) auditFor(r.orgId, req, 'us_join_request_received', r.requestId);
     // The same answer whether or not a request was stored (an email that already has an account stores nothing)

@@ -38,13 +38,13 @@ a.link{color:var(--blue);font-weight:700}
     <p><a class="link" href="login.html" data-t="toLogin"></a></p>
   </section>
 
-  <!-- personal set-up link: the person only chooses a password -->
+  <!-- personal set-up link: the person only chooses a PIN -->
   <form class="card" id="setup" hidden novalidate>
     <h2 id="setupHello"></h2>
     <p data-t="setupP"></p>
     <p class="who"><span data-t="yourEmail"></span> <b id="setupEmail"></b></p>
-    <label class="f"><span data-t="pw"></span><input type="password" id="sPw" autocomplete="new-password" maxlength="72" required><span class="hint" id="sRules"></span></label>
-    <label class="f"><span data-t="pw2"></span><input type="password" id="sPw2" autocomplete="new-password" maxlength="72" required></label>
+    <label class="f"><span data-t="pw"></span><input type="password" id="sPw" autocomplete="new-password" inputmode="numeric" maxlength="6" required><span class="hint" id="sRules"></span></label>
+    <label class="f"><span data-t="pw2"></span><input type="password" id="sPw2" autocomplete="new-password" inputmode="numeric" maxlength="6" required></label>
     <label class="show"><input type="checkbox" id="sShow"><span data-t="show"></span></label>
     <button class="go" type="submit" id="sGo" data-t="setupGo"></button>
   </form>
@@ -57,9 +57,6 @@ a.link{color:var(--blue);font-weight:700}
     <label class="f"><span data-t="last"></span><input type="text" id="jLast" autocomplete="family-name" maxlength="80" required></label>
     <label class="f"><span data-t="email"></span><input type="email" id="jEmail" autocomplete="email" inputmode="email" maxlength="200" required><span class="hint" data-t="emailHint"></span></label>
     <label class="f"><span data-t="phone"></span><input type="tel" id="jPhone" autocomplete="tel" inputmode="tel" maxlength="30"></label>
-    <label class="f"><span data-t="pw"></span><input type="password" id="jPw" autocomplete="new-password" maxlength="72" required><span class="hint" id="jRules"></span></label>
-    <label class="f"><span data-t="pw2"></span><input type="password" id="jPw2" autocomplete="new-password" maxlength="72" required></label>
-    <label class="show"><input type="checkbox" id="jShow"><span data-t="show"></span></label>
     <button class="go" type="submit" id="jGo" data-t="joinGo"></button>
     <p class="hint" data-t="joinNote"></p>
   </form>
@@ -76,27 +73,28 @@ a.link{color:var(--blue);font-weight:700}
 </main>
 <script type="module">
 import { auth } from './firebase-config.js';
-import { signInWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js';
+import { signInWithCustomToken } from 'https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js';
 
 const $ = (id) => document.getElementById(id);
 const T = {
   en: { title: 'Set up your sign-in', loading: 'Checking your link...', deadT: 'This link does not work any more', deadP: 'It may have been used already, turned off, or it is too old. Ask your employer for a new link.', toLogin: 'Go to the sign-in page',
-    hello: 'Welcome, {n}', helloJoin: 'Join {c}', setupP: '{c} added you. Choose a password to finish. You will use it with your email every time you sign in.', yourEmail: 'Your sign-in email:',
-    pw: 'Choose a password', pw2: 'Type the password again', show: 'Show the passwords', setupGo: 'Save my password', rules: 'At least 14 characters, with an uppercase letter, a lowercase letter, a number and a special character (like ! # $ % & * ?).',
+    hello: 'Welcome, {n}', helloJoin: 'Join {c}', setupP: '{c} added you. Choose a PIN to finish. You will use it with your email to sign in.', yourEmail: 'Your sign-in email:',
+    pw: 'Choose a PIN', pw2: 'Type the PIN again', show: 'Show the PIN', setupGo: 'Save my PIN', rules: '4 to 6 digits. Not one digit repeated, and not a run like 1234.',
     joinP: 'Fill this in to ask to join. Your employer has to approve you before you can sign in.', first: 'First name', last: 'Last name', email: 'Your email', emailHint: 'You will sign in with this email.', phone: 'Mobile phone (optional)', joinGo: 'Ask to join',
     joinNote: 'If your employer already gave you a personal link, use that one instead.',
-    waitT: 'Your request was sent', waitP: 'You are waiting for approval. Nothing more to do right now.', waitP2: 'No email will be sent. Your employer will tell you when you are approved. Then sign in with your email and the password you just chose.',
-    doneT: 'Your password is saved', doneP: 'Taking you to your new hire paperwork...', noMatch: 'The two passwords are not the same.', need: 'Please fill in every field.', fail: 'Something went wrong. Try again.', signInFail: 'Your password is saved. Sign in with your email and new password.' },
+    waitT: 'Your request was sent', waitP: 'You are waiting for approval. Nothing more to do right now.', waitP2: 'No email will be sent. Your employer will tell you when you are approved. Then go to the sign-in page, type your email and press "No PIN, or forgot it?" to get a sign-in code.',
+    doneT: 'Your PIN is saved', doneP: 'Taking you to your new hire paperwork...', noMatch: 'The two PINs are not the same.', need: 'Please fill in every field.', fail: 'Something went wrong. Try again.', signInFail: 'Your PIN is saved. Sign in with your email and new PIN.' },
   es: { title: 'Configure su acceso', loading: 'Revisando su enlace...', deadT: 'Este enlace ya no funciona', deadP: 'Puede que ya se haya usado, que lo hayan desactivado o que sea muy antiguo. Pida un enlace nuevo a su empleador.', toLogin: 'Ir a la página de acceso',
-    hello: 'Bienvenido/a, {n}', helloJoin: 'Únase a {c}', setupP: '{c} le agregó. Elija una contraseña para terminar. La usará con su correo cada vez que entre.', yourEmail: 'Su correo de acceso:',
-    pw: 'Elija una contraseña', pw2: 'Escriba la contraseña otra vez', show: 'Mostrar las contraseñas', setupGo: 'Guardar mi contraseña', rules: 'Al menos 14 caracteres, con una letra mayúscula, una minúscula, un número y un carácter especial (como ! # $ % & * ?).',
+    hello: 'Bienvenido/a, {n}', helloJoin: 'Únase a {c}', setupP: '{c} le agregó. Elija un PIN para terminar. Lo usará con su correo para entrar.', yourEmail: 'Su correo de acceso:',
+    pw: 'Elija un PIN', pw2: 'Escriba el PIN otra vez', show: 'Mostrar el PIN', setupGo: 'Guardar mi PIN', rules: 'De 4 a 6 dígitos. No un solo dígito repetido, ni una serie como 1234.',
     joinP: 'Llene esto para pedir unirse. Su empleador tiene que aprobarle antes de que pueda entrar.', first: 'Nombre', last: 'Apellido', email: 'Su correo electrónico', emailHint: 'Entrará con este correo.', phone: 'Teléfono celular (opcional)', joinGo: 'Pedir unirme',
     joinNote: 'Si su empleador ya le dio un enlace personal, use ese enlace.',
-    waitT: 'Su solicitud fue enviada', waitP: 'Está esperando aprobación. No tiene que hacer nada más por ahora.', waitP2: 'No se enviará ningún correo. Su empleador le avisará cuando esté aprobado/a. Después entre con su correo y la contraseña que acaba de elegir.',
-    doneT: 'Su contraseña quedó guardada', doneP: 'Le llevamos a sus papeles de nuevo empleado...', noMatch: 'Las dos contraseñas no son iguales.', need: 'Por favor llene todos los campos.', fail: 'Algo salió mal. Intente de nuevo.', signInFail: 'Su contraseña quedó guardada. Entre con su correo y su nueva contraseña.' }
+    waitT: 'Su solicitud fue enviada', waitP: 'Está esperando aprobación. No tiene que hacer nada más por ahora.', waitP2: 'No se enviará ningún correo. Su empleador le avisará cuando esté aprobado/a. Después vaya a la página de acceso, escriba su correo y oprima "No PIN, or forgot it?" para recibir un código.',
+    doneT: 'Su PIN quedó guardado', doneP: 'Le llevamos a sus papeles de nuevo empleado...', noMatch: 'Los dos PIN no son iguales.', need: 'Por favor llene todos los campos.', fail: 'Algo salió mal. Intente de nuevo.', signInFail: 'Su PIN quedó guardado. Entre con su correo y su nuevo PIN.' }
 };
 // Server messages (English) that a person may see while typing, in Spanish
 const ES_ERRORS = [
+  [/PIN is 4 to 6 digits/, 'El PIN tiene de 4 a 6 dígitos.'], [/one digit repeated/, 'Elija un PIN que no sea un solo dígito repetido.'], [/a run like 1234/, 'Elija un PIN que no sea una serie como 1234.'],
   [/at least 14 characters/, 'La contraseña debe tener al menos 14 caracteres'], [/at most 72/, 'La contraseña puede tener 72 caracteres como máximo'], [/< or >/, 'La contraseña no puede tener los caracteres < o >'],
   [/uppercase/, 'La contraseña debe tener una letra mayúscula'], [/lowercase/, 'La contraseña debe tener una letra minúscula'], [/contain a number/, 'La contraseña debe tener un número'],
   [/special character/, 'La contraseña debe tener un carácter especial, como ! # $ % & * ?'], [/too common/, 'Esa contraseña es muy común. Elija otra.'], [/email name/, 'La contraseña no puede contener el nombre de su correo'],
@@ -120,7 +118,7 @@ function paint() {
   document.documentElement.lang = lang; document.title = tr('title');
   document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t, { c: info ? info.company : '' }); });
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
-  $('sRules').textContent = tr('rules'); $('jRules').textContent = tr('rules');
+  $('sRules').textContent = tr('rules');
   if (info) { $('setupHello').textContent = tr('hello', { n: info.firstName || '' }); $('joinHello').textContent = tr('helloJoin', { c: info.company }); $('setupEmail').textContent = info.email || ''; }
 }
 document.querySelectorAll('.lang button').forEach((b) => b.addEventListener('click', () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }));
@@ -135,7 +133,6 @@ async function post(path, body) {
 }
 
 $('sShow').addEventListener('change', (e) => { $('sPw').type = $('sPw2').type = e.target.checked ? 'text' : 'password'; });
-$('jShow').addEventListener('change', (e) => { $('jPw').type = $('jPw2').type = e.target.checked ? 'text' : 'password'; });
 
 $('setup').addEventListener('submit', async (ev) => {
   ev.preventDefault(); say('');
@@ -144,11 +141,11 @@ $('setup').addEventListener('submit', async (ev) => {
   if (pw !== $('sPw2').value) return say(tr('noMatch'));
   $('sGo').disabled = true;
   try {
-    const r = await post('setup/complete', { token, password: pw });
+    const r = await post('setup/complete', { token, pin: pw });
     history.replaceState(null, '', location.pathname); // the link is used up; take it out of the address bar
     show('done');
     try {
-      await signInWithEmailAndPassword(auth, r.email, pw);
+      await signInWithCustomToken(auth, r.token);
       window.location.replace(r.next === 'us-onboarding.html' ? 'us-onboarding.html' : 'login.html');
     } catch (_) { say(tr('signInFail'), true); $('done').querySelector('[data-t=doneP]').hidden = true; }
   } catch (e) {
@@ -159,9 +156,8 @@ $('setup').addEventListener('submit', async (ev) => {
 
 $('join').addEventListener('submit', async (ev) => {
   ev.preventDefault(); say('');
-  const v = { firstName: $('jFirst').value.trim(), lastName: $('jLast').value.trim(), email: $('jEmail').value.trim(), phone: $('jPhone').value.trim(), password: $('jPw').value };
-  if (!v.firstName || !v.lastName || !v.email || !v.password) return say(tr('need'));
-  if (v.password !== $('jPw2').value) return say(tr('noMatch'));
+  const v = { firstName: $('jFirst').value.trim(), lastName: $('jLast').value.trim(), email: $('jEmail').value.trim(), phone: $('jPhone').value.trim() };
+  if (!v.firstName || !v.lastName || !v.email) return say(tr('need'));
   $('jGo').disabled = true;
   try {
     await post('join/request', { token, ...v });

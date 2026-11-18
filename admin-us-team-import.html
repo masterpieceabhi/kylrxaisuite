@@ -45,7 +45,7 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
     <p>Pick whichever is least typing for you. You can use more than one, and come back any time.</p>
     <div class="ways">
       <a href="#importCard"><b>Paste or upload a list</b><br>Copy the rows from Excel, Google Sheets or your old payroll tool. We work out the columns.</a>
-      <a href="#quickCard"><b>Type names and emails</b><br>One person per line. Each one gets a personal link to set their own password.</a>
+      <a href="#quickCard"><b>Type names and emails</b><br>One person per line. Each one gets a personal link to choose their own PIN.</a>
       <a href="#joinCard"><b>Share one join link</b><br>Post a link or QR code. People ask to join and you approve them.</a>
     </div>
     <p class="hint">This system does not send email. You copy each link or show the QR code yourself.</p>
@@ -82,15 +82,15 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
     <p class="hint">Type in a cell to fix it, then press "Check again". Tick "Skip" to leave a row out. Dates can be typed like 1/17/2025; money like $18.50.</p>
     <div class="pick" id="accessPick">
       <h3>How should these people sign in the first time?</h3>
-      <label><input type="radio" name="access" value="link" checked> <span><b>A personal set-up link for each person (recommended).</b> Nobody sees a password. Each person opens their link and chooses their own. A link works once and for <span class="linkDays">7</span> days.</span></label>
-      <label><input type="radio" name="access" value="password"> <span><b>A temporary password for each person.</b> You hand it over; the person must choose a new password right after their first sign-in.</span></label>
+      <label><input type="radio" name="access" value="link" checked> <span><b>A personal set-up link for each person (recommended).</b> Each person opens their link, chooses their own PIN and is signed in. Nobody else ever sees it. A link works once and for <span class="linkDays">7</span> days.</span></label>
+      <label style="display:none"><input type="radio" name="access" value="password"> <span><b>A temporary password for each person.</b> You hand it over; the person must choose a new password right after their first sign-in.</span></label>
     </div>
     <div class="row"><button type="button" id="createBtn" disabled>Add people</button><span class="hint" id="createNote"></span></div>
   </section>
 
   <section class="card" id="handCard" hidden>
     <h2>Hand these out</h2>
-    <div class="warn"><b>These are shown once.</b> This system does not send email: copy each one and give it to that person yourself (text message, chat, in person). Anyone holding a link or password can get into that person's account, so give each one only to its owner. If one gets lost, make a new one under "Sign-in help" below.</div>
+    <div class="warn"><b>These are shown once.</b> This system does not send email: copy each one and give it to that person yourself (text message, chat, in person). Anyone holding a link can get into that person's account, so give each one only to its owner. If one gets lost, make a new one under "Sign-in help" below.</div>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Give them this</th><th></th></tr></thead><tbody id="handRows"></tbody></table></div>
     <div class="row"><button type="button" class="ghost" id="copyAll">Copy the whole list</button><button type="button" class="ghost" id="dlAll">Download as a file</button><span class="hint">A downloaded file holds the same secrets. Delete it when you are done.</span></div>
   </section>
@@ -105,7 +105,7 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
 
   <section class="card" id="joinCard" hidden>
     <h2>Company join link</h2>
-    <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name, email and a password, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. This system does not send email, so check the waiting list yourself.</p>
+    <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name and email, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. This system does not send email, so check the waiting list yourself.</p>
     <div class="row end noprint"><label>Works for (days, 1 to <span id="maxDays">30</span>)<input type="number" id="joinDays" min="1" max="30" value="7" style="width:110px"></label><label>Note for yourself (optional)<input id="joinLabel" maxlength="60" placeholder="Kitchen staff, November"></label><button type="button" id="joinNew">Make a join link</button></div>
     <div id="joinFresh" hidden>
       <div class="warn noprint" style="margin-top:12px"><b>Copy this link now.</b> For safety we keep only a fingerprint of it, so it cannot be shown again. You can make another one at any time.</div>
@@ -119,7 +119,7 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
 
   <section class="card" id="waitCard" hidden>
     <h2>Waiting for your approval <span class="tag wait" id="waitCount" hidden></span></h2>
-    <p class="hint">Approve only people you know work here. An approved person becomes an employee (never a manager or administrator) and can sign in with the password they chose. Rejecting removes the request.</p>
+    <p class="hint">Approve only people you know work here. An approved person becomes an employee (never a manager or administrator) and can sign in: on the sign-in page they type their email, press "No PIN, or forgot it?", use the code sent to them and choose a PIN. Rejecting removes the request.</p>
     <div class="row end" style="margin-top:0"><label>First day of work for people you approve<input type="date" id="approveStart"></label></div>
     <table style="margin-top:10px"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Asked on</th><th></th></tr></thead><tbody id="waitRows"></tbody></table>
     <p class="hint" id="waitEmpty" hidden>Nobody is waiting.</p>
@@ -127,7 +127,7 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
 
   <section class="card" id="helpCard" hidden>
     <h2>Sign-in help</h2>
-    <p class="hint">Someone lost their link or forgot their password? Give them a new one here. Their old link or password stops working at once. You cannot do this for someone with a higher role than yours, or for yourself.</p>
+    <p class="hint">Someone lost their set-up link? Give them a new one here; the old link stops working at once. Someone who forgot their PIN does not need you: the sign-in page sends them a code. You cannot do this for someone with a higher role than yours, or for yourself.</p>
     <div class="row" style="margin-top:0"><input id="helpFind" placeholder="Find by name or email" style="width:260px"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="helpPending"> Only people who have not finished setting up</label></div>
     <div class="scroll" style="margin-top:10px;max-height:380px"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Sign-in</th><th></th></tr></thead><tbody id="helpRows"></tbody></table></div>
     <p class="hint" id="helpEmpty" hidden>Nobody matches.</p>
@@ -390,7 +390,7 @@ async function loadRequests() {
 $('waitRows').addEventListener('click', async (ev) => {
   const yes = ev.target.closest('[data-yes]'); const no = ev.target.closest('[data-no]');
   try {
-    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(`${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now with the password they chose.`); }
+    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(`${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then \"No PIN, or forgot it?\" on the sign-in page.`); }
     else if (no) { if (!window.confirm(`Reject the request from ${no.dataset.name}?`)) return; await api('POST', `/join-requests/${encodeURIComponent(no.dataset.no)}/reject`); say('Request rejected.'); } else return;
     await loadRequests(); await loadAccess();
   } catch (e) { say(e.message, false); if (yes) yes.disabled = false; }
@@ -398,19 +398,19 @@ $('waitRows').addEventListener('click', async (ev) => {
 
 // --------------------------------------------------------------------------------------------- sign-in help
 let accessList = [];
-const ACCESS = { waiting_for_setup: ['wait', 'Has not set a password yet'], temporary_password: ['wait', 'Has a temporary password'], active: ['ok', 'Set up'], ended: ['off', 'No longer works here'], unknown: ['off', '-'] };
+const ACCESS = { waiting_for_setup: ['wait', 'Has not opened their set-up link yet'], temporary_password: ['wait', 'Has a temporary password'], active: ['ok', 'Set up'], ended: ['off', 'No longer works here'], unknown: ['off', '-'] };
 async function loadAccess() { accessList = (await api('GET', '/access')).data; drawAccess(); }
 function drawAccess() {
   const q = $('helpFind').value.trim().toLowerCase(); const pend = $('helpPending').checked;
   const rows = accessList.filter((p) => (!q || `${p.name} ${p.email} ${p.employeeId}`.toLowerCase().includes(q)) && (!pend || p.access === 'waiting_for_setup' || p.access === 'temporary_password')).slice(0, 200);
-  $('helpRows').innerHTML = rows.map((p) => `<tr><td>${esc(p.employeeId)}</td><td>${esc(p.name)}</td><td>${esc(p.email || '')}</td><td><span class="tag ${ACCESS[p.access][0]}">${ACCESS[p.access][1]}</span>${p.linkExpiresAt ? ` <span class="hint">link works until ${esc(when(p.linkExpiresAt))}</span>` : ''}</td><td style="white-space:nowrap">${p.access === 'ended' || !p.email ? '' : `<button type="button" class="ghost small" data-re="link" data-id="${esc(p.id)}" data-name="${esc(p.name)}">New set-up link</button> <button type="button" class="ghost small" data-re="password" data-id="${esc(p.id)}" data-name="${esc(p.name)}">New temporary password</button>`}</td></tr>`).join('');
+  $('helpRows').innerHTML = rows.map((p) => `<tr><td>${esc(p.employeeId)}</td><td>${esc(p.name)}</td><td>${esc(p.email || '')}</td><td><span class="tag ${ACCESS[p.access][0]}">${ACCESS[p.access][1]}</span>${p.linkExpiresAt ? ` <span class="hint">link works until ${esc(when(p.linkExpiresAt))}</span>` : ''}</td><td style="white-space:nowrap">${p.access === 'ended' || !p.email ? '' : `<button type="button" class="ghost small" data-re="link" data-id="${esc(p.id)}" data-name="${esc(p.name)}">New set-up link</button> `}</td></tr>`).join('');
   $('helpEmpty').hidden = rows.length > 0;
 }
 $('helpFind').addEventListener('input', drawAccess); $('helpPending').addEventListener('change', drawAccess);
 $('helpRows').addEventListener('click', async (ev) => {
   const b = ev.target.closest('[data-re]'); if (!b) return;
   const what = b.dataset.re === 'link' ? 'a new set-up link' : 'a new temporary password';
-  if (!window.confirm(`Give ${b.dataset.name} ${what}? Their current password or link stops working right away, and they are signed out everywhere.`)) return;
+  if (!window.confirm(`Give ${b.dataset.name} ${what}? Their current link stops working right away, and they are signed out everywhere.`)) return;
   try {
     const r = await api('POST', `/people/${encodeURIComponent(b.dataset.id)}/reissue`, { method: b.dataset.re });
     handouts.push({ employeeId: r.person.employeeId, name: r.person.name, email: r.person.email, kind: r.method, value: r.method === 'link' ? setupUrl(r.token) : r.temporaryPassword });
