@@ -1,4 +1,5 @@
 import { storage } from "./firebase-config.js";
+import { companyName, escapeHtml } from "./company-name.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
 let pdfLibsPromise = null;
@@ -54,7 +55,7 @@ export function parsePeriod(period) {
     return { label, key: `${year}-${String(monthNum).padStart(2, "0")}` };
 }
 
-export function buildPayslipHtml(employee, period) {
+export function buildPayslipHtml(employee, period, company = '') {
     const e = normalizePayslipEmployee(employee);
     const { label } = parsePeriod(period);
     const pf = Math.round(e.basic * 0.12);
@@ -63,7 +64,7 @@ export function buildPayslipHtml(employee, period) {
     return `<div style="font-family:Arial,sans-serif;width:700px;padding:24px;background:#fff;color:#0f172a;">
         <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #3b82f6;padding-bottom:12px;margin-bottom:16px;">
             <div>
-                <div style="font-size:1.1rem;font-weight:800;">Kylrx AI Enterprise</div>
+                <div style="font-size:1.1rem;font-weight:800;">${escapeHtml(company) || 'Pay slip'}</div>
                 <div style="font-size:0.8rem;color:#64748b;">Pay Slip for ${label}</div>
             </div>
             <div style="text-align:right;font-size:0.8rem;color:#64748b;">
@@ -102,7 +103,7 @@ export function buildPayslipHtml(employee, period) {
                 <td style="padding:8px 12px;border:1px solid #e2e8f0;font-weight:800;color:#1e40af;"><strong>&#8377;${e.net.toLocaleString("en-IN")}</strong></td>
             </tr>
         </table>
-        <p style="font-size:0.7rem;color:#94a3b8;margin-top:12px;">Computer-generated pay slip. Kylrx AI Confidential.</p>
+        <p style="font-size:0.7rem;color:#94a3b8;margin-top:12px;">Computer-generated pay slip. Confidential.</p>
     </div>`;
 }
 
@@ -112,7 +113,7 @@ export async function generatePayslipPdfBlob(employee, period) {
     container.style.position = "fixed";
     container.style.left = "-9999px";
     container.style.top = "0";
-    container.innerHTML = buildPayslipHtml(employee, period);
+    container.innerHTML = buildPayslipHtml(employee, period, await companyName());
     document.body.appendChild(container);
 
     try {

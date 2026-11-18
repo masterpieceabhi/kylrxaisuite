@@ -1138,7 +1138,7 @@ function setupManualForm() {
         btnFillDemoData.onclick = () => {
             const demoData = {
                 manualLegalName: "Kylrx Technologies Private Limited",
-                manualDisplayName: "Kylrx AI",
+                manualDisplayName: "Onn HR",
                 manualOrgType: "Private Limited",
                 manualIndustry: "Technology & HR Automation SaaS",
                 manualWebsite: "https://kylrx.ai",

@@ -4,12 +4,13 @@
     <script src="config.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login – Kylrx AI Automation</title>
+  <title>Sign in – Onn HR</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏢</text></svg>">
   <link rel="stylesheet" href="login.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://*.gstatic.com https://cdn.jsdelivr.net https://unpkg.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:9099 http://127.0.0.1:8080 https://www.gstatic.com https://*.gstatic.com https://*.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://*.firebaseapp.com https://kylrxai.firebaseapp.com http://127.0.0.1:5500 http://localhost:5500 http://127.0.0.1:5501 ws://127.0.0.1:5501 http://127.0.0.1:5502 ws://127.0.0.1:5502 http://localhost:5502 ws://localhost:5502 http://127.0.0.1:5503 ws://127.0.0.1:5503 http://localhost:5503 ws://localhost:5503 http://127.0.0.1:5504 ws://127.0.0.1:5504 http://localhost:5504 ws://localhost:5504 http://127.0.0.1:5505 ws://127.0.0.1:5505 http://localhost:5505 ws://localhost:5505 https://unpkg.com https://cdn.jsdelivr.net; frame-src 'self' https://kylrxai.firebaseapp.com https://*.firebaseapp.com https://accounts.google.com https://apis.google.com;">
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.321.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
+  <style>[hidden]{display:none!important}</style>
 </head>
 <body>
   <div class="split-layout">
@@ -18,45 +19,45 @@
       <div class="wave-bg"></div>
       <div style="position: relative; z-index: 10;">
         <a href="index.html" class="brand-logo">
-          <img src="logo.jpg" alt="Logo">
-          <span>Kylrx <span>AI</span></span>
+          <img src="onnhr-logo.svg" alt="Onn HR">
+          <span style="display:flex;flex-direction:column;line-height:1.15">Onn HR<small style="font-size:.72rem;font-weight:600;color:#64748b;letter-spacing:.02em">by Prompt AI USA</small></span>
         </a>
-        <div class="tagline-badge">INTELLIGENT HR AUTOMATION</div>
-        <h1 class="hero-title">One Platform.<br>Infinite <span>Possibilities.</span></h1>
-        <p class="hero-subtitle">Automate workflows, streamline HR operations and empower your workforce with AI-driven insights.</p>
+        <div class="tagline-badge">HR, TIME AND PAYROLL HOURS</div>
+        <h1 class="hero-title">Your whole team.<br>One simple <span>place.</span></h1>
+        <p class="hero-subtitle">Clock in, approve hours, handle time off and paperwork, and send hours to payroll, for any kind of business.</p>
         
         <div class="feature-list">
           <div class="feature-item">
             <div class="feature-icon blue"><i data-lucide="zap"></i></div>
             <div class="feature-text">
-              <h3>Smart Automation</h3>
-              <p>Automate repetitive tasks and save time.</p>
+              <h3>Time clock</h3>
+              <p>Clock in and out from a phone or a shared screen.</p>
             </div>
           </div>
           <div class="feature-item">
             <div class="feature-icon green"><i data-lucide="shield-check"></i></div>
             <div class="feature-text">
-              <h3>Secure & Compliant</h3>
-              <p>Enterprise-grade security and compliance.</p>
+              <h3>Private to your company</h3>
+              <p>Each company sees only its own people and hours.</p>
             </div>
           </div>
           <div class="feature-item">
             <div class="feature-icon purple"><i data-lucide="bar-chart-3"></i></div>
             <div class="feature-text">
-              <h3>Data-Driven Insights</h3>
-              <p>Make better decisions with real-time analytics.</p>
+              <h3>Hours ready for payroll</h3>
+              <p>Approved hours go to your payroll provider.</p>
             </div>
           </div>
           <div class="feature-item">
             <div class="feature-icon orange"><i data-lucide="users"></i></div>
             <div class="feature-text">
               <h3>Built for Every Role</h3>
-              <p>Employee, Manager, HR, Admin – All in one.</p>
+              <p>Owner, manager, HR and employee, all in one.</p>
             </div>
           </div>
         </div>
       </div>
-      <div class="footer-copy">&copy; 2026 Kylrx AI. All rights reserved.</div>
+      <div class="footer-copy">&copy; 2026 Prompt AI Ethical Solutions USA LLC. All rights reserved.</div>
     </div>
 
     <!-- Right Column (Centered Auth Card) -->
@@ -65,13 +66,13 @@
         
         <!-- Mobile Header (hidden on Desktop) -->
         <a href="index.html" class="brand-logo mobile-logo">
-          <img src="logo.jpg" alt="Logo">
-          <span>Kylrx <span>AI</span></span>
+          <img src="onnhr-logo.svg" alt="Onn HR">
+          <span style="display:flex;flex-direction:column;line-height:1.15">Onn HR<small style="font-size:.72rem;font-weight:600;color:#64748b;letter-spacing:.02em">by Prompt AI USA</small></span>
         </a>
 
         <div class="auth-header">
-          <h2>Welcome Back!</h2>
-          <p>Sign in to continue to Kylrx AI</p>
+          <h2>Welcome back</h2>
+          <p>Sign in to Onn HR</p>
         </div>
 
         <form id="loginForm">
@@ -84,22 +85,41 @@
           </div>
 
           <div class="form-group">
-            <label for="password">Password</label>
+            <label for="password">PIN</label>
             <div class="input-wrapper">
               <i data-lucide="lock" class="icon-left"></i>
-              <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
+              <input type="password" id="password" name="password" placeholder="Your 4 to 6 digit PIN" inputmode="numeric" autocomplete="current-password">
               <button type="button" class="eye-btn" data-target="password">
                 <i data-lucide="eye"></i>
               </button>
             </div>
           </div>
 
-          <div class="utils-row">
-            <label class="remember-me">
-              <input type="checkbox">
-              <span>Remember me</span>
-            </label>
-            <a href="javascript:void(0)" id="forgotPasswordLink" class="forgot-link">Forgot Password?</a>
+          <div class="form-group" id="codeGroup" hidden>
+            <label for="signinCode">Code from your email</label>
+            <div class="input-wrapper">
+              <i data-lucide="mail-check" class="icon-left"></i>
+              <input type="text" id="signinCode" name="one-time-code" placeholder="6 digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+            </div>
+            <p id="codeHint" style="font-size:.82rem;color:#475569;margin:.5rem 0 0;line-height:1.45"></p>
+          </div>
+
+          <div class="form-group" id="newPinGroup" hidden>
+            <label for="newPin">Choose a PIN</label>
+            <div class="input-wrapper">
+              <i data-lucide="key-round" class="icon-left"></i>
+              <input type="password" id="newPin" name="new-pin" placeholder="4 to 6 digits" inputmode="numeric" autocomplete="new-password" maxlength="6">
+            </div>
+            <p id="newPinHint" style="font-size:.82rem;color:#475569;margin:.5rem 0 0;line-height:1.45"></p>
+          </div>
+
+          <div class="utils-row" id="pinHelpRow">
+            <span style="font-size:.82rem;color:#64748b">No password needed.</span>
+            <a href="javascript:void(0)" id="noPinLink" class="forgot-link">No PIN, or forgot it?</a>
+          </div>
+          <div class="utils-row" id="keepPinRow" hidden>
+            <span></span>
+            <a href="javascript:void(0)" id="keepPinLink" class="forgot-link">Keep my current PIN</a>
           </div>
 
           <div id="errorMessage" class="error-msg">Invalid login credentials</div>

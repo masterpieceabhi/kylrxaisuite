@@ -1,5 +1,5 @@
 /**
- * Kylrx AI - Custom Persistent Manager Sidebar Scrollbar
+ * Onn HR - Custom Persistent Manager Sidebar Scrollbar
  * Provides an always-visible, draggable custom scrollbar with
  * top (▲) and bottom (▼) scroll arrow buttons for all Manager Dashboards.
  */

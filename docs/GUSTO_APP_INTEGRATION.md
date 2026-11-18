@@ -105,6 +105,19 @@ The five items below are on the "Hours to Gusto" tab of `admin-us-payroll.html` 
 
 If Gusto shows an error about the redirect address, the app is not running on the port the registered address names.
 
+## Result of the first run against Gusto's demo (2026-11-17)
+
+Run from the payroll page on a local server, against the demo company "Onn HR Test Store" and the demo application "Onn HR". The test person and their approved week were written straight into the local emulator, not made through clock punches and the approval screen.
+
+Worked: connecting (sign in, approve, return); reading the 13 demo employees; matching by hand; creating time sheets, which Gusto marked "approved"; a repeat send that changes nothing; removing a day; a change to a day's hours; a day whose overtime disappears; a night shift sent as two back-to-back time sheets cut at local midnight; a shift longer than its paid hours (an unpaid break inside). So the demo application has `employees:read` and `time_sheet:read`/`time_sheet:write`.
+
+Two faults found and fixed:
+
+- **Gusto's return address was refused with "Authentication token required".** Every router attached at `/api/us` asks for a sign-in on every address under it, and they come before `/api/us/gusto`. The return address is now attached on its own in `server.js`, above those routers. The route tests did not catch it because they run the Gusto router alone.
+- **A change to a time sheet was refused with "Entries do not fit in the time you entered".** An entry sent on `PUT` without its `uuid` is added to the time sheet rather than swapped in. Each entry now carries the `uuid` of the entry of the same pay classification it replaces (`entriesForUpdate()` in `services/gusto/time-sheets.js`). Gusto documents no way to drop an entry, so when a pay classification disappears the time sheet is deleted and created again. The mock provider replaces entries wholesale, so it does not reproduce this.
+
+Still not tried against the demo: a time sheet already on a payroll, a provider outage, more than one person, and everything added after this run (refreshing matches, sending by itself, putting hours on a payroll, reading what was paid).
+
 ## Sources
 
 Gusto's App Integrations pages read on 2026-11-16 and 2026-11-17: OAuth2, Authentication, token_info reference, Syncing Time Tracking Data, Syncing Employees, Scopes, Idempotency, Jobs and Compensations, and the references for time sheets (create, list, get, update, delete), employees and payroll syncs. The time sheet and employee references name API version 2026-06-15, which this mode now sends by default. The demo environment page was empty that day. Scopes are assigned by Gusto during review and are not requested in the approval address.

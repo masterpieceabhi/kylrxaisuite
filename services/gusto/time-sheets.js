@@ -209,6 +209,16 @@ function payloadOf(shift) {
         metadata: { source: 'onn_hr', ref: shift.key }
     };
 }
+/**
+ * The entries for a change to a time sheet Gusto already holds: each one carries the id of the entry of the same kind
+ * it replaces. Returns null when Gusto holds a kind of pay that is no longer wanted, which a change cannot take away.
+ */
+function entriesForUpdate(current, wanted) {
+    const held = new Map(((current && current.entries) || []).map((x) => [x.pay_classification, x.uuid || null]));
+    const kinds = new Set(wanted.map((x) => x.pay_classification));
+    for (const kind of held.keys()) if (!kinds.has(kind)) return null;
+    return wanted.map((x) => (held.get(x.pay_classification) ? { uuid: held.get(x.pay_classification), ...x } : x));
+}
 const fingerprint = (shift) => crypto.createHash('sha256').update(JSON.stringify(payloadOf(shift))).digest('hex');
 
 /**
@@ -348,8 +358,21 @@ async function sendNow(ctx, start, end, { actor = null, auto = false } = {}) {
             } else {
                 const current = await client.get(PATH(rec.gustoUuid));
                 if (current.synced_to_payroll_at) { await problem(s.key, s.name, s.date, null, LOCKED); continue; }
-                const saved = await client.put(PATH(rec.gustoUuid), { ...payloadOf(s), version: current.version });
-                await store.saveRecord(RECORDS, orgId, s.key, { name: s.name, version: (saved && saved.version) || null, hash: s.hash, hours: s.hours, gustoStatus: (saved && saved.status) || null, sentAt: nowIso(), sentBy: actor });
+                // Found against Gusto's demo on 2026-11-17: an entry sent without its id is ADDED to the time sheet, not
+                // swapped in (the change was refused with "Entries do not fit in the time you entered"). So each entry
+                // carries the id of the one it replaces. Gusto documents no way to drop an entry, so when a kind of pay
+                // disappears (overtime that is no longer there) the time sheet is removed and made again.
+                const entries = entriesForUpdate(current, payloadOf(s).entries);
+                if (entries) {
+                    const saved = await client.put(PATH(rec.gustoUuid), { ...payloadOf(s), entries, version: current.version });
+                    await store.saveRecord(RECORDS, orgId, s.key, { name: s.name, version: (saved && saved.version) || null, hash: s.hash, hours: s.hours, gustoStatus: (saved && saved.status) || null, sentAt: nowIso(), sentBy: actor });
+                } else {
+                    await client.del(PATH(rec.gustoUuid), { query: { version: current.version } });
+                    await store.saveRecord(RECORDS, orgId, s.key, { status: 'removed', removedAt: nowIso(), removedBy: actor });
+                    const made = await client.post(`/v1/companies/${company}/time_tracking/time_sheets`, payloadOf(s), { idempotencyKey: `onnhr:${orgId}:${s.key}:${s.hash.slice(0, 24)}` });
+                    if (!made || !made.uuid) throw fail(502, 'bad_response', 'Gusto did not return the time sheet');
+                    await store.saveRecord(RECORDS, orgId, s.key, { userId: s.userId, name: s.name, date: s.date, gustoUuid: made.uuid, version: made.version || null, hash: s.hash, hours: s.hours, status: 'sent', gustoStatus: made.status || null, sentAt: nowIso(), sentBy: actor, removedAt: null });
+                }
                 out.updated += 1;
             }
             await store.resolveErrors(orgId, 'time_sheet', s.key);

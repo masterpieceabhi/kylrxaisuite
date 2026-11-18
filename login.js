@@ -1,5 +1,5 @@
 import { auth, db, doc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from "./firebase-config.js";
-import { signInWithEmailAndPassword, signOut, GoogleAuthProvider, OAuthProvider, SAMLAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { signInWithEmailAndPassword, signInWithCustomToken, signOut, GoogleAuthProvider, OAuthProvider, SAMLAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 
 /** A page inside this app that asked for sign-in first (for example the app-approval page). Only plain same-site pages are accepted. */
 function afterLoginTarget() {
@@ -263,6 +263,60 @@ try {
     console.warn('Session storage pre-fill failed:', e);
 }
 
+/* ---------- sign-in with a PIN, and a code by email as the way back in (routes/pin-signin.js) ----------
+   pin    -> email and PIN are sent. Right PIN on a device seen before: signed in. Anything else: a code is emailed.
+   code   -> the emailed code is checked. Then signed in, or on to choosing a PIN.
+   newpin -> a PIN is chosen (or the old one kept), then signed in. */
+const signin = { stage: 'pin', challenge: null, token: null, setupToken: null, keep: false };
+const el = (id) => document.getElementById(id);
+const signinLabel = () => (signin.stage === 'code' ? 'Check code \u2192' : signin.stage === 'newpin' ? 'Save PIN and sign in \u2192' : 'Sign In \u2192');
+function showStage() {
+    const pinGroup = passwordInput ? passwordInput.closest('.form-group') : null;
+    if (pinGroup) pinGroup.hidden = signin.stage !== 'pin';
+    el('codeGroup').hidden = signin.stage !== 'code';
+    el('newPinGroup').hidden = signin.stage !== 'newpin';
+    el('pinHelpRow').hidden = signin.stage !== 'pin';
+    if (emailInput) emailInput.readOnly = signin.stage !== 'pin';
+    const b = loginBtn && loginBtn.querySelector('span'); if (b) b.textContent = signinLabel();
+    const focus = signin.stage === 'code' ? el('signinCode') : signin.stage === 'newpin' ? el('newPin') : null;
+    if (focus) focus.focus();
+}
+async function pinPost(path, body) {
+    const res = await fetch(`/api/auth/pin/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) { const err = new Error(json.error || 'Sign-in is not working right now. Try again in a minute.'); err.code = json.code; throw err; }
+    return json;
+}
+/** One step of the sign-in. Returns the token to finish with, or null when the person has something more to type. */
+async function pinStep(email, pin) {
+    if (signin.stage === 'pin') {
+        const out = await pinPost('start', { email, pin });
+        if (out.next === 'signed_in') return out.token;
+        signin.challenge = out.challenge; signin.stage = 'code';
+        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
+        el('signinCode').value = '';
+        showStage();
+        return null;
+    }
+    if (signin.stage === 'code') {
+        let out;
+        try { out = await pinPost('code', { challenge: signin.challenge, code: el('signinCode').value.trim() }); }
+        catch (err) { if (err.code === 'expired') { signin.stage = 'pin'; showStage(); } throw err; }
+        signin.token = out.token; signin.setupToken = out.setupToken;
+        if (out.hasPin && out.pinWasRight) return out.token; // the PIN was right, this was only a device we had not seen
+        signin.stage = 'newpin';
+        el('newPinHint').textContent = out.hasPin ? 'The PIN you typed was not right. Choose a new one, or keep the one you had.' : 'You will use this PIN to sign in next time on this device.';
+        el('keepPinRow').hidden = !out.hasPin;
+        el('newPin').value = '';
+        showStage();
+        return null;
+    }
+    if (!signin.keep) await pinPost('set', { setupToken: signin.setupToken, pin: el('newPin').value.trim() });
+    return signin.token;
+}
+el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means the code is emailed
+el('keepPinLink')?.addEventListener('click', () => { signin.keep = true; loginBtn?.click(); });
+
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   
@@ -275,6 +329,15 @@ loginForm?.addEventListener('submit', async (e) => {
   btnText.textContent = 'Authenticating...';
   loginBtn.disabled = true;
   errorMessage.style.display = 'none';
+
+  // On a local demo server the demo buttons still fill in a password; everything else signs in with a PIN.
+  const withPassword = IS_LOCAL_DEMO && signin.stage === 'pin' && password && !/^\d{4,6}$/.test(password);
+  let customToken = null;
+  if (!withPassword) {
+    try { customToken = await pinStep(email, password); }
+    catch (err) { showError(err.name === 'TypeError' ? 'Network Error: Please check your internet connection.' : err.message); }
+    if (!customToken) { if (btnText) btnText.textContent = signinLabel(); loginBtn.disabled = false; return; }
+  }
 
   try {
     let userData = null;
@@ -291,7 +354,7 @@ loginForm?.addEventListener('submit', async (e) => {
     try {
       let userCredential;
       try {
-        userCredential = await signInWithEmailAndPassword(auth, email, password);
+        userCredential = customToken ? await signInWithCustomToken(auth, customToken) : await signInWithEmailAndPassword(auth, email, password);
       } catch (firstErr) {
         throw firstErr;
       }
@@ -507,7 +570,7 @@ loginForm?.addEventListener('submit', async (e) => {
         showError(error.message || 'Invalid login credentials. Please try again.');
     }
   } finally {
-    if (btnText) btnText.textContent = originalText;
+    if (btnText) btnText.textContent = signinLabel();
     if (loginBtn) loginBtn.disabled = false;
   }
 });

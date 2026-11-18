@@ -1,4 +1,5 @@
 import { db, storage, onSnapshot, registerListener } from "./firebase-config.js";
+import { companyName, escapeHtml } from "./company-name.js";
 import { collection, doc, addDoc, updateDoc, getDocs, getDoc, setDoc, serverTimestamp, query, orderBy } from "./firebase-config.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
@@ -94,15 +95,17 @@ export async function updateCandidate(id, patch, options = {}) {
 
                     const inviteLink = `${window.location.origin}/onboarding-invite.html?token=${onboardingToken}&id=${empId}`;
                     const deadline = expiryDate.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: '2-digit', month: 'short', year: 'numeric' });
+                    const company = await companyName(); // the employer making the offer; left out when it is not known
+                    const companyHtml = escapeHtml(company);
                     const emailBody = `
                         <div style="font-family: 'Outfit', sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e5e7eb; border-radius: 20px; background-color: #ffffff;">
                             <div style="text-align: center; margin-bottom: 20px;">
-                                <h2 style="color: #4f46e5; font-weight: 800; font-size: 1.6rem; margin-bottom: 5px;">Kylrx AI Enterprise</h2>
+                                <h2 style="color: #4f46e5; font-weight: 800; font-size: 1.6rem; margin-bottom: 5px;">${companyHtml || 'Your offer'}</h2>
                                 <p style="color: #10b981; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin: 0;">Employment Offer Released</p>
                             </div>
                             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin-bottom: 25px;" />
                             <p>Dear <strong>${existing.name}</strong>,</p>
-                            <p>Congratulations! We are thrilled to offer you the position of <strong>${existing.role}</strong> at Kylrx AI Enterprise.</p>
+                            <p>Congratulations! We are thrilled to offer you the position of <strong>${existing.role}</strong>${companyHtml ? ` at ${companyHtml}` : ''}.</p>
                             <p>To begin your onboarding journey, please activate your profile and submit your documents using our secure portal. Note that you can temporarily skip any documents that are currently unavailable.</p>
                             
                             <div style="background-color: #f9fafb; border-radius: 12px; padding: 15px; margin: 20px 0; border-left: 4px solid #10b981;">
@@ -126,7 +129,7 @@ export async function updateCandidate(id, patch, options = {}) {
 
                             <p style="font-size: 0.85rem; color: #6b7280; line-height: 1.5;">If you have any questions or require support, please reply to this email or contact human resources.</p>
                             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 25px 0 15px;" />
-                            <p style="font-size: 0.7rem; color: #9ca3af; text-align: center;">Kylrx AI HR Administration • Private and Confidential</p>
+                            <p style="font-size: 0.7rem; color: #9ca3af; text-align: center;">${companyHtml ? `${companyHtml} ` : ''}HR Administration • Private and Confidential</p>
                         </div>
                     `;
 
@@ -135,7 +138,7 @@ export async function updateCandidate(id, patch, options = {}) {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             to: existing.email,
-                            subject: `Congratulations! Your Offer is Released at Kylrx AI`,
+                            subject: company ? `Congratulations! Your offer from ${company}` : 'Congratulations! Your offer',
                             html: emailBody
                         })
                     }).then(res => res.json())

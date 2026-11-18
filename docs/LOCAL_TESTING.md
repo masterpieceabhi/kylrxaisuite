@@ -34,3 +34,16 @@ The emulator database is empty on every start; run `npm run seed:local` again af
 - Set `NODE_ENV=production` (this also stops the one-time code being returned in the login response).
 - Put `JWT_SECRET`, `REFRESH_SECRET` and the Firebase service account only in the host's environment.
 - Remove the demo passwords and one-click demo buttons from `login.js` and `statutory-compliance.html`.
+
+## Signing in with a PIN (added 2026-11-17)
+
+The sign-in page asks for an email and a PIN, not a password. The right PIN on a device that has signed in with a code before goes straight in. Anything else (no PIN yet, a wrong PIN, a new device) sends a code to the email; after the code the person is in and can choose a PIN. Locally no mail server is set up, so the code is shown under the code box.
+
+The extra local company made for the Gusto demo test ("Gusto Demo Test Co", not created by the seed script):
+
+| Role | Email | Sign in with |
+|---|---|---|
+| Owner | superadmin@gusto.demo.local | no PIN yet: press "No PIN, or forgot it?" and use the code shown |
+| Employee | employee@gusto.demo.local | PIN 4826 |
+
+The one-click demo buttons still sign in with the seed password; that path exists only on a local demo server.

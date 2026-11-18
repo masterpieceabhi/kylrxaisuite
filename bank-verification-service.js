@@ -127,9 +127,9 @@ export async function processBankApproval(employeeId, action, adminId, reason = 
                             },
                             body: JSON.stringify({
                                 access_key: EMAIL_API_KEY,
-                                name: "Kylrx AI Payroll Gate",
+                                name: "Onn HR Payroll Gate",
                                 email: SENDER_EMAIL,
-                                subject: "Kylrx AI - Payout Processed",
+                                subject: "Onn HR - Payout Processed",
                                 message: vData.emailMessage || emailBody
                             })
                         });

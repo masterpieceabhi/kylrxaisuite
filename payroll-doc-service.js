@@ -17,7 +17,7 @@ export async function generateDocument(employeeId, docType, data) {
         const secureMetadata = {
             isEncrypted: true,
             encryptionType: 'AES-256',
-            watermark: 'Kylrx AI Confidential',
+            watermark: 'Confidential',
             generatedBy: 'System Admin',
             generationIp: '192.168.1.1'
         };

@@ -491,7 +491,7 @@ function renderPreviewContent(data) {
 
             <!-- Official Footer & Stamp -->
             <div style="margin-top:3.5rem;border-top:1px solid #e2e8f0;padding-top:1.5rem;display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;color:#94a3b8;">
-                <div>This is an immutable digitally-generated document processed by Kylrx AI Document Engine.</div>
+                <div>This is an immutable digitally-generated document processed by Onn HR Document Engine.</div>
                 <div style="font-family:monospace;font-size:0.7rem;background:#f8fafc;padding:3px 8px;border-radius:4px;border:1px solid #e2e8f0;">
                     SHA-256 Verified
                 </div>
@@ -513,7 +513,7 @@ function generateClientPreview(template, versionNumber) {
             <p>Dear <strong>Rahul Deshmukh</strong>,</p>
             <p>This is the official simulated preview of <strong>${template.name}</strong>.</p>
             <p>All token interpolation keys and approval constraints have been validated.</p>
-            <p>Sincerely,<br><strong>Kylrx AI Enterprise Workforce Suite</strong></p>
+            <p>Sincerely,<br><strong>Human Resources</strong></p>
         </div>`;
 
     mappings.forEach(m => {
@@ -538,7 +538,7 @@ function printPreviewDoc() {
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Kylrx AI Document Print Preview</title>
+            <title>Onn HR Document Print Preview</title>
             <style>
                 @page { margin: 20mm; }
                 body { font-family: 'Outfit', 'Inter', -apple-system, sans-serif; color: #0f172a; line-height: 1.7; padding: 20px; }

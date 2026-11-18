@@ -52,7 +52,7 @@
         `,
         POL_COC_01: `
             <h3>1. Core Principles</h3>
-            <p>Every member of the Kylrx AI workforce must uphold the highest standards of integrity, transparency, professional objectivity, and regulatory compliance in all corporate dealings.</p>
+            <p>Every member of the Onn HR workforce must uphold the highest standards of integrity, transparency, professional objectivity, and regulatory compliance in all corporate dealings.</p>
             <h3>2. Conflicts of Interest & Gifts</h3>
             <p>Employees must avoid any personal or financial conflict of interest. Soliciting or accepting personal kickbacks, gifts, or inducements from vendors, clients, or partners is strictly prohibited.</p>
             <h3>3. Protection of Enterprise IP & Assets</h3>

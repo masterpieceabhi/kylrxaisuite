@@ -603,7 +603,7 @@ function setupDemoDataAutofill() {
 
             // Section B: Company Profile
             legalNameInput.value = "Kylrx Technologies Private Limited";
-            displayNameInput.value = "Kylrx AI";
+            displayNameInput.value = "Kylrx Technologies";
             orgTypeSelect.value = "Private Limited";
             industryInput.value = "Technology & Enterprise SaaS";
             websiteInput.value = "https://kylrx.ai";
@@ -752,7 +752,7 @@ async function executeRegistrationAndOrganizationSetup() {
 
         if (window.showAlert) {
             window.showAlert(
-                "Welcome to Kylrx AI!",
+                "Welcome to Onn HR!",
                 `Account for "${fullName}" and Organization "${displayName}" successfully provisioned!\n\nSuper Admin role assigned and continuous sequential Employee ID provisioning (EMP0001) is active.\n\nRedirecting to Command Center...`,
                 "check"
             );

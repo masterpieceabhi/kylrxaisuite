@@ -240,6 +240,7 @@ app.use(require('./middleware/static-guard'));
 app.use(express.static(__dirname));
 
 // Route Wiring
+app.use("/api/auth", require("./routes/pin-signin")); // sign-in with a PIN, and a code by email as the way back in
 app.use("/api/auth", require("./routes/qr-signin")); // sign-in by scanning a personal one-time QR (public part)
 app.use("/api/auth", authRoutes);
 app.use("/api/data", dataRoutes);
