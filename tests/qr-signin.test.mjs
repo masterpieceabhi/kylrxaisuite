@@ -163,6 +163,49 @@ test('the PIN set-up token from a QR sign-in cannot be swapped for another kind 
     assert.equal(people.get('u2').pinHash, null);
 });
 
+test('a used QR says who made it, so the person can be told', async () => {
+    const byHr = await svc.createLink({ uid: 'u1', actorId: 'hr1' });
+    const a = await svc.confirm({ secret: byHr.secret });
+    assert.deepEqual([a.madeBy, a.forSelf], ['hr1', false]);
+    const mine = await svc.createLink({ uid: 'u2', actorId: 'u2', hours: 1 });
+    const b = await svc.confirm({ secret: mine.secret });
+    assert.deepEqual([b.madeBy, b.forSelf], ['u2', true]);
+});
+
+test('records of QRs that ran out more than 30 days ago are removed, a batch at a time, at most once an hour', async () => {
+    const calls = [];
+    const links = {
+        put: async (id, doc) => { store.set(id, { ...doc }); }, get: async (id) => store.get(id) || null, use: async () => true, cancelOpen: async () => 0,
+        removeExpiredBefore: async (iso, max) => { calls.push([iso, max]); let n = 0; for (const [id, l] of store) if (l.expiresAt < iso && n < max) { store.delete(id); n += 1; } return n; }
+    };
+    const s2 = qr.create({ links, secret: SECRET, now: () => new Date(clock), loadPerson: async (uid) => ({ ...people.get(uid) }), savePerson: async () => {}, mintToken: async () => 't' });
+    store.set('old-used', { uid: 'u1', expiresAt: '2026-10-01T00:00:00.000Z', usedAt: '2026-09-30T10:00:00.000Z' });
+    store.set('old-cancelled', { uid: 'u2', expiresAt: '2026-10-17T14:59:59.000Z', cancelledAt: '2026-10-15T10:00:00.000Z' });
+    store.set('recent-used', { uid: 'u2', expiresAt: '2026-11-10T00:00:00.000Z', usedAt: '2026-11-09T10:00:00.000Z' });
+
+    await s2.createLink({ uid: 'u1', actorId: 'hr1' });
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(calls, [['2026-10-18T15:00:00.000Z', 200]], '30 days before now, 200 at most');
+    assert.deepEqual([store.has('old-used'), store.has('old-cancelled'), store.has('recent-used'), store.size], [false, false, true, 2], 'only what ran out long ago goes; the new link stays');
+
+    await s2.createLink({ uid: 'u2', actorId: 'hr1' });
+    later(0.5); await s2.createLink({ uid: 'u2', actorId: 'hr1' });
+    assert.equal(calls.length, 1, 'not again within the hour');
+    later(0.6); await s2.createLink({ uid: 'u2', actorId: 'hr1' });
+    assert.equal(calls.length, 2, 'again after an hour');
+});
+
+test('a tidy-up that fails, or a store that cannot do it, never fails making a QR', async () => {
+    const base = { put: async (id, doc) => { store.set(id, { ...doc }); }, get: async (id) => store.get(id) || null, use: async () => true, cancelOpen: async () => 0 };
+    const deps = { secret: SECRET, now: () => new Date(clock), loadPerson: async (uid) => ({ ...people.get(uid) }), savePerson: async () => {}, mintToken: async () => 't' };
+    const broken = qr.create({ ...deps, links: { ...base, removeExpiredBefore: async () => { throw new Error('database is down'); } } });
+    assert.ok((await broken.createLink({ uid: 'u1', actorId: 'hr1' })).secret);
+    assert.equal(await broken._tidy(), null, 'already tried this hour');
+    const without = qr.create({ ...deps, links: base });
+    assert.ok((await without.createLink({ uid: 'u1', actorId: 'hr1' })).secret);
+    await new Promise((r) => setImmediate(r));
+});
+
 test('the email shown is masked', () => {
     assert.equal(qr.maskEmail('carlos@example.test'), 'ca•••@example.test');
     assert.equal(qr.maskEmail('al@example.test'), 'a•••@example.test');

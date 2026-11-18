@@ -30,6 +30,8 @@ const DEFAULT_HOURS = 24;
 const MAX_HOURS = 72;
 const MAX_DEVICES = 10;          // the same as the PIN sign-in
 const SETUP_SECONDS = 600;       // time to choose a PIN after a confirm
+const KEEP_DAYS = 30;            // how long a finished link's record is kept (the audit log keeps the history)
+const TIDY_BATCH = 200;
 const SECRET_RE = /^[A-Za-z0-9_-]{43}$/; // 32 random bytes, base64url
 
 const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
@@ -50,6 +52,7 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
  *   links.get(id)                  -> the link or null
  *   links.use(id, patch)           -> true when THIS call used the link up; false when it was already used (atomic)
  *   links.cancelOpen(uid, patch)   marks that person's unused links cancelled; resolves how many
+ *   links.removeExpiredBefore(iso, max)  optional: deletes up to max links that ran out before that time
  *   loadPerson(uid)                -> { uid, orgId, name, email, active, pinHash, signinDevices, companyName } or null
  *   savePerson(uid, patch)
  *   mintToken(uid)                 -> a sign-in token for the browser (Firebase custom token)
@@ -58,6 +61,17 @@ const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
  */
 function create(deps) {
     const now = deps.now || (() => new Date());
+
+    // Links that ran out more than KEEP_DAYS ago are of no use to anyone (a link lives three days at most, so that
+    // covers used and cancelled ones too). They are removed a few at a time, at most once an hour, when a new link
+    // is made. Never awaited and never allowed to fail the request: it is housekeeping.
+    let lastTidy = 0;
+    function tidy() {
+        const t = now().getTime();
+        if (!deps.links.removeExpiredBefore || t - lastTidy < 3600000) return null;
+        lastTidy = t;
+        return Promise.resolve().then(() => deps.links.removeExpiredBefore(new Date(t - KEEP_DAYS * 86400000).toISOString(), TIDY_BATCH)).catch(() => 0);
+    }
 
     async function createLink({ uid, actorId, hours }) {
         const person = await deps.loadPerson(uid);
@@ -71,6 +85,7 @@ function create(deps) {
         const at = now();
         const expiresAt = new Date(at.getTime() + h * 3600000).toISOString();
         await deps.links.cancelOpen(person.uid, { cancelledAt: at.toISOString(), cancelledBy: actorId || null, cancelReason: 'replaced' });
+        tidy();
         await deps.links.put(sha(secret), { orgId: person.orgId, uid: person.uid, createdBy: actorId || null, forSelf: actorId === person.uid, createdAt: at.toISOString(), expiresAt, usedAt: null, cancelledAt: null });
         return { secret, expiresAt, hours: h, person: { id: person.uid, name: person.name || null, emailHint: maskEmail(person.email) } };
     }
@@ -92,7 +107,7 @@ function create(deps) {
     }
 
     async function confirm({ secret, deviceToken: held }) {
-        const { id, person } = await live(secret);
+        const { id, link, person } = await live(secret);
         const at = now().toISOString();
         if (!(await deps.links.use(id, { usedAt: at }))) throw GONE(); // someone else used it in the same moment
         // a device that already holds a token keeps it, so two people who share a screen do not push each other out
@@ -101,6 +116,7 @@ function create(deps) {
         await deps.savePerson(person.uid, { signinDevices: devices, lastQrSigninAt: at });
         return {
             next: 'signed_in', token: await deps.mintToken(person.uid), deviceToken, uid: person.uid, orgId: person.orgId,
+            madeBy: link.createdBy || null, forSelf: Boolean(link.forSelf),
             hasPin: Boolean(person.pinHash),
             setupToken: jwt.sign({ type: 'qr_pin_setup', uid: person.uid }, deps.secret, { expiresIn: SETUP_SECONDS })
         };
@@ -124,7 +140,7 @@ function create(deps) {
         return { cancelled: n };
     }
 
-    return { createLink, open, confirm, setPin, cancel };
+    return { createLink, open, confirm, setPin, cancel, _tidy: tidy };
 }
 
-module.exports = { create, maskEmail, DEFAULT_HOURS, MAX_HOURS };
+module.exports = { create, maskEmail, DEFAULT_HOURS, MAX_HOURS, KEEP_DAYS };

@@ -23,6 +23,7 @@ const { admin, rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
 const qrSignin = require('../services/qr-signin');
 const localDemo = require('../services/local-demo');
+const notices = require('../services/notices');
 
 const LINKS = 'signin_qr_links';
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
@@ -42,6 +43,12 @@ const links = {
             tx.update(ref, patch);
             return true;
         });
+    },
+    /** One field, one range: no extra index needed. Each link carries expiresAt, so this finds used and cancelled ones too. */
+    async removeExpiredBefore(iso, max) {
+        const snap = await rawCollection(LINKS).where('expiresAt', '<', iso).limit(max).get();
+        await Promise.all((snap.docs || []).map((d) => d.ref.delete()));
+        return (snap.docs || []).length;
     },
     async cancelOpen(uid, patch) {
         const snap = await rawCollection(LINKS).where('uid', '==', uid).get();
@@ -93,9 +100,13 @@ router.post('/pin/qr/open', limiter, async (req, res) => {
 router.post('/pin/qr/confirm', limiter, async (req, res) => {
     res.set('Cache-Control', 'no-store');
     try {
-        const { deviceToken, uid, orgId, ...out } = await service.confirm({ secret: text((req.body || {}).qr, 100), deviceToken: deviceOf(req) });
+        const { deviceToken, uid, orgId, madeBy, forSelf, ...out } = await service.confirm({ secret: text((req.body || {}).qr, 100), deviceToken: deviceOf(req) });
         remember(res, deviceToken);
-        auditAs(orgId, uid, req, 'signin_qr_used');
+        auditAs(orgId, uid, req, 'signin_qr_used', { madeBy, forSelf });
+        // The person is told every time, in their own notices: a QR made for them by someone else could be scanned by that someone.
+        notices.notify(orgId, uid, 'signin_qr_used', 'A one-time QR was used to sign in as you',
+            forSelf ? 'The one-time QR you made was used to sign in on another device. If that was not you, choose a new PIN and tell the owner.'
+                : 'A one-time sign-in QR that was made for you has just been used. If that was not you, tell the owner straight away and choose a new PIN.');
         res.json({ success: true, ...out });
     } catch (e) { answer(res, e, 'confirm'); }
 });
@@ -146,6 +157,8 @@ staff.post('/people/:id/signin-qr', usOrg, async (req, res) => {
         const emp = await target(req, res); if (!emp) return undefined;
         const out = await service.createLink({ uid: emp.id, actorId: req.user.id, hours: (req.body || {}).hours });
         hr().audit(req.orgId, req, 'signin_qr_created', emp.id, { targetRole: emp.data.role || null, expiresAt: out.expiresAt });
+        notices.notify(req.orgId, emp.id, 'signin_qr_created', 'A sign-in QR was made for you',
+            `${req.user.name || 'Someone who manages your account'} made a one-time QR that signs in as you. It works once and runs out in ${out.hours} hour${out.hours === 1 ? '' : 's'}. If you did not ask for it, tell the owner.`, { madeBy: req.user.id });
         return res.status(201).json({ success: true, ...made(out) });
     } catch (e) { return answer(res, e, 'create'); }
 });
