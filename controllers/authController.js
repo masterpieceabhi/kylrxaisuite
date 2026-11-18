@@ -284,6 +284,8 @@ exports.registerOrganization = async (req, res, next) => {
 
 exports.login = async (req, res, next) => {
     try {
+        // PASSWORD_SIGNIN=off closes this door on a server where people sign in with a PIN, a code or a QR instead.
+        if (process.env.PASSWORD_SIGNIN === 'off') return res.status(403).json({ success: false, code: 'password_signin_off', error: 'Sign in with your PIN or a sign-in code.' });
         const { email, password } = req.body;
 
         if (!email || !password) {

@@ -118,6 +118,10 @@ Two faults found and fixed:
 
 Still not tried against the demo: a time sheet already on a payroll, a provider outage, more than one person, and everything added after this run (refreshing matches, sending by itself, putting hours on a payroll, reading what was paid).
 
+## Second run, through the whole product (2026-11-18)
+
+Everything by hand on the pages of a local server, no data written directly: an employee added on the team import page (pasted from a spreadsheet, all eight columns guessed right), their first sign-in with an emailed code and a new PIN, clock in and out, the week sent for approval, the owner signing in with a PIN and approving, a match by hand, and the approved day sent to the Gusto demo company (0.07 hours, accepted). The connection made the day before still worked, so token renewal against Gusto works too.
+
 ## Sources
 
 Gusto's App Integrations pages read on 2026-11-16 and 2026-11-17: OAuth2, Authentication, token_info reference, Syncing Time Tracking Data, Syncing Employees, Scopes, Idempotency, Jobs and Compensations, and the references for time sheets (create, list, get, update, delete), employees and payroll syncs. The time sheet and employee references name API version 2026-06-15, which this mode now sends by default. The demo environment page was empty that day. Scopes are assigned by Gusto during review and are not requested in the approval address.

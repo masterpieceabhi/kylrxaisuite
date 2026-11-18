@@ -54,6 +54,8 @@ const signupBtn = document.getElementById('signupBtn');
 const signupForm = document.getElementById('signupForm');
 const errorMessage = document.getElementById('errorMessage');
 const btnFillDemoSignup = document.getElementById('btnFillDemoSignup');
+// the testing quick-fill is shown only on a developer's own machine, never on a real server
+if (['localhost', '127.0.0.1'].includes(window.location.hostname)) { const bar = document.getElementById('demoDataBar'); if (bar) bar.style.display = String(); }
 
 // Step 1: Account Elements
 const nameInput = document.getElementById('name');

@@ -23,18 +23,16 @@ const sendEmail = async ({ to, subject, text, html }) => {
     // 1. Gmail SMTP (Nodemailer)
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
         console.log(`[Email] Dispatching via Gmail SMTP (Nodemailer) to ${recipients}: ${subject}`);
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS.replace(/\s+/g, '') // remove spaces from 16-char app pass
-            }
-        });
+        // SMTP_HOST names any mail server (Microsoft 365: smtp.office365.com, port 587). Without it, Gmail as before.
+        const auth = { user: process.env.SMTP_USER, pass: process.env.SMTP_HOST ? process.env.SMTP_PASS : process.env.SMTP_PASS.replace(/\s+/g, '') }; // a Gmail app password is shown with spaces
+        const transporter = nodemailer.createTransport(process.env.SMTP_HOST
+            ? { host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: String(process.env.SMTP_PORT) === '465', auth }
+            : { service: 'gmail', auth });
 
-        const senderName = process.env.EMAIL_SENDER_NAME || 'Kylrx HRFlow';
+        const senderName = process.env.EMAIL_SENDER_NAME || 'Onn HR';
         const mailOptions = {
-            from: `"${senderName}" <${process.env.SMTP_USER}>`,
-            replyTo: process.env.SMTP_USER,
+            from: `"${senderName}" <${process.env.EMAIL_FROM || process.env.SMTP_USER}>`,
+            replyTo: process.env.EMAIL_FROM || process.env.SMTP_USER,
             to: recipients,
             subject,
             text: plainText,
@@ -43,7 +41,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
                 'X-Priority': '1',
                 'X-MSMail-Priority': 'High',
                 'Importance': 'high',
-                'X-Mailer': 'Kylrx HRFlow Enterprise Mailer'
+                'X-Mailer': 'Onn HR'
             }
         };
 
@@ -57,7 +55,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
         console.log(`[Email] Dispatching via Resend API to ${recipients}: ${subject}`);
         const resend = new Resend(process.env.RESEND_API_KEY);
         const { data, error } = await resend.emails.send({
-            from: 'HRFlow <onboarding@resend.dev>',
+            from: process.env.EMAIL_FROM ? `${process.env.EMAIL_SENDER_NAME || 'Onn HR'} <${process.env.EMAIL_FROM}>` : 'Onn HR <onboarding@resend.dev>', // resend.dev only reaches the account owner: set EMAIL_FROM to a verified domain
             to: Array.isArray(to) ? to : [to],
             subject,
             text: plainText,

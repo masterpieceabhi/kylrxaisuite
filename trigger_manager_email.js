@@ -3,21 +3,25 @@ const { sendEmail } = require('./utils/email');
 // where people sign in: the US app lives at app.onnhr.com; APP_URL overrides it for another server
 const APP_URL = String(process.env.APP_URL || 'https://app.onnhr.com').replace(/\/+$/, '');
 
+// A developer test: it emails a sample manager welcome to the address in TEST_EMAIL_TO. No real person is named here.
+const TEST_TO = process.env.TEST_EMAIL_TO;
+if (!TEST_TO) { console.error("Set TEST_EMAIL_TO to the address that should get the test email."); process.exit(1); }
+
 async function sendManagerCredentials() {
-    console.log("Initiating email to Manager John Doe at nb6233712@gmail.com...");
+    console.log("Sending the test manager email to " + TEST_TO + "...");
 
     const managerData = {
         name: "John Doe",
-        email: "nb6233712@gmail.com",
+        email: TEST_TO,
         role: "Cybersecurity Manager",
         departmentCode: "UNIT-CYB-863",
-        phone: "+918310425800",
+        phone: "+1 555 010 0100",
         tempPassword: process.env.TEST_TEMP_PASSWORD || "set-TEST_TEMP_PASSWORD-before-running",
         status: "Completed"
     };
 
     const emailPayload = {
-        to: 'nb6233712@gmail.com',
+        to: TEST_TO,
         subject: 'Welcome to HRFlow - Manager Account & Credentials (John Doe)',
         html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff; color: #1e293b;">

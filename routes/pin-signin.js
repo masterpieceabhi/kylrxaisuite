@@ -45,21 +45,22 @@ async function savePerson(uid, patch) {
     await ref.update(patch);
 }
 
-/** Emails the code through the mail server named in SMTP_HOST. Resolves false when none is set up. */
-let transport = null;
+/**
+ * Emails the code through the app's one email sender (utils/email.js: SMTP_USER and SMTP_PASS, or RESEND_API_KEY).
+ * Resolves false when no email is set up, or when the mail server refused it.
+ */
 async function sendCode(email, code) {
-    if (!process.env.SMTP_HOST) { logger.warn('[PinSignin] no mail server is set up (SMTP_HOST), so the sign-in code was not emailed'); return false; }
-    if (!transport) {
-        transport = require('nodemailer').createTransport({
-            host: process.env.SMTP_HOST, port: Number(process.env.SMTP_PORT || 587), secure: String(process.env.SMTP_PORT) === '465',
-            auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
-        });
+    if (!((process.env.SMTP_USER && process.env.SMTP_PASS) || process.env.RESEND_API_KEY)) {
+        logger.warn('[PinSignin] email is not set up (SMTP_USER and SMTP_PASS, or RESEND_API_KEY), so the sign-in code was not emailed');
+        return false;
     }
-    await transport.sendMail({
-        from: process.env.MAIL_FROM || process.env.SMTP_USER, to: email, subject: `${code} is your Onn HR sign-in code`,
-        text: `Your Onn HR sign-in code is ${code}.\n\nIt works for 10 minutes. If you did not try to sign in, you can ignore this email; nobody can sign in without the code.\n\nOnn HR by Prompt AI USA`
-    });
-    return true;
+    try {
+        await require('../utils/email').sendEmail({
+            to: email, subject: `${code} is your Onn HR sign-in code`,
+            text: `Your Onn HR sign-in code is ${code}.\n\nIt works for 10 minutes. If you did not try to sign in, you can ignore this email; nobody can sign in without the code.\n\nOnn HR by Prompt AI USA`
+        });
+        return true;
+    } catch (e) { logger.warn(`[PinSignin] the sign-in code could not be emailed: ${String((e && e.message) || e).slice(0, 200)}`); return false; }
 }
 
 /**

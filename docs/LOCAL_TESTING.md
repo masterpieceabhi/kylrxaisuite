@@ -43,7 +43,10 @@ The extra local company made for the Gusto demo test ("Gusto Demo Test Co", not 
 
 | Role | Email | Sign in with |
 |---|---|---|
-| Owner | superadmin@gusto.demo.local | no PIN yet: press "No PIN, or forgot it?" and use the code shown |
+| Owner | superadmin@gusto.demo.local | PIN 7392 |
 | Employee | employee@gusto.demo.local | PIN 4826 |
+| Employee added through the team import page (Jordan Avery) | jordan.avery@gusto.demo.local | PIN 5927 |
 
 The one-click demo buttons still sign in with the seed password; that path exists only on a local demo server.
+
+A PIN alone works only in a browser that has signed in with a code before; in a new browser choose email or text and use the code shown.
