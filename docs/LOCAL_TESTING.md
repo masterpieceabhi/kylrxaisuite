@@ -37,7 +37,7 @@ The emulator database is empty on every start; run `npm run seed:local` again af
 
 ## Signing in with a PIN (added 2026-11-17)
 
-The sign-in page asks for an email and a PIN, not a password. The right PIN on a device that has signed in with a code before goes straight in. Anything else (no PIN yet, a wrong PIN, a new device) sends a code to the email; after the code the person is in and can choose a PIN. Locally no mail server is set up, so the code is shown under the code box.
+The sign-in page asks for an email and a PIN, not a password. The right PIN on a device that has signed in with a code before goes straight in. Anything else (no PIN yet, a wrong PIN, a new device) asks where to send a code: to the email, or by text to the mobile number on the person's record (the number typed has to be that number). After the code the person is in and can choose a PIN. Locally neither email nor text messaging is set up, so the code is shown under the code box. The test employee below has the made-up mobile number 414-555-0123 on record.
 
 The extra local company made for the Gusto demo test ("Gusto Demo Test Co", not created by the seed script):
 

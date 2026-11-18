@@ -4,9 +4,13 @@
  *   1. start(email, pin, deviceToken)
  *        The PIN is right AND this device has signed in with a code before  ->  signed in.
  *        Anything else (wrong PIN, no PIN yet, a device we have not seen, an email we do not know)
- *                                                                           ->  a code is emailed, answer "code".
- *   2. verifyCode(challenge, code)  ->  signed in; the device is remembered; a PIN may now be chosen.
- *   3. setPin(setupToken, pin)      ->  a new PIN, only right after a code was accepted.
+ *                                                                           ->  answer "choose": where should the code go?
+ *   2. requestCode(challenge, via, phone)
+ *        via "email": the code goes to the email typed in step 1.
+ *        via "phone": the person types their mobile number; the code is texted only when that number is the one
+ *                     on their record. A code is never sent to a number or address that is not already on file.
+ *   3. verifyCode(challenge, code)  ->  signed in; the device is remembered; a PIN may now be chosen.
+ *   4. setPin(setupToken, pin)      ->  a new PIN, only right after a code was accepted.
  *
  * Why the device matters: a 4 to 6 digit PIN on its own could be guessed across many accounts ("1234" for everyone).
  * A PIN only signs in on a device that has already proved it can read the person's email, so the two together are
@@ -30,6 +34,8 @@ const sha = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
 const cleanEmail = (e) => String(e || '').trim().toLowerCase().slice(0, 254);
 const looksLikeEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
 const validPin = (pin) => /^\d{4,6}$/.test(String(pin || ''));
+/** A US mobile number as its ten digits (a leading 1 is dropped), or '' when it is not one. */
+const tenDigits = (phone) => { const d = String(phone || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? d : ''; };
 
 /** Why a PIN may not be chosen, or null when it is fine. */
 function weakPin(pin) {
@@ -50,6 +56,7 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   otp                      -> { generateOtp({identifier,purpose,ttlSeconds,maxAttempts}), verifyOtp({otpId,identifier,purpose,code}) }
  *   mintToken(uid)           -> a sign-in token for the browser (Firebase custom token)
  *   sendCode(email, code)    -> emails the code; resolves true when it was handed to a mail server
+ *   sendText(phone, code)    -> texts the code to a +1XXXXXXXXXX number; resolves true when a provider took it
  *   secret                   -> signing secret for the short-lived tokens here
  *   showCode                 -> true only on a development server: the code is also returned to the page
  *   now()                    -> Date (tests)
@@ -87,14 +94,39 @@ function create(deps) {
         if (pinOk && known) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
 
         // everything else goes through a code; the answer is the same whether or not the person exists
-        const out = { next: 'code', message: 'If that email is registered, a code is on its way to it. It works for 10 minutes.' };
-        if (!usable) { out.challenge = sign({ type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS); return out; }
+        const choice = usable
+            ? { type: 'signin_choose', uid: person.uid, email: address, pinOk, hasPin: Boolean(person.pinHash) }
+            : { type: 'signin_choose', none: true, n: crypto.randomBytes(8).toString('hex') };
+        return { next: 'choose', challenge: sign(choice, CODE_TTL_SECONDS), message: 'Choose where to get your sign-in code.' };
+    }
+
+    /** Sends the code by email or by text. The answer is the same whether or not anything was sent. */
+    async function requestCode({ challenge, via, phone }) {
+        const c = read(challenge, 'signin_choose');
+        if (via !== 'email' && via !== 'phone') throw fail(400, 'bad_input', 'Choose email or text message.');
+        const typed = tenDigits(phone);
+        if (via === 'phone' && !typed) throw fail(400, 'bad_input', 'Enter your mobile number with its area code.');
+        const out = {
+            next: 'code', via,
+            message: via === 'email' ? 'If that email is registered, a code is on its way to it. It works for 10 minutes.'
+                : 'If that number is the one on your record, a code is on its way by text. It works for 10 minutes.'
+        };
+        const nothing = () => { out.challenge = sign({ type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS); return out; };
+        if (c.none) return nothing();
+        const person = await deps.findPerson(c.email);
+        if (!person || person.uid !== c.uid || person.active === false) return nothing();
+        if (via === 'phone' && tenDigits(person.phone) !== typed) return nothing(); // not the number on file: nothing is sent
         let made;
-        try { made = deps.otp.generateOtp({ identifier: address, purpose: 'pin_signin', ttlSeconds: CODE_TTL_SECONDS, maxAttempts: CODE_MAX_ATTEMPTS }); }
+        try { made = deps.otp.generateOtp({ identifier: c.email, purpose: 'pin_signin', ttlSeconds: CODE_TTL_SECONDS, maxAttempts: CODE_MAX_ATTEMPTS }); }
         catch (e) { throw fail(429, 'slow_down', 'A code was just sent. Wait half a minute, then try again.'); }
-        const sent = await Promise.resolve(deps.sendCode(address, made.code)).catch(() => false);
-        out.challenge = sign({ type: 'signin_code', uid: person.uid, email: address, otpId: made.otpId, pinOk, hasPin: Boolean(person.pinHash) }, CODE_TTL_SECONDS);
-        if (deps.showCode) { out.devCode = made.code; out.devNote = sent ? 'Shown here because this is a development server.' : 'Email is not set up on this server, so the code is shown here. A real server never shows it.'; }
+        const send = via === 'email' ? deps.sendCode(c.email, made.code) : deps.sendText(`+1${typed}`, made.code);
+        const sent = await Promise.resolve(send).catch(() => false);
+        out.challenge = sign({ type: 'signin_code', uid: person.uid, email: c.email, otpId: made.otpId, pinOk: Boolean(c.pinOk), hasPin: Boolean(c.hasPin), via }, CODE_TTL_SECONDS);
+        if (deps.showCode) {
+            out.devCode = made.code;
+            out.devNote = sent ? 'Shown here because this is a development server.'
+                : `${via === 'email' ? 'Email' : 'Text messaging'} is not set up on this server, so the code is shown here. A real server never shows it.`;
+        }
         return out;
     }
 
@@ -126,7 +158,7 @@ function create(deps) {
         return { saved: true };
     }
 
-    return { start, verifyCode, setPin };
+    return { start, requestCode, verifyCode, setPin };
 }
 
-module.exports = { create, weakPin, validPin, PIN_MAX_ATTEMPTS, PIN_LOCK_MINUTES, CODE_TTL_SECONDS };
+module.exports = { create, weakPin, validPin, tenDigits, PIN_MAX_ATTEMPTS, PIN_LOCK_MINUTES, CODE_TTL_SECONDS };

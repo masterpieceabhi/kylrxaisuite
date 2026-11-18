@@ -264,15 +264,18 @@ try {
 }
 
 /* ---------- sign-in with a PIN, and a code by email as the way back in (routes/pin-signin.js) ----------
-   pin    -> email and PIN are sent. Right PIN on a device seen before: signed in. Anything else: a code is emailed.
-   code   -> the emailed code is checked. Then signed in, or on to choosing a PIN.
+   pin    -> email and PIN are sent. Right PIN on a device seen before: signed in. Anything else: on to choose.
+   choose -> the person picks where the code goes: their email, or a text to the mobile number on their record.
+   code   -> the code is checked. Then signed in, or on to choosing a PIN.
    newpin -> a PIN is chosen (or the old one kept), then signed in. */
-const signin = { stage: 'pin', challenge: null, token: null, setupToken: null, keep: false };
+const signin = { stage: 'pin', choice: null, challenge: null, token: null, setupToken: null, keep: false };
 const el = (id) => document.getElementById(id);
 const signinLabel = () => (signin.stage === 'code' ? 'Check code \u2192' : signin.stage === 'newpin' ? 'Save PIN and sign in \u2192' : 'Sign In \u2192');
 function showStage() {
     const pinGroup = passwordInput ? passwordInput.closest('.form-group') : null;
     if (pinGroup) pinGroup.hidden = signin.stage !== 'pin';
+    el('chooseGroup').hidden = signin.stage !== 'choose';
+    if (loginBtn) loginBtn.hidden = signin.stage === 'choose'; // that step has its own two buttons
     el('codeGroup').hidden = signin.stage !== 'code';
     el('newPinGroup').hidden = signin.stage !== 'newpin';
     el('pinHelpRow').hidden = signin.stage !== 'pin';
@@ -292,12 +295,11 @@ async function pinStep(email, pin) {
     if (signin.stage === 'pin') {
         const out = await pinPost('start', { email, pin });
         if (out.next === 'signed_in') return out.token;
-        signin.challenge = out.challenge; signin.stage = 'code';
-        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
-        el('signinCode').value = '';
+        signin.choice = out.challenge; signin.stage = 'choose';
         showStage();
         return null;
     }
+    if (signin.stage === 'choose') return null; // nothing to submit: the two buttons of that step do the work
     if (signin.stage === 'code') {
         let out;
         try { out = await pinPost('code', { challenge: signin.challenge, code: el('signinCode').value.trim() }); }
@@ -314,7 +316,27 @@ async function pinStep(email, pin) {
     if (!signin.keep) await pinPost('set', { setupToken: signin.setupToken, pin: el('newPin').value.trim() });
     return signin.token;
 }
-el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means the code is emailed
+/** The person chose where the code goes. */
+async function sendSigninCode(via) {
+    if (errorMessage) errorMessage.style.display = 'none';
+    const buttons = [el('sendEmailBtn'), el('sendTextBtn')];
+    buttons.forEach((b) => { if (b) b.disabled = true; });
+    try {
+        const out = await pinPost('send', { challenge: signin.choice, via, phone: via === 'phone' ? el('signinPhone').value.trim() : undefined });
+        signin.challenge = out.challenge; signin.stage = 'code';
+        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
+        el('signinCode').value = '';
+        showStage();
+    } catch (err) {
+        if (err.code === 'expired') { signin.stage = 'pin'; showStage(); }
+        showError(err.name === 'TypeError' ? 'Network Error: Please check your internet connection.' : err.message);
+    } finally { buttons.forEach((b) => { if (b) b.disabled = false; }); }
+}
+el('sendEmailBtn')?.addEventListener('click', () => sendSigninCode('email'));
+el('sendTextBtn')?.addEventListener('click', () => sendSigninCode('phone'));
+el('signinPhone')?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); sendSigninCode('phone'); } });
+el('otherWayLink')?.addEventListener('click', () => { if (errorMessage) errorMessage.style.display = 'none'; signin.stage = 'choose'; showStage(); });
+el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means a code is used
 el('keepPinLink')?.addEventListener('click', () => { signin.keep = true; loginBtn?.click(); });
 
 loginForm?.addEventListener('submit', async (e) => {

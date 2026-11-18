@@ -1,6 +1,7 @@
 /**
  * Sign-in with a PIN, and a code by email as the way back in. Mounted at /api/auth (see server.js).
- *   POST /api/auth/pin/start   { email, pin }        ->  { next: 'signed_in', token } | { next: 'code', challenge }
+ *   POST /api/auth/pin/start   { email, pin }        ->  { next: 'signed_in', token } | { next: 'choose', challenge }
+ *   POST /api/auth/pin/send    { challenge, via, phone? }  ->  { next: 'code', challenge }   via is 'email' or 'phone'
  *   POST /api/auth/pin/code    { challenge, code }   ->  { next: 'signed_in', token, setupToken, hasPin, pinWasRight }
  * A device that has signed in with a code is remembered by the cookie `onnhr_device` (HttpOnly, so scripts on the page
  * cannot read it; sent only to these routes).
@@ -33,7 +34,7 @@ async function findPerson(email) {
     if (refs.size > 2000) refs.clear();
     refs.set(uid, docs[0].ref);
     return {
-        uid, email, pinHash: d.pinHash || null, pinAttempts: d.pinAttempts || 0, pinLockedUntil: d.pinLockedUntil || null,
+        uid, email, phone: d.phone || (d.usProfile && (d.usProfile.mobilePhone || d.usProfile.phone)) || '', pinHash: d.pinHash || null, pinAttempts: d.pinAttempts || 0, pinLockedUntil: d.pinLockedUntil || null,
         signinDevices: Array.isArray(d.signinDevices) ? d.signinDevices : [],
         active: !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(d.status || 'Active'))
     };
@@ -61,8 +62,24 @@ async function sendCode(email, code) {
     return true;
 }
 
+/**
+ * Texts the code through Twilio when TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM are set. Resolves false
+ * when they are not. Only ever called with a number that is already on the person's record.
+ */
+async function sendText(phone, code) {
+    const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env;
+    if (!sid || !token || !from) { logger.warn('[PinSignin] no text message provider is set up (TWILIO_*), so the sign-in code was not texted'); return false; }
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.` })
+    });
+    if (!res.ok) { logger.warn(`[PinSignin] the text message provider answered ${res.status}`); return false; }
+    return true;
+}
+
 const service = pinSignin.create({
-    findPerson, savePerson, sendCode,
+    findPerson, savePerson, sendCode, sendText,
     otp: require('../services/otp-verification-service'),
     mintToken: (uid) => admin.auth().createCustomToken(uid),
     secret: process.env.JWT_SECRET,
@@ -88,6 +105,7 @@ const deviceOf = (req) => { const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-
 const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
 
 router.post('/pin/start', limiter, run((b, req) => service.start({ email: text(b.email, 254), pin: text(b.pin, 12), deviceToken: deviceOf(req) })));
+router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/set', limiter, run((b) => service.setPin({ setupToken: text(b.setupToken, 2000), pin: text(b.pin, 12) })));
 
