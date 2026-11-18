@@ -69,6 +69,12 @@ function checkProductionEnv(env, opts = {}) {
     if (!stripeOn && has('STRIPE_SECRET_KEY')) warnings.push('STRIPE_SECRET_KEY is set but BILLING_PROVIDER is not "stripe", so billing still runs in practice mode.');
     if (!stripeOn && !has('STRIPE_SECRET_KEY')) warnings.push('Stripe is not set up (BILLING_PROVIDER=stripe, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET). Billing runs in practice mode.');
 
+    if (e.DAILY_JOBS === 'off') warnings.push('DAILY_JOBS is "off". Nothing deletes expired data or makes a backup by itself.');
+    else {
+        if (e.RETENTION_AUTO !== 'on') warnings.push('RETENTION_AUTO is not "on". The daily run only counts what has passed its retention date; it deletes nothing. Turn it on once the retention periods are confirmed.');
+        if (!has('BACKUP_DIR')) warnings.push('BACKUP_DIR is not set. The daily run makes no backup. Set it to a folder on a disk that is kept and copied off the server, or turn on Google\'s scheduled Firestore backups (docs/BACKUP.md).');
+    }
+
     return { problems, warnings, ok: problems.length === 0 };
 }
 

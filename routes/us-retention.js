@@ -13,6 +13,11 @@ router.get('/retention/jobs', ...guard, (req, res) => {
     res.json({ success: true, data: jobs.list(), note: 'Retention periods are suggestions. Confirm them with a US compliance advisor.' });
 });
 
+/** When the daily run last happened and what it did, across the whole server (counts only, no company's details). */
+router.get('/retention/schedule', ...guard, async (req, res) => {
+    res.json({ success: true, data: await require('../services/daily-jobs').status() });
+});
+
 router.post('/retention/jobs/:key/run', ...guard, async (req, res) => {
     const dryRun = req.body.dryRun !== false;
     if (!dryRun && req.body.confirm !== 'DELETE') return res.status(400).json({ success: false, error: 'This permanently deletes data. Send dryRun:false and confirm:"DELETE" to run it for real.' });

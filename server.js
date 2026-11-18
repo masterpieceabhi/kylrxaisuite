@@ -482,6 +482,7 @@ async function startServer() {
       require('./services/connectors/runtime').startScheduler();
       if (require('./routes/us-gusto').startJobs()) logger.info('[Gusto] Event poll job started');
       if (require('./routes/us-report-builder').startJobs()) logger.info('[ReportBuilder] Scheduled report copies job started');
+      if (require('./services/daily-jobs').startJobs()) logger.info('[DailyJobs] Daily retention and backup job started');
       logger.info('[Integrations] Webhook delivery worker and connector scheduler started');
     } catch (intErr) {
       logger.error(`[Integrations] Could not start background workers: ${intErr.message}`);

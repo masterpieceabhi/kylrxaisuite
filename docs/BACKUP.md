@@ -98,3 +98,14 @@ A backup that has never been restored is a hope, not a backup. At least twice a 
 | Twice a year | Practice restore into a test project |
 
 How long to keep backups, and the records in them, depends on your retention obligations. Confirm the periods with a US compliance advisor.
+
+## The daily run (added 2026-11-18)
+
+The server now does both jobs itself once a day (`services/daily-jobs.js`), at or after `DAILY_JOBS_HOUR_UTC` (default 8, about 2 to 3 am US Central):
+
+1. **Retention.** Every retention job runs for every company. With `RETENTION_AUTO=on` records past their retention date are deleted (vault documents under a legal hold are never deleted). Without it the run only counts what it would delete.
+2. **Backup.** With `BACKUP_DIR` set, `scripts/backup.js` writes a new dated folder there, and folders older than `BACKUP_KEEP_DAYS` (default 35) are removed. The newest backup is never removed, and only folders with the backup script's own name are touched.
+
+Each day is claimed in the database before it runs, so a restart does not run it twice. The result of the last run and the last 60 days are kept in `platform_jobs/daily`; an owner with `compliance.manage` reads them at `GET /api/us/retention/schedule`. `npm run check:production` says when either part is off.
+
+What this does not do: it does not copy the backup off the server, it does not back up sign-in accounts or the encryption key, and it is not a substitute for Google's managed backups on a large database. A restore from one of these folders was tried once on 2026-11-18 as a dry run against the local emulator (every file checked against its manifest); a real restore into an empty database has not been tried.
