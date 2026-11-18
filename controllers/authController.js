@@ -2,6 +2,7 @@ const { admin, db, rawCollection } = require('../config/firebase');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { getCountryConfig } = require('../country-config');
 const otpVerificationService = require('../services/otp-verification-service');
 
 // Security Configurations
@@ -98,16 +99,38 @@ exports.registerOrganization = async (req, res, next) => {
         return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
     }
 
+    // Country decides the defaults. Before this, a company that named a country but no time zone, currency or
+    // fiscal year was given India's (Asia/Kolkata, INR, April), whatever the country.
+    const countryConfig = getCountryConfig(organization.country);
+    const isIndia = countryConfig.code === 'IN';
+    const zoneSent = String(organization.timezone || '').trim();
+    if (zoneSent) {
+        try { new Intl.DateTimeFormat('en-US', { timeZone: zoneSent }); } catch (_) {
+            return res.status(400).json({ success: false, code: 'bad_timezone', error: 'The time zone is not one we know. Send a name such as America/Chicago.', timeZones: countryConfig.timeZones });
+        }
+    } else if (!isIndia) {
+        // A country with several time zones: guessing one would put every clock-in and pay period on the wrong day for some companies
+        return res.status(400).json({ success: false, code: 'timezone_required', error: 'Choose the company time zone.', timeZones: countryConfig.timeZones });
+    }
+    const orgDefaults = {
+        country: String(organization.country || '').trim() || countryConfig.name,
+        timezone: zoneSent || countryConfig.timeZones[0],
+        currency: String(organization.currency || '').trim() || countryConfig.currency,
+        financialYearStart: String(organization.financialYearStart || '').trim() || (isIndia ? '04-01' : '01-01')
+    };
+
+    // The company id comes from its name. Two companies can share a name ("Main Street Cafe"), so when the plain
+    // id is taken a short random ending is added; an existing company is never merged into or taken over.
     const orgSlug = (displayName || legalName).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-    const orgId = `org_${orgSlug}`;
-    const orgRef = db.collection('organizations').doc(orgId);
+    let orgId = `org_${orgSlug}`;
+    let orgRef = db.collection('organizations').doc(orgId);
 
     let uid;
     try {
-        // Refuse to take over an organization that another account already owns
-        const existingOrg = await orgRef.get();
-        if (existingOrg.exists) {
-            return res.status(409).json({ success: false, error: `An organization named "${displayName || legalName}" is already registered` });
+        for (let tries = 0; (await orgRef.get()).exists; tries += 1) {
+            if (tries >= 5) return res.status(409).json({ success: false, error: `An organization named "${displayName || legalName}" is already registered` });
+            orgId = `org_${orgSlug}_${require('crypto').randomBytes(3).toString('hex')}`;
+            orgRef = db.collection('organizations').doc(orgId);
         }
 
         try {
@@ -178,15 +201,15 @@ exports.registerOrganization = async (req, res, next) => {
                 Website: field(o.website),
                 Official_Email: officialEmail,
                 Official_Phone: field(o.officialPhone),
-                Country: field(o.country) || 'India',
+                Country: orgDefaults.country,
                 State: field(o.state),
                 City: field(o.city),
                 PIN_Code: field(o.pinCode),
                 Registered_Address: field(o.registeredAddress),
                 Corporate_Address: corpAddress,
-                Time_Zone: field(o.timezone) || 'Asia/Kolkata',
-                Currency: field(o.currency) || 'INR',
-                Financial_Year_Start: field(o.financialYearStart) || '04-01',
+                Time_Zone: orgDefaults.timezone,
+                Currency: orgDefaults.currency,
+                Financial_Year_Start: orgDefaults.financialYearStart,
                 PAN: field(o.pan).toUpperCase(),
                 TAN: field(o.tan).toUpperCase(),
                 CIN_or_LLPIN: field(o.cinOrLlpin).toUpperCase(),
@@ -201,15 +224,16 @@ exports.registerOrganization = async (req, res, next) => {
                 website: field(o.website),
                 officialEmail,
                 officialPhone: field(o.officialPhone),
-                country: field(o.country) || 'India',
+                country: orgDefaults.country,
+                countryCode: countryConfig.code, // IN, US or CA: the database rules and the country gate read this, whatever spelling of the name was sent
                 state: field(o.state),
                 city: field(o.city),
                 pinCode: field(o.pinCode),
                 registeredAddress: field(o.registeredAddress),
                 corporateAddress: corpAddress,
-                timezone: field(o.timezone) || 'Asia/Kolkata',
-                currency: field(o.currency) || 'INR',
-                financialYearStart: field(o.financialYearStart) || '04-01',
+                timezone: orgDefaults.timezone,
+                currency: orgDefaults.currency,
+                financialYearStart: orgDefaults.financialYearStart,
                 pan: field(o.pan).toUpperCase(),
                 tan: field(o.tan).toUpperCase(),
                 cinOrLlpin: field(o.cinOrLlpin).toUpperCase(),
@@ -241,7 +265,7 @@ exports.registerOrganization = async (req, res, next) => {
         })]).finally(() => clearTimeout(timer));
 
         logger.info(`Organization signup completed: ${orgId} by ${uid}`);
-        res.status(201).json({ success: true, uid, orgId });
+        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency });
     } catch (error) {
         // Roll back the Auth user so the person can retry with the same email
         if (uid) {

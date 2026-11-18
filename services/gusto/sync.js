@@ -22,7 +22,9 @@ async function loadPeople(ctx) {
     if (ctx.loadPeople) return ctx.loadPeople(ctx.orgId);
     const { rawCollection } = require('../../config/firebase');
     const snap = await rawCollection('users').where('orgId', '==', ctx.orgId).get();
-    return snap.docs.map((d) => mapping.personFromDoc(d.id, d.data())).filter((p) => p.classification || p.payType || p.home);
+    // the department on pay results: a person placed through the org page carries a department id, shown by its name
+    const names = new Map((await rawCollection('departments').where('orgId', '==', ctx.orgId).get()).docs.map((d) => [d.id, d.data().name || null]));
+    return snap.docs.map((d) => { const p = mapping.personFromDoc(d.id, d.data()); const id = (d.data().usProfile || {}).departmentId; return id && names.get(id) ? { ...p, department: names.get(id) } : p; }).filter((p) => p.classification || p.payType || p.home);
 }
 async function loadLeave(ctx) {
     if (ctx.loadLeave) return ctx.loadLeave(ctx.orgId);

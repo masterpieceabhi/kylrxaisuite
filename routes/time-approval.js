@@ -8,6 +8,7 @@ const rules = require('../services/time-rules');
 const policy = require('../services/time-policy');
 const { parseIsoDate, isoDate } = require('../services/us-forms');
 const perms = require('../services/permissions');
+const notices = require('../services/notices');
 const teamScope = require('../services/team-scope');
 // Who may do what here (services/permissions.js decides which roles hold each permission):
 //   decide hours and punch fixes       time.approve (everyone) or time.approve_team (a manager's direct reports only)
@@ -273,6 +274,8 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
         ? { person_id: userId, week_start: weekStart, worked_hours: (patch.totals && patch.totals.workedHours) ?? null, overtime_hours: (patch.totals && patch.totals.overtimeHours) ?? null }
         : { person_id: userId, week_start: weekStart });
     hoursToPayrollProvider(req.orgId, weekStart, req.user.id);
+    notices.notify(req.orgId, userId, decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', decision === 'approve' ? 'Hours approved' : 'Hours sent back',
+        decision === 'approve' ? `Your hours for the week of ${weekStart} were approved.` : `Your hours for the week of ${weekStart} were sent back: ${note}. Fix them and send the week again.`, { weekStart });
     res.json({ success: true, status: patch.status });
 });
 
@@ -289,6 +292,7 @@ router.post('/weeks/:userId/:weekStart/reopen', perms.requirePermission('time.ap
     await ref.update({ status: 'open', reopenedAt: new Date().toISOString(), reopenedBy: req.user.id, reopenReason: reason.slice(0, 300), reopenedFrom: was });
     audit(req.orgId, req, 'timesheet_reopened', userId, { weekStart, reason: reason.slice(0, 200), was });
     if (was === 'approved') hoursToPayrollProvider(req.orgId, weekStart, req.user.id);
+    if (userId !== req.user.id) notices.notify(req.orgId, userId, 'timesheet_reopened', 'Your week was reopened', `Your hours for the week of ${weekStart} were reopened: ${reason.slice(0, 200)}. Check them and send the week again.`, { weekStart });
     res.json({ success: true, status: 'open', was });
 });
 
@@ -400,6 +404,8 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
     }
     await ref.update(patch);
     audit(req.orgId, req, decision === 'approve' ? 'punch_correction_approved' : 'punch_correction_denied', c.userId, { kind: c.kind, localDate: c.localDate, correctionId: req.params.id });
+    notices.notify(req.orgId, c.userId, decision === 'approve' ? 'correction_approved' : 'correction_denied', decision === 'approve' ? 'Punch fix approved' : 'Punch fix not approved',
+        `Your fix for ${c.localDate} was ${decision === 'approve' ? 'approved' : 'not approved'}.${patch.decisionNote ? ` Note: ${patch.decisionNote}` : ''}`, { correctionId: req.params.id, date: c.localDate });
     res.json({ success: true, status: patch.status });
 });
 

@@ -184,6 +184,15 @@ function validateCompanyProfile(input) {
     }
     if (body.stateTaxId) value.stateTaxId = String(body.stateTaxId).trim();
 
+    // Optional: the company's time zone (an IANA name such as America/Chicago). It decides which day a clock-in
+    // belongs to wherever a work location has no zone of its own. It cannot be cleared, only changed.
+    if (body.timezone !== undefined) {
+        const zone = String(body.timezone || '').trim();
+        let known = Boolean(zone) && zone.length <= 64;
+        if (known) { try { new Intl.DateTimeFormat('en-US', { timeZone: zone }); } catch (_) { known = false; } }
+        if (!known) errors.push('timezone must be a time zone name such as America/Chicago'); else value.timezone = zone;
+    }
+
     // Optional: industry code (NAICS, 2 to 6 digits). Sending an empty value clears it.
     if (body.industryCode !== undefined) {
         const code = validateNaics(body.industryCode);

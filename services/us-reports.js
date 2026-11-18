@@ -17,7 +17,7 @@ function daysBetween(a, b) { return Math.round((parseIsoDate(b) - parseIsoDate(a
 function monthEnd(iso) { const d = parseIsoDate(iso); return isoDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0))); }
 
 /** A flat, safe view of one person record: employment periods (a rehire has more than one) and key facts */
-function normalizePerson(id, d) {
+function normalizePerson(id, d, departmentNames) {
     const p = d.usProfile || {};
     const start = String(p.startDate || d.joiningDate || '').slice(0, 10);
     const periods = [];
@@ -29,7 +29,7 @@ function normalizePerson(id, d) {
         periods.push({ start, end: t && t.lastDay ? t.lastDay : null, type: t ? t.type : null, rehireEligible: t ? t.rehireEligible : undefined });
     }
     return {
-        id, employeeId: d.employeeId || null, name: d.name || null, department: d.departmentName || d.department || 'Unassigned',
+        id, employeeId: d.employeeId || null, name: d.name || null, department: (departmentNames && p.departmentId && departmentNames.get(p.departmentId)) || d.departmentName || d.department || 'Unassigned',
         jobTitle: d.jobTitle || null, status: d.status || 'Active', startDate: parseIsoDate(start) ? start : null, periods,
         classification: p.classification || null, employmentType: p.employmentType || null, workState: p.workState || null,
         flsaStatus: p.flsaStatus || null, payType: p.payType || null, payRate: Number(p.payRate) || null,

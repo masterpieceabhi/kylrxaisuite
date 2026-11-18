@@ -77,18 +77,9 @@ app.use(['/__/auth', '/__/firebase'], async (req, res) => {
 });
 
 // 1. CORS Configuration MUST be first to handle OPTIONS preflight
-const isAllowedOrigin = (origin) => {
-    if (!origin) return true;
-    const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    if (isLocal) {
-        return process.env.NODE_ENV !== 'production';
-    }
-    const isProductionAllowed =
-        /kylrxai\.(firebaseapp|web)\.app$/.test(origin) ||
-        /kylrxai\.firebaseapp\.com$/.test(origin) ||
-        /app\.kylrxai\.com$/.test(origin);
-    return isProductionAllowed;
-};
+// The product's own addresses, localhost outside production, and any exact origin named in ALLOWED_ORIGINS
+// (a client app served from its own address). See middleware/allowed-origins.js.
+const { isAllowedOrigin } = require('./middleware/allowed-origins');
 
 app.use(cors({
     origin: function(origin, callback) {
@@ -403,6 +394,16 @@ const dynamicRoutesLoaded = registerDynamicRoutes(app);
 
 async function startServer() {
   await dynamicRoutesLoaded;
+
+  // On a production server, say at every start which settings are wrong, by name only (never a value). The same
+  // check as `npm run check:production`; it only reports, so a server that ran before keeps running.
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const { problems } = require('./services/production-check').checkProductionEnv(process.env, { appDir: __dirname });
+      for (const p of problems) logger.error(`[Settings] Must fix: ${p}`);
+      if (problems.length) logger.error(`[Settings] ${problems.length} production setting(s) must be fixed. Run "npm run check:production" for the full list.`);
+    } catch (e) { logger.warn(`[Settings] The production settings check could not run: ${e.message}`); }
+  }
 
   try {
     const eventBus = require('./services/event-bus');

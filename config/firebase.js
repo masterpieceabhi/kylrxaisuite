@@ -2,6 +2,8 @@ const admin = require("firebase-admin");
 require('dotenv').config();
 
 let serviceAccount;
+// Set when a key was named in the settings but could not be read. The server must then stop, never carry on without one.
+let keyProblem = null;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Load from Host Environment Variable (Raw JSON or base64 encoded)
@@ -14,7 +16,8 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       serviceAccount = JSON.parse(decoded);
     }
   } catch (error) {
-    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", error);
+    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", error.message);
+    keyProblem = "FIREBASE_SERVICE_ACCOUNT is set but is not a readable key (JSON or base64 JSON)";
   }
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
   // Load from a key file path (relative paths resolve from the project root)
@@ -23,6 +26,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = require(keyPath);
   } catch (error) {
     console.error("Failed to load FIREBASE_SERVICE_ACCOUNT_PATH key file:", error.message);
+    keyProblem = "FIREBASE_SERVICE_ACCOUNT_PATH is set but the key file could not be loaded";
   }
 } else {
   // Check optional local file fallback if explicitly present
@@ -56,6 +60,12 @@ if (serviceAccount || useEmulator) {
   rawCollection = require('./tenant').installTenantScoping(db);
   messaging = admin.messaging();
 } else {
+  // What follows is a pretend database held in memory, with a pretend sign-in check that accepts ANY token as a
+  // super admin. It exists for local work and unit tests. It must never serve real requests, so the server refuses
+  // to start with it when a key was configured but is broken (a typo in the setting must not open the door), and
+  // whenever this is a production server.
+  if (keyProblem) throw new Error(`Firebase is not configured: ${keyProblem}. Fix the key; the server will not start without it.`);
+  if (process.env.NODE_ENV === 'production') throw new Error('Firebase is not configured: set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH. A production server will not start without a database.');
   console.log("Firebase Backend: Active in local connected development mode (kylrxai).");
   
   const _firestoreStore = new Map();

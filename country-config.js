@@ -74,7 +74,7 @@
 
     const ALIASES = {
         in: 'IN', india: 'IN', ind: 'IN',
-        us: 'US', usa: 'US', 'united states': 'US', 'united states of america': 'US', america: 'US',
+        us: 'US', usa: 'US', 'united states': 'US', 'united states of america': 'US', america: 'US', 'u.s.': 'US', 'u.s.a.': 'US',
         ca: 'CA', can: 'CA', canada: 'CA'
     };
 

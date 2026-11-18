@@ -5,6 +5,8 @@ const logger = require('../utils/logger');
 const { requireUsOrg, audit } = require('./us-hr').helpers;
 const { requirePermission, canonicalRole, permissionsFor, ROLE_LABELS, PERMISSIONS } = require('../services/permissions');
 const store = require('../services/people-data-store');
+const timeRules = require('../services/time-rules');
+const NOTICES = require('../services/notices').COLLECTION;
 
 
 const ROLES = Object.keys(ROLE_LABELS);
@@ -24,6 +26,69 @@ router.get('/me/permissions', (req, res) => {
     const role = canonicalRole(req.user.role);
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, userId: req.user.id, orgId: req.user.orgId || null, role, roleLabel: ROLE_LABELS[role], permissions: permissionsFor(role) });
+});
+
+/**
+ * Who am I: everything a client app needs right after sign-in to choose its first screen and build its menu, in one
+ * call. Works for every country (no US-company guard), and is one of the few calls a person with a temporary
+ * password may still make, so the app can send them to the change-password screen.
+ */
+router.get('/me', async (req, res) => {
+    const u = req.user || {};
+    const role = canonicalRole(u.role);
+    const orgId = u.orgId || null;
+    let company = null;
+    if (orgId) {
+        const snap = await rawCollection('organizations').doc(orgId).get();
+        const d = (typeof snap.exists === 'function' ? snap.exists() : snap.exists) ? snap.data() || {} : null;
+        if (d) {
+            const cc = require('../country-config').getCountryConfig(d.country || d.Country);
+            const info = await require('./time').helpers.orgInfo(orgId);
+            company = {
+                orgId, name: d.displayName || d.Display_Name || d.legalName || d.Legal_Name || null, country: cc.code, countryName: cc.name,
+                timeZone: info.tz, currency: d.currency || d.Currency || cc.currency, locale: cc.locale, dateFormat: cc.dateFormat,
+                weekStartsOn: timeRules.weekdayOf(timeRules.weekRange(timeRules.localDate(new Date().toISOString(), info.tz), info.workweek).start), // 0 = Sunday ... 6 = Saturday, for the week that holds today
+                profileComplete: cc.code === 'US' ? Boolean(d.usProfile && d.usProfile.ein) : null
+            };
+        }
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        user: {
+            id: u.id || u.uid || null, employeeId: u.employeeId || null, name: u.name || u.displayName || null, email: u.email || null,
+            role, roleLabel: ROLE_LABELS[role], mustChangePassword: u.must_change_password === true
+        },
+        permissions: permissionsFor(role),
+        company
+    });
+});
+
+/* ------------------------------ my notices ------------------------------ */
+// One list for everything a person is told: schedule changes, decisions on their time off, hours and punch fixes,
+// documents to sign. Newest first, 50 at a time; `before` (the createdAt of the last one shown) gives the next 50.
+const noticeRows = async (req) => (await rawCollection(NOTICES).where('userId', '==', req.user.id).get()).docs
+    .map((d) => ({ id: d.id, ref: d.ref, ...d.data() })).filter((n) => n.orgId === req.orgId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+const publicNotice = ({ ref, orgId, userId, ...n }) => n; // eslint-disable-line no-unused-vars
+
+router.get('/me/notices', requireUsOrg, async (req, res) => {
+    const all = await noticeRows(req);
+    const before = req.query.before ? String(req.query.before) : null;
+    const page = (before ? all.filter((n) => String(n.createdAt) < before) : all).slice(0, 50);
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, unread: all.filter((n) => !n.read).length, data: page.map(publicNotice), more: (before ? all.filter((n) => String(n.createdAt) < before) : all).length > page.length });
+});
+router.post('/me/notices/read-all', requireUsOrg, async (req, res) => {
+    const unread = (await noticeRows(req)).filter((n) => !n.read).slice(0, 400);
+    await Promise.all(unread.map((n) => n.ref.update({ read: true, readAt: new Date().toISOString() })));
+    res.json({ success: true, marked: unread.length });
+});
+router.post('/me/notices/:id/read', requireUsOrg, async (req, res) => {
+    const n = (await noticeRows(req)).find((x) => x.id === String(req.params.id));
+    if (!n) return res.status(404).json({ success: false, error: 'Notice not found' });
+    if (!n.read) await n.ref.update({ read: true, readAt: new Date().toISOString() });
+    res.json({ success: true });
 });
 
 /** The role catalog with what each role can do (owner only) */

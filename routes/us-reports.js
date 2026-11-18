@@ -22,7 +22,9 @@ const validDate = (v) => (parseIsoDate(v) ? v : null);
 async function loadPeople(orgId) {
     const snaps = await Promise.all(PEOPLE_COLLECTIONS.map((n) => db.collection(n).get()));
     const docs = snaps.flatMap((s) => s.docs).filter((d) => d.data().orgId === orgId && d.data().employeeId);
-    return { docs, people: docs.map((d) => R.normalizePerson(d.id, d.data())) };
+    // a person placed through the org page carries a department id; the reports show its name
+    const departmentNames = new Map((await require('../services/people-data-store').listByOrg('departments', orgId)).map((x) => [x.id, x.name || null]));
+    return { docs, people: docs.map((d) => R.normalizePerson(d.id, d.data(), departmentNames)) };
 }
 
 async function context(req) {

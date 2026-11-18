@@ -263,14 +263,28 @@ async function kioskFromRequest(req) {
     return k.active === false ? null : { id: q.docs[0].id, orgId: k.orgId, name: k.name };
 }
 
+/** How this company writes employee numbers (the same counter document that hands them out). EMP and 4 digits unless the company changed it. */
+async function employeeNumberFormat(orgId) {
+    const usual = { prefix: 'EMP', padLength: 4 };
+    try {
+        const snap = await rawCollection('organizations').doc(orgId).collection('counters').doc('employees').get();
+        const d = exists(snap) ? snap.data() || {} : {};
+        const pad = Number(d.padLength);
+        return { prefix: typeof d.prefix === 'string' && d.prefix ? d.prefix : usual.prefix, padLength: Number.isInteger(pad) && pad >= 1 && pad <= 10 ? pad : usual.padLength };
+    } catch (_) { return usual; }
+}
+
 router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     const kiosk = await kioskFromRequest(req);
     if (!kiosk) return res.status(401).json({ success: false, code: 'kiosk_not_authorized', error: 'This device is not set up' });
-    const employeeId = rules.employeeIdFromKeypad(req.body && req.body.employeeNumber);
+    // Employee numbers start again at 0001 in every company and a company can have its own prefix and length,
+    // so the number is built the way this company builds it and looked up inside this company only.
+    const fmt = await employeeNumberFormat(kiosk.orgId);
+    const employeeId = rules.employeeIdFromKeypad(req.body && req.body.employeeNumber, fmt.prefix, fmt.padLength);
     const pin = String((req.body && req.body.pin) || '');
     if (!employeeId || !rules.validPin(pin)) return res.status(400).json({ success: false, code: 'bad_input', error: 'Check your number and PIN' });
 
-    const q = await rawCollection('users').where('employeeId', '==', employeeId).limit(5).get();
+    const q = await rawCollection('users').where('orgId', '==', kiosk.orgId).where('employeeId', '==', employeeId).limit(2).get();
     const doc = q.docs.find((d) => d.data().orgId === kiosk.orgId);
     const generic = () => res.status(401).json({ success: false, code: 'wrong_pin', error: 'Number or PIN is not right' });
     if (!doc) { await bcrypt.compare(pin, '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvali'); return generic(); }

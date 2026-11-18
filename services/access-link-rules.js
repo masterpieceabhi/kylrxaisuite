@@ -114,7 +114,7 @@ function validateJoinRequest(input) {
  * Requests that a person with must_change_password may still make. Everything else answers 403 until they choose a
  * new password. Kept here (pure) so the rule can be tested without a server.
  */
-const PASSWORD_CHANGE_PATHS = ['/api/auth/change-password', '/api/auth/password-status'];
+const PASSWORD_CHANGE_PATHS = ['/api/auth/change-password', '/api/auth/password-status', '/api/us/me']; // "who am I" tells a client app that the password must be changed
 function pathAllowedBeforePasswordChange(originalUrl) {
     const p = String(originalUrl || '').split('?')[0].replace(/\/+$/, '').toLowerCase();
     return PASSWORD_CHANGE_PATHS.includes(p);

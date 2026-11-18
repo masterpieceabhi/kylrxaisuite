@@ -139,6 +139,7 @@ router.post('/esign/requests', manage, requireUsOrg, async (req, res) => {
     await ref.set(doc);
     if (signer.type === 'candidate') await rawCollection('candidate_events').add({ orgId: req.orgId, candidateId: signer.id, type: 'document_sent', at: now, by: req.user.id, data: { templateName: tpl.name, signRequestId: ref.id } });
     audit(req.orgId, req, 'esign_request_created', ref.id, { templateType: tpl.type, signerType: signer.type });
+    if (signer.type === 'employee') require('../services/notices').notify(req.orgId, signer.id, 'document_to_sign', 'A document is waiting for your signature', `${tpl.name || 'A document'} is waiting for you to read and sign.`, { esignRequestId: ref.id });
     res.status(201).json({ success: true, request: S.publicRequest(ref.id, doc, now), signUrl: S.signUrl(req, token), linkShownOnce: true });
 });
 

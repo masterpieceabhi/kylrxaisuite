@@ -8,6 +8,7 @@ const timeRules = require('../services/time-rules');
 const L = require('../services/leave-rules');
 const { parseIsoDate, isoDate } = require('../services/us-forms');
 const perms = require('../services/permissions');
+const notices = require('../services/notices');
 const teamScope = require('../services/team-scope');
 const LEAVE_DECIDER = perms.requireAnyPermission('leave.decide', 'leave.decide_team');
 const LEAVE_VIEWER = perms.requireAnyPermission('leave.decide', 'leave.decide_team', 'leave.view_all');
@@ -219,6 +220,8 @@ router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (r
     await ref.update(patch);
     audit(req.orgId, req, decision === 'approve' ? 'leave_approved' : 'leave_denied', r.id, { userId: r.userId, hours: r.hours });
     require('../services/events').emit(req.orgId, decision === 'approve' ? 'leave.approved' : 'leave.denied', decision === 'approve' ? { request_id: r.id, person_id: r.userId, leave_type: r.type, start_date: r.startDate, end_date: r.endDate, hours: r.hours } : { request_id: r.id, person_id: r.userId });
+    notices.notify(req.orgId, r.userId, decision === 'approve' ? 'leave_approved' : 'leave_denied', decision === 'approve' ? 'Time off approved' : 'Time off not approved',
+        `Your time off from ${r.startDate} to ${r.endDate} was ${decision === 'approve' ? 'approved' : 'not approved'}.${patch.decisionNote ? ` Note: ${patch.decisionNote}` : ''}`, { requestId: r.id });
     res.json({ success: true, request: { ...r, ...patch } });
 });
 
