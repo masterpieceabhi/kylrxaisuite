@@ -108,8 +108,13 @@ async function load() {
 }
 
 // Payouts are a separate part of the page: if they cannot be loaded (for example no permission), the rest still works
+let mayReadPayouts = null; // asked once: payouts are read by the roles that see payroll, not by a team manager
 async function loadPayouts() {
   let list; let set;
+  if (mayReadPayouts === null) {
+    try { mayReadPayouts = ((await api('GET', '/me/permissions', undefined, '/api/us')).permissions || []).includes('payroll.view'); } catch (_) { mayReadPayouts = true; }
+  }
+  if (!mayReadPayouts) { $('payoutCard').hidden = true; return; }
   try { [list, set] = await Promise.all([api('GET', '/payouts'), api('GET', '/payout-settings')]); } catch (_) { $('payoutCard').hidden = true; return; }
   $('payoutCard').hidden = false;
   poSettings = set.settings; $('poDivisor').value = poSettings.salaryHoursPerYear; $('poNote').textContent = set.note;

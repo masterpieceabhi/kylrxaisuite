@@ -155,7 +155,7 @@ router.put('/roles/users/:id', requirePermission('security.manage'), requireUsOr
         return res.status(502).json({ success: false, error: 'Could not update the sign-in account. Nothing was changed.' });
     }
     try {
-        await rawCollection('users').doc(target.id).set({ role: newRole, roleUpdatedAt: new Date().toISOString(), roleUpdatedBy: req.user.id || null }, { merge: true });
+        await rawCollection('users').doc(target.id).set({ role: newRole, roleUpdatedAt: new Date().toISOString(), roleUpdatedBy: req.user.id || null, ...require('../services/session-cutoff').stamp() }, { merge: true });
     } catch (e) {
         if (claimsDone) await admin.auth().setCustomUserClaims(target.id, previousClaims).catch(() => {});
         logger.error(`Role profile update failed for ${target.id}: ${e.message}`);

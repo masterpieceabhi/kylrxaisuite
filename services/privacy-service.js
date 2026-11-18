@@ -42,8 +42,19 @@ async function gather(orgId, userId) {
         rawCollection('organizations').doc(orgId).collection('audit_logs').where('targetId', '==', userId).limit(500).get()
     ]);
     const eeo = exists(eeoSnap) && eeoSnap.data().orgId === orgId ? eeoSnap.data().record : null;
+    // Records added after this file was first written. Each one is read on its own, so a module that is not in use
+    // (or a read that fails) leaves that list empty instead of stopping the request.
+    const soft = (p) => p.catch((e) => { logger.warn(`Privacy: some records could not be read: ${e.message}`); return []; });
+    const [weeks, shifts, corrections, adjustments, payResults, compHistory, notices, gustoSheets, gustoLinks, qrLinks] = await Promise.all([
+        soft(byUser('timesheet_weeks', orgId, userId)), soft(byUser('schedule_shifts', orgId, userId)), soft(byUser('punch_corrections', orgId, userId)),
+        soft(byUser('leave_adjustments', orgId, userId)), soft(byUser('pay_results', orgId, userId)), soft(byUser('comp_history', orgId, userId)),
+        soft(byUser('schedule_notices', orgId, userId)), soft(byUser('gusto_time_sheets', orgId, userId)),
+        soft(rawCollection('gusto_links').where('ourId', '==', userId).get().then((q) => q.docs.filter((d) => d.data().orgId === orgId).map((d) => ({ id: d.id, ...d.data() })))),
+        soft(rawCollection('signin_qr_links').where('uid', '==', userId).get().then((q) => q.docs.filter((d) => d.data().orgId === orgId).map((d) => ({ id: d.id, ...d.data() }))))
+    ]);
+    const more = { weeks, shifts, corrections, adjustments, payResults, compHistory, notices, gustoSheets, gustoLinks, qrLinks };
     const audit = auditSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.at).localeCompare(String(a.at)));
-    return { user, punches, leave, docs, consents, osha, requests, photos, eeo, audit };
+    return { user, punches, leave, docs, consents, osha, requests, photos, eeo, audit, more };
 }
 
 function terminationDate(user) {
@@ -55,6 +66,8 @@ function terminationDate(user) {
 function planningFacts(g) {
     const f = g.user.usForms || {};
     const dd = (iso) => String(iso || '').slice(0, 10) || nowIso().slice(0, 10);
+    const m = { weeks: [], shifts: [], corrections: [], adjustments: [], payResults: [], compHistory: [], gustoSheets: [], ...(g.more || {}) };
+    const inCol = (col, list, dateOf) => list.map((x) => ({ id: `${col}/${x.id}`, date: dd(dateOf(x)) }));
     return {
         terminationDate: terminationDate(g.user),
         hireDate: (g.user.usProfile && g.user.usProfile.startDate) || g.user.startDate || g.user.joiningDate || null,
@@ -62,10 +75,15 @@ function planningFacts(g) {
         counts: {
             optionalProfileFields: OPTIONAL_PROFILE.filter((k) => (g.user.usProfile && g.user.usProfile[k]) || g.user[k]).length,
             consents: g.consents.length, punchPhotos: g.photos.length, eeo: g.eeo ? 1 : 0,
-            payrollForms: [f.w4, f.directDeposit].filter(Boolean).length, i9: f.i9 ? 1 : 0
+            payrollForms: [f.w4, f.directDeposit].filter(Boolean).length + m.payResults.length + m.compHistory.length, i9: f.i9 ? 1 : 0
         },
-        punches: g.punches.map((p) => ({ id: p.id, date: dd(p.localDate || p.at) })),
-        leave: g.leave.map((l) => ({ id: l.id, date: dd(l.endDate || l.startDate || l.createdAt) })),
+        // time records: punches, the approved weeks made from them, punch fixes, shifts, and the copies sent to Gusto
+        punches: [
+            ...g.punches.map((p) => ({ id: p.id, date: dd(p.localDate || p.at) })),
+            ...inCol('timesheet_weeks', m.weeks, (w) => w.weekEnd || w.weekStart), ...inCol('punch_corrections', m.corrections, (c) => c.localDate || c.createdAt),
+            ...inCol('schedule_shifts', m.shifts, (x) => x.date || x.weekStart), ...inCol('gusto_time_sheets', m.gustoSheets, (x) => x.date)
+        ],
+        leave: [...g.leave.map((l) => ({ id: l.id, date: dd(l.endDate || l.startDate || l.createdAt) })), ...inCol('leave_adjustments', m.adjustments, (a) => a.date || a.createdAt)],
         osha: g.osha.map((o) => ({ id: o.id, date: dd(o.dateOfIncident || o.reportedAt) })),
         vault: g.docs.map((d) => ({ id: d.id, retainUntil: d.retainUntil || null, legalHold: Boolean(d.legalHold), deletedAlready: Boolean(d.deleted) })),
         audit: g.audit.map((a) => ({ date: dd(a.at) })),
@@ -113,6 +131,19 @@ async function deleteDocs(collection, ids) {
     }
 }
 
+/** Deletes ids that may be written "collection/id"; a plain id belongs to `fallback` */
+async function deleteMixed(fallback, ids) {
+    const by = new Map();
+    for (const raw of ids || []) {
+        const at = String(raw).indexOf('/');
+        const col = at > 0 ? String(raw).slice(0, at) : fallback;
+        const id = at > 0 ? String(raw).slice(at + 1) : String(raw);
+        if (!by.has(col)) by.set(col, []);
+        by.get(col).push(id);
+    }
+    for (const [col, list] of by) await deleteDocs(col, list);
+}
+
 /** Executes the plan. Returns the per-category result table. Irreversible. */
 async function executeDeletion(orgId, userId, settings, todayIso = nowIso().slice(0, 10)) {
     const g = await gather(orgId, userId);
@@ -143,10 +174,16 @@ async function executeDeletion(orgId, userId, settings, todayIso = nowIso().slic
                     break;
                 }
                 case 'eeo_selfid': await rawCollection('eeo_selfid').doc(`${orgId}_${userId}`).delete(); break;
-                case 'time_punches': await deleteDocs('time_punches', row.deleteIds || []); break;
-                case 'leave_requests': await deleteDocs('leave_requests', row.deleteIds || []); break;
+                case 'time_punches': await deleteMixed('time_punches', row.deleteIds || []); break;
+                case 'leave_requests': await deleteMixed('leave_requests', row.deleteIds || []); break;
                 case 'osha_incidents': await deleteDocs('osha_incidents', row.deleteIds || []); break;
-                case 'payroll_forms': await userRef.update({ 'usForms.w4': FV.delete(), 'usForms.directDeposit': FV.delete() }); break;
+                case 'payroll_forms': {
+                    await userRef.update({ 'usForms.w4': FV.delete(), 'usForms.directDeposit': FV.delete() });
+                    // what was paid and the pay history go with the pay forms: the same retention period, counted from the last day
+                    await deleteDocs('pay_results', ((g.more || {}).payResults || []).map((x) => x.id));
+                    await deleteDocs('comp_history', ((g.more || {}).compHistory || []).map((x) => x.id));
+                    break;
+                }
                 case 'i9': await userRef.update({ 'usForms.i9': FV.delete() }); break;
                 case 'vault_documents': {
                     for (const id of row.deleteIds || []) {
@@ -162,6 +199,12 @@ async function executeDeletion(orgId, userId, settings, todayIso = nowIso().slic
                         name: 'Deleted person', email: FV.delete(), usProfile: FV.delete(), usForms: FV.delete(), phone: FV.delete(), personalEmail: FV.delete(),
                         anonymizedAt: nowIso(), status: 'Terminated'
                     });
+                    // nothing to keep these for once the person's record is gone: their notices, unused sign-in QRs,
+                    // and the tie to their employee record in the company's Gusto account
+                    await deleteDocs('schedule_notices', ((g.more || {}).notices || []).map((x) => x.id));
+                    await deleteDocs('signin_qr_links', ((g.more || {}).qrLinks || []).map((x) => x.id));
+                    await deleteDocs('gusto_links', ((g.more || {}).gustoLinks || []).map((x) => x.id));
+                    await userRef.update({ pinHash: FV.delete(), signinDevices: FV.delete(), password: FV.delete() });
                     try { await admin.auth().deleteUser(userId); } catch (e) { if (e.code !== 'auth/user-not-found') logger.warn(`Auth user removal failed for ${userId}: ${e.message}`); }
                     break;
                 }

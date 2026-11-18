@@ -152,7 +152,10 @@ router.get('/employees', PEOPLE_LIST, requireUsOrg, async (req, res) => {
             return {
                 id: row.id, employeeId: row.employeeId, name: row.name, email: row.email,
                 classification: row.classification || null, workState: row.workState || null,
-                taxpayerIdMasked: seesId ? row.taxpayerIdMasked : null, profileComplete: row.profileComplete
+                taxpayerIdMasked: seesId ? row.taxpayerIdMasked : null, profileComplete: row.profileComplete,
+                // 'active', 'leaving' (a last day is set and has not come yet) or 'former' (they have left)
+                employment: /^(terminated|inactive|offboarded)$/i.test(String(d.data().status || '')) ? 'former' : (d.data().terminationStatus === 'scheduled' ? 'leaving' : 'active'),
+                lastDay: (d.data().usProfile && d.data().usProfile.termination && d.data().usProfile.termination.lastDay) || null
             };
         });
     res.json({ success: true, count: rows.length, data: rows });
@@ -184,10 +187,24 @@ router.put('/employees/:id/profile', PEOPLE_WRITE, requireUsOrg, async (req, res
     } else if (!encrypted) {
         errors.push('taxpayerId (SSN or ITIN) is required');
     }
+    // Optional: the person's department and work location, so a new hire can be placed in the same save. Each must be
+    // one of this company's own. Not sent: whatever is stored stays (the org page's assignment route still works too).
+    const place = {};
+    const lists = require('../services/people-data-store');
+    const dep = req.body.departmentId;
+    const loc = req.body.workLocationId !== undefined ? req.body.workLocationId : req.body.locationId;
+    if (dep !== undefined && dep !== null && dep !== '') {
+        if (!(await lists.listByOrg('departments', req.orgId)).some((d) => d.id === String(dep))) errors.push('departmentId is not a department of this company'); else place.departmentId = String(dep);
+    }
+    if (loc !== undefined && loc !== null && loc !== '') {
+        const l = (await lists.listByOrg('locations', req.orgId)).find((x) => x.id === String(loc));
+        if (!l) errors.push('workLocationId is not a location of this company'); else if (l.active === false) errors.push('That location is inactive'); else place.workLocationId = l.id;
+    }
     if (errors.length) return res.status(400).json({ success: false, errors });
 
     const usProfile = {
         ...value,
+        ...place,
         taxpayerIdEncrypted: encrypted,
         taxpayerIdLast4: last4,
         updatedAt: new Date().toISOString(),

@@ -23,6 +23,15 @@ const col = (n) => rawCollection(n);
 const rows = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 const mineOrg = (orgId) => (r) => r.orgId === orgId;
 
+// Who may change things that belong to nobody in particular (a shift with no person on it, a shift template).
+// Someone with the company-wide permission may change all of them. A team manager may change the ones they made,
+// and open shifts of their own department. Everyone who schedules can still SEE every open shift, to fill it.
+const companyWide = (req) => can(req.user, 'time.approve');
+const myDepartment = (req) => (req.user.usProfile && req.user.usProfile.departmentId) || null;
+const ownsOpenShift = (req, s) => companyWide(req) || s.createdBy === req.user.id || Boolean(s.departmentId && s.departmentId === myDepartment(req));
+const ownsTemplate = (req, t) => companyWide(req) || t.createdBy === req.user.id;
+const NOT_YOURS = 'This belongs to another team. Ask HR or the owner to change it.';
+
 async function settingsOf(orgId) {
     const s = await col('schedule_settings').doc(orgId).get();
     return { ...S.DEFAULT_SETTINGS, ...(exists(s) ? s.data() : {}) };
@@ -94,6 +103,7 @@ router.post(`${B}/templates`, SCHED, requireUsOrg, async (req, res) => {
 router.put(`${B}/templates/:id`, SCHED, requireUsOrg, async (req, res) => {
     const t = await getDoc('shift_templates', req.orgId, req.params.id);
     if (!t) return res.status(404).json({ success: false, error: 'Template not found' });
+    if (!ownsTemplate(req, t)) return res.status(403).json({ success: false, error: NOT_YOURS });
     const { errors, value } = S.validateTemplate({ ...t, ...req.body });
     if (errors.length) return res.status(400).json({ success: false, errors });
     await t.ref.update({ ...value, updatedAt: nowIso() });
@@ -102,6 +112,7 @@ router.put(`${B}/templates/:id`, SCHED, requireUsOrg, async (req, res) => {
 router.delete(`${B}/templates/:id`, SCHED, requireUsOrg, async (req, res) => {
     const t = await getDoc('shift_templates', req.orgId, req.params.id);
     if (!t) return res.status(404).json({ success: false, error: 'Template not found' });
+    if (!ownsTemplate(req, t)) return res.status(403).json({ success: false, error: NOT_YOURS });
     await t.ref.update({ active: false });
     res.json({ success: true });
 });
@@ -177,6 +188,7 @@ router.put(`${B}/shifts/:id`, SCHED, requireUsOrg, async (req, res) => {
     const cur = await getDoc('schedule_shifts', req.orgId, req.params.id);
     if (!cur || cur.status === 'cancelled') return res.status(404).json({ success: false, error: 'Shift not found' });
     if (cur.userId && !mayManage(req, await person(req.orgId, cur.userId))) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!cur.userId && !ownsOpenShift(req, cur) && !(req.body && req.body.userId)) return res.status(403).json({ success: false, error: NOT_YOURS });
     const info = await orgInfo(req.orgId);
     const built = await buildShift(req, req.body || {}, info.tz, cur, info.workweek);
     if (built.code) return res.status(built.code).json(built.errors ? { success: false, errors: built.errors } : { success: false, error: built.error });
@@ -204,6 +216,7 @@ router.delete(`${B}/shifts/:id`, SCHED, requireUsOrg, async (req, res) => {
     const cur = await getDoc('schedule_shifts', req.orgId, req.params.id);
     if (!cur || cur.status === 'cancelled') return res.status(404).json({ success: false, error: 'Shift not found' });
     if (cur.userId && !mayManage(req, await person(req.orgId, cur.userId))) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!cur.userId && !ownsOpenShift(req, cur)) return res.status(403).json({ success: false, error: NOT_YOURS });
     if (cur.status !== 'published') { await cur.ref.delete(); return res.json({ success: true, deleted: true }); }
     const pr = await premiumFor(req.orgId, cur, 'cancelled');
     await cur.ref.update({ status: 'cancelled', cancelledAt: nowIso(), cancelledBy: req.user.id, ...(pr ? { premiumOwed: [...(cur.premiumOwed || []), pr] } : {}) });
@@ -279,7 +292,7 @@ router.post(`${B}/publish`, SCHED, requireUsOrg, async (req, res) => {
     const info = await orgInfo(req.orgId);
     if (!isWeekStart(weekStart, info)) return res.status(400).json({ success: false, error: `weekStart must be a ${startDayName(weekStart, info)} (YYYY-MM-DD)` });
     const { list } = await scopedShifts(req, weekStart, req.body, info);
-    const drafts = list.filter((s) => s.status === 'draft');
+    const drafts = list.filter((s) => s.status === 'draft' && (s.userId || ownsOpenShift(req, s)));
     const at = nowIso(); const byUser = new Map();
     for (const s of drafts) {
         await col('schedule_shifts').doc(s.id).update({ status: 'published', publishedAt: at, publishedBy: req.user.id });
@@ -332,6 +345,7 @@ router.post(`${B}/shifts/:id/claim/decision`, SCHED, requireUsOrg, async (req, r
     const s = await getDoc('schedule_shifts', req.orgId, req.params.id);
     if (!s || !s.claim || s.claim.status !== 'pending') return res.status(404).json({ success: false, error: 'No pending claim' });
     const claimer = await person(req.orgId, s.claim.userId);
+    if (!(await require('../services/own-request').guard(req, res, s.claim.userId, 'time.approve', 'decide your own request for a shift'))) return undefined;
     if (!mayManage(req, claimer)) return res.status(403).json({ success: false, error: 'Not allowed' });
     const decision = String((req.body && req.body.decision) || '');
     if (!['approve', 'deny'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or deny' });
@@ -426,6 +440,9 @@ router.post(`${B}/swaps/:id/decision`, SCHED, requireUsOrg, async (req, res) => 
     const sw = await getDoc('shift_swaps', req.orgId, req.params.id);
     if (!sw || sw.status !== 'pending_manager') return res.status(404).json({ success: false, error: 'No request waiting for a decision' });
     const reqPerson = await person(req.orgId, sw.requesterId);
+    // a swap or a cover you asked for, or one you are the other half of, is decided by someone else
+    if (!(await require('../services/own-request').guard(req, res, sw.requesterId, 'time.approve', 'decide your own shift change'))) return undefined;
+    if (sw.targetUserId && !(await require('../services/own-request').guard(req, res, sw.targetUserId, 'time.approve', 'decide a shift change you are part of'))) return undefined;
     if (!mayManage(req, reqPerson)) return res.status(403).json({ success: false, error: 'Not allowed' });
     if (sw.targetUserId && !mayManage(req, await person(req.orgId, sw.targetUserId))) return res.status(403).json({ success: false, error: 'Not allowed: the coworker is not on your team' });
     const decision = String((req.body && req.body.decision) || '');

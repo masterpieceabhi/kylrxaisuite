@@ -135,6 +135,13 @@ const verifyToken = async (req, res, next) => {
             logger.warn(`Firestore user fetch warning: ${dbErr.message}`);
         }
         
+        // A token made before the person's role was changed or their sign-in was reset no longer counts, even though
+        // it has not run out yet (a Firebase ID token lives up to an hour and carries the role it was made with).
+        // The server stamps sessionsValidAfter on the person's record at those moments; see services/session-cutoff.js.
+        if (require('../services/session-cutoff').tokenTooOld(decoded, userData)) {
+            return res.status(401).json({ success: false, code: 'signin_again', error: 'Your access has changed. Please sign in again.' });
+        }
+
         // Derive role only from verified token or Firestore users doc and compare against explicit allow-list
         // Server-assigned custom claims in the verified token win over the editable profile doc
         const candidateRole = (decoded && decoded.role) || (userData && userData.role);

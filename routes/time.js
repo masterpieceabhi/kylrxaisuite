@@ -173,6 +173,8 @@ async function recordPunch({ orgId, userId, userData, employeeId, type, source, 
     const late = clientAt !== undefined && clientAt !== null && clientAt !== '';
     if (late) {
         const when = new Date(clientAt);
+        // the company's choice (time rules): a punch that cannot be checked is not taken at all
+        if (info.rules && info.rules.offlinePunches === 'refuse') return { ok: false, code: 'late_not_accepted', status: await status() };
         if (!key || Number.isNaN(when.getTime()) || when.getTime() > Date.now() + LATE_PUNCH_FUTURE_GRACE_MS) return { ok: false, code: 'late_bad_time', status: await status() };
         if (Date.now() - when.getTime() > LATE_PUNCH_MAX_HOURS * 3600000) return { ok: false, code: 'late_too_old', status: await status() };
         atIso = new Date(Math.min(when.getTime(), Date.now())).toISOString();
@@ -243,6 +245,7 @@ const ERROR_TEXT = {
     low_accuracy: 'Your phone location is not accurate enough.', location_required: 'Location is required to clock in here.',
     outside_network: 'This device is not on an approved work network. Connect to the work network and try again.',
     late_bad_time: 'The saved time of this punch could not be read. Ask your manager to add it.',
+    late_not_accepted: 'Your company does not take punches that were saved without a connection. Ask your manager to add it.',
     late_too_old: 'This punch was saved too long ago to be sent. Ask your manager to add it.',
     late_out_of_order: 'This saved punch is older than a punch already recorded. Ask your manager to check your hours.'
 };
@@ -435,6 +438,7 @@ router.post('/punches/manual', requireOrg, async (req, res) => {
     const base = await orgInfo(req.orgId);
     if (access.timeAccess(req.user, base.country).addPunch !== 'all') return forbidden(res);
     const { userId, type, at, reason } = req.body || {};
+    const own = await require('../services/own-request').guard(req, res, userId ? String(userId) : null, 'time.approve', 'add a punch to your own hours'); if (!own) return undefined;
     if (!rules.PUNCH_TYPES.includes(type)) return res.status(400).json({ success: false, error: 'type must be in, out, break_start or break_end' });
     const when = new Date(at);
     if (!userId || Number.isNaN(when.getTime()) || when > new Date()) return res.status(400).json({ success: false, error: 'userId and a past time (at) are required' });

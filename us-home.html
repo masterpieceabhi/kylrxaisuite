@@ -91,8 +91,9 @@ onAuthStateChanged(auth, async (user) => {
     try {
       const w = await (await fetch('/api/us/approvals/waiting', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json();
       if (w.success && w.canApprove && w.total > 0) {
-        const parts = [[w.timesheets, 'timesheet', 'timesheets'], [w.punchFixes, 'punch fix', 'punch fixes'], [w.leaveRequests, 'time-off request', 'time-off requests']].filter((x) => x[0] > 0).map((x) => `${x[0]} ${x[0] === 1 ? x[1] : x[2]}`);
-        const a = document.createElement('a'); a.href = (w.links && (w.timesheets + w.punchFixes > 0 ? w.links.timesheets : w.links.leaveRequests)) || 'admin-us-time.html';
+        // every kind with something waiting, as the server words it; the link goes to the first one
+        const parts = (w.items || []).map((x) => x.label);
+        const a = document.createElement('a'); a.href = ((w.items || [])[0] || {}).link || 'admin-us-time.html';
         a.textContent = `Waiting for you: ${parts.join(', ')}`; a.style.fontWeight = '700';
         $('msg').replaceChildren(a); $('msg').style.display = 'block';
       }

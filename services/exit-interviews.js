@@ -75,6 +75,23 @@ async function saveByHr(orgId, userId, person, body, actor) {
     return { record: doc };
 }
 
+/**
+ * A recorded exit was taken back and recorded again with another last day: the interview the person already filled in
+ * moves to the new date. Only when the first exit was cancelled within the last 60 days (the same departure, not an
+ * old plan that never happened), an interview exists under the old date, and none exists under the new one.
+ * cancelled: the stored record of the exit that was taken back ({ lastDay, cancelledAt }).
+ */
+async function carryOver(orgId, userId, cancelled, newLastDay) {
+    if (!cancelled || !cancelled.lastDay || !newLastDay || cancelled.lastDay === newLastDay) return false;
+    const when = Date.parse(cancelled.cancelledAt || '');
+    if (!Number.isFinite(when) || Date.now() - when > 60 * 86400000) return false;
+    const [old, fresh] = await Promise.all([getRecord(orgId, userId, cancelled.lastDay), getRecord(orgId, userId, newLastDay)]);
+    if (!old || fresh) return false;
+    await recRef(userId, newLastDay).set({ ...old, lastDay: newLastDay, movedFromLastDay: cancelled.lastDay, movedAt: nowIso() });
+    await recRef(userId, cancelled.lastDay).delete();
+    return true;
+}
+
 /** Everyone in the company with a recorded termination: [{ userId, employeeId, name, lastDay, type }] */
 async function leavers(orgId) {
     const snaps = await Promise.all(PEOPLE.map((n) => rawCollection(n).where('orgId', '==', orgId).get()));
@@ -122,4 +139,4 @@ async function detail(orgId, userId, person) {
     };
 }
 
-module.exports = { getQuestions, saveQuestions, resetQuestions, getRecord, selfView, saveSelf, saveByHr, leavers, records, list, summary, detail };
+module.exports = { getQuestions, saveQuestions, resetQuestions, getRecord, selfView, saveSelf, saveByHr, leavers, records, list, summary, detail, carryOver };

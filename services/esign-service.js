@@ -13,7 +13,7 @@ const nowIso = () => new Date().toISOString();
 
 /** Audit entry for actions with no signed-in user (public sign page, public applications) */
 function auditPublic(orgId, action, targetId, ip, extra = {}) {
-    return rawCollection('organizations').doc(orgId).collection('audit_logs').add({ action, targetId, actorId: null, actorRole: 'public', at: nowIso(), ip: ip || null, ...extra })
+    return require('./audit-chain').writeAudit(orgId, { action, targetId, actorId: null, actorRole: 'public', at: nowIso(), ip: ip || null, ...extra })
         .catch((e) => logger.error(`Public audit write failed: ${e.message}`));
 }
 

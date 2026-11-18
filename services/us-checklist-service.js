@@ -32,7 +32,14 @@ async function createChecklist(orgId, emp, kind, anchorDate, options = {}) {
     const id = docIdFor(emp.id, kind, anchorDate);
     const ref = rawCollection('checklists').doc(id);
     const snap = await ref.get();
-    if (exists(snap)) return { id, ...snap.data() };
+    if (exists(snap)) {
+        const old = snap.data();
+        // An offboarding list belongs to one exit. One that was cancelled, or that was made for another last day, is
+        // from an earlier exit: it is kept under its own name (still readable, no longer listed) and a new one is made.
+        const stale = kind === 'offboarding' && old.orgId === orgId && (old.cancelled === true || (old.anchorDate && old.anchorDate !== anchorDate));
+        if (!stale) return { id, ...old };
+        await rawCollection('checklists').doc(`${id}_was_${String(old.anchorDate || 'unknown')}_${Date.now()}`).set({ ...old, cancelled: true, supersededAt: new Date().toISOString(), supersededBy: id });
+    }
     const doc = {
         orgId, userId: emp.id, employeeId: emp.data.employeeId || null, name: emp.data.name || null, kind, anchorDate,
         tasks: rules.buildChecklist(kind, anchorDate, { ...options, custom: await templateSettings(orgId) }), createdAt: new Date().toISOString(), cancelled: false

@@ -129,7 +129,7 @@ async function runAllOrgs({ dryRun = true, keys, actor = 'system' } = {}) {
                 const r = await runJob(j.key, { orgId: o.id, dryRun, actor });
                 if (r.eligible || r.affected || r.errors) out.push(r);
                 if (!dryRun && r.affected) {
-                    await rawCollection('organizations').doc(o.id).collection('audit_logs').add({ action: 'retention_job_run', targetId: j.key, actorId: actor, actorRole: 'system', at: new Date().toISOString(), affected: r.affected });
+                    await require('./audit-chain').writeAudit(o.id, { action: 'retention_job_run', targetId: j.key, actorId: actor, actorRole: 'system', at: new Date().toISOString(), affected: r.affected });
                 }
             } catch (e) { out.push({ key: j.key, orgId: o.id, error: e.message }); }
         }

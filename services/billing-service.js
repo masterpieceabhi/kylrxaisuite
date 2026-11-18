@@ -347,14 +347,20 @@ async function summary(orgId) {
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 /** Printable invoice (Save as PDF from the browser); no scripts, safe to open anywhere */
+/** The customer's own name as they registered it: the name they trade under, else their legal name */
+function billedTo(org, inv) {
+    const o = org || {};
+    return o.displayName || o.Display_Name || o.legalName || o.Legal_Name || (o.usProfile && o.usProfile.legalName) || o.name || o.companyName || inv.orgId;
+}
+
 function renderInvoiceHtml(inv, org) {
     const rows = inv.lines.map((l) => `<tr><td>${esc(l.description)}</td><td class="n">${esc(l.quantity)}</td><td class="n">${R.money(l.unitCents)}</td><td class="n">${R.money(l.amountCents)}</td></tr>`).join('');
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice ${esc(inv.number)}</title><style>
 body{font:14px/1.5 system-ui,Segoe UI,sans-serif;color:#0f172a;max-width:760px;margin:32px auto;padding:0 16px}h1{margin:0 0 4px}.m{color:#64748b}
 table{width:100%;border-collapse:collapse;margin:20px 0}th,td{padding:8px;border-bottom:1px solid #e2e8f0;text-align:left}.n{text-align:right}th{font-size:12px;color:#64748b}
 .t td{border:0}.tot td{font-weight:700;border-top:2px solid #0f172a}.badge{display:inline-block;padding:2px 10px;border-radius:99px;background:#eef2ff;font-weight:600}@media print{body{margin:0}}
-</style></head><body><h1>Invoice ${esc(inv.number)}</h1><div class="m">Kylrx AI &middot; issued ${esc(String(inv.issuedAt).slice(0, 10))} &middot; <span class="badge">${esc(inv.status)}</span></div>
-<p><strong>Billed to:</strong> ${esc(org.name || org.companyName || inv.orgId)}<br><span class="m">Period ${esc(inv.period.start)} to ${esc(inv.period.end)} &middot; ${esc(inv.planName)} (${esc(inv.interval)}) &middot; ${esc(inv.headcount.billable)} billable people on ${esc(inv.headcount.snapshotDate)}</span></p>
+</style></head><body><h1>Invoice ${esc(inv.number)}</h1><div class="m">Onn HR by Prompt AI USA &middot; issued ${esc(String(inv.issuedAt).slice(0, 10))} &middot; <span class="badge">${esc(inv.status)}</span></div>
+<p><strong>Billed to:</strong> ${esc(billedTo(org, inv))}<br><span class="m">Period ${esc(inv.period.start)} to ${esc(inv.period.end)} &middot; ${esc(inv.planName)} (${esc(inv.interval)}) &middot; ${esc(inv.headcount.billable)} billable people on ${esc(inv.headcount.snapshotDate)}</span></p>
 <table><thead><tr><th>Description</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Amount</th></tr></thead><tbody>${rows}
 <tr class="t"><td colspan="3" class="n">Subtotal</td><td class="n">${R.money(inv.subtotalCents)}</td></tr>
 <tr class="t"><td colspan="3" class="n">Tax${inv.taxRatePct ? ` (${esc(inv.taxRatePct)}%)` : ' (not calculated)'}</td><td class="n">${R.money(inv.taxCents)}</td></tr>

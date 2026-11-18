@@ -207,6 +207,8 @@ async function decide(req, res, status) {
     const note = T.clean(req.body && req.body.note, 300);
     if (status === 'rejected' && note.length < 3) return invalid(res, ['Tell the person why (at least 3 characters)']);
     const ref = col('training_completions').doc(String(req.params.id));
+    const before = await ref.get();
+    if (exists(before) && before.data().orgId === req.orgId && !(await require('../services/own-request').guard(req, res, before.data().userId, 'compliance.manage', status === 'confirmed' ? 'confirm your own training' : 'reject your own training'))) return undefined;
     const result = await db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         if (!exists(snap) || snap.data().orgId !== req.orgId) return { code: 404, error: 'Record not found' };

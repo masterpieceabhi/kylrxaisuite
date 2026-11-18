@@ -42,7 +42,7 @@ router.put('/settings', requirePermission('security.manage'), async (req, res) =
     const me = String(req.user.email || '').toLowerCase();
     if (value.enforce && me && !value.breakGlassEmails.includes(me)) value.breakGlassEmails.push(me);
     await rawCollection('organizations').doc(orgId).set({ ssoSettings: { ...value, updatedAt: new Date().toISOString(), updatedBy: req.user.id } }, { merge: true });
-    rawCollection('organizations').doc(orgId).collection('audit_logs').add({ action: 'sso_settings_updated', targetId: orgId, actorId: req.user.id, at: new Date().toISOString(), enabled: value.enabled, enforce: value.enforce }).catch(() => {});
+    require('../services/audit-chain').writeAudit(orgId, { action: 'sso_settings_updated', targetId: orgId, actorId: req.user.id, at: new Date().toISOString(), enabled: value.enabled, enforce: value.enforce });
     res.json({ success: true, settings: value });
 });
 

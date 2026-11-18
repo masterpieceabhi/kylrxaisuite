@@ -199,7 +199,7 @@ router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (r
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Request not found' });
     const r = { id: snap.id, ...snap.data() };
-    if (r.userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot decide your own request' });
+    const own = await require('../services/own-request').guard(req, res, r.userId, 'leave.decide', 'decide your own time off'); if (!own) return undefined;
     const owner = await findEmployee(req.orgId, r.userId);
     if (!owner || !perms.canManage(req.user, { ...owner.data, id: owner.id }, 'leave')) return res.status(403).json({ success: false, error: 'You can only decide time off for people who report to you' });
     if (r.status !== 'pending') return res.status(409).json({ success: false, error: `This request is already ${r.status}` });
@@ -218,7 +218,7 @@ router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (r
     }
     const patch = { status: decision === 'approve' ? 'approved' : 'denied', decidedBy: req.user.id, decidedAt: new Date().toISOString(), decisionNote: String((req.body && req.body.note) || '').slice(0, 300) };
     await ref.update(patch);
-    audit(req.orgId, req, decision === 'approve' ? 'leave_approved' : 'leave_denied', r.id, { userId: r.userId, hours: r.hours });
+    audit(req.orgId, req, decision === 'approve' ? 'leave_approved' : 'leave_denied', r.id, { userId: r.userId, hours: r.hours, ...own });
     require('../services/events').emit(req.orgId, decision === 'approve' ? 'leave.approved' : 'leave.denied', decision === 'approve' ? { request_id: r.id, person_id: r.userId, leave_type: r.type, start_date: r.startDate, end_date: r.endDate, hours: r.hours } : { request_id: r.id, person_id: r.userId });
     notices.notify(req.orgId, r.userId, decision === 'approve' ? 'leave_approved' : 'leave_denied', decision === 'approve' ? 'Time off approved' : 'Time off not approved',
         `Your time off from ${r.startDate} to ${r.endDate} was ${decision === 'approve' ? 'approved' : 'not approved'}.${patch.decisionNote ? ` Note: ${patch.decisionNote}` : ''}`, { requestId: r.id });
@@ -252,6 +252,7 @@ router.post('/leave/adjustments', perms.requirePermission('leave.decide'), requi
     if (String(reason || '').trim().length < 5) return res.status(400).json({ success: false, error: 'A reason of at least 5 characters is required' });
     const emp = await findEmployee(req.orgId, String(userId || ''));
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
+    const own = await require('../services/own-request').guard(req, res, emp.id, 'leave.decide', 'change your own time-off balance'); if (!own) return undefined;
     const pSnap = await rawCollection('leave_policies').doc(String(policyId || '_')).get();
     if (!exists(pSnap) || pSnap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Policy not found' });
     const info = await orgInfo(req.orgId);
@@ -259,7 +260,7 @@ router.post('/leave/adjustments', perms.requirePermission('leave.decide'), requi
         orgId: req.orgId, userId: emp.id, policyId: pSnap.id, hours: h, date: todayIn(info.tz), reason: String(reason).slice(0, 300),
         createdBy: req.user.id, createdAt: new Date().toISOString()
     });
-    audit(req.orgId, req, 'leave_balance_adjusted', emp.id, { policy: pSnap.data().name, hours: h, reason: String(reason).slice(0, 200) });
+    audit(req.orgId, req, 'leave_balance_adjusted', emp.id, { policy: pSnap.data().name, hours: h, reason: String(reason).slice(0, 200), ...own });
     res.status(201).json({ success: true });
 });
 

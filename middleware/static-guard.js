@@ -39,7 +39,9 @@ function isBlocked(urlPath) {
     const parts = p.split('/').filter(Boolean);
     if (!parts.length) return false;
     if (parts[0] === 'api') return false;
-    if (parts.some((s) => s.startsWith('.') || s === '..')) return true; // .env, .git, .claude and friends
+    // .env, .git, .claude and friends. The one dot-name let through is '.well-known': it is not a folder on disk here,
+    // it is the standard address of public discovery documents (the OAuth one is served by routes/oauth.js).
+    if (parts.some((s) => (s.startsWith('.') && s !== '.well-known') || s === '..')) return true;
     // trailing dots and spaces are ignored by Windows ("server.js." opens server.js)
     const clean = parts.map((s) => s.replace(/[. ]+$/, ''));
     const name = clean[clean.length - 1];

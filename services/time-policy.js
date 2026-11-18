@@ -20,8 +20,13 @@ const DEFAULT_RULES = {
     // Rest breaks are not punched. When on, the person confirms each week whether they could take them.
     restBreak: { enabled: false, everyHours: 4, minutes: 10 },
     // Extra paid hours for each day with a missed meal break, and each day a missed rest break was reported.
-    breakPremium: { enabled: false, hours: 1 }
+    breakPremium: { enabled: false, hours: 1 },
+    // A punch saved on a phone with no connection and sent later arrives with the phone's own time and cannot be
+    // checked against the location, photo or network rules. 'allow' records it and lists it for the manager;
+    // 'refuse' turns it away, and the manager adds the punch by hand instead.
+    offlinePunches: 'allow'
 };
+const OFFLINE_PUNCHES = ['allow', 'refuse'];
 const HOLIDAY_WHO = ['everyone', 'full_time'];
 
 const MAX_WORKWEEK_HISTORY = 12;
@@ -79,6 +84,10 @@ function validateTimeRules(input, current, todayIso) {
     const ww = planWorkweek(current && current.workweek, b, todayIso);
     errors.push(...ww.errors);
     value.workweek = ww.value;
+
+    if (b.offlinePunches !== undefined) {
+        if (!OFFLINE_PUNCHES.includes(b.offlinePunches)) errors.push('offlinePunches must be allow or refuse'); else value.offlinePunches = b.offlinePunches;
+    } else if (current && OFFLINE_PUNCHES.includes(current.offlinePunches)) value.offlinePunches = current.offlinePunches; // not sent: stays as it was
 
     if (b.overtimeWeeklyHours !== undefined) {
         const n = Number(b.overtimeWeeklyHours);

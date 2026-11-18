@@ -131,7 +131,7 @@ const wrap = (fn) => async (req, res) => {
 };
 
 function auditWrite(req, action, targetId, extra) {
-    rawCollection('organizations').doc(req.orgId).collection('audit_logs').add({ action, targetId, actorId: req.principal.id, actorRole: 'integration', at: new Date().toISOString(), ip: req.ip, requestId: req.requestId, ...extra }).catch(() => {});
+    require('../services/audit-chain').writeAudit(req.orgId, { action, targetId, actorId: req.principal.id, actorRole: 'integration', at: new Date().toISOString(), ip: req.ip, requestId: req.requestId, ...extra });
 }
 
 /* ------------------------------ pagination ------------------------------ */

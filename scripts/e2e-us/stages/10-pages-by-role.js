@@ -31,7 +31,9 @@ const WALKS = [
  */
 const EXPECTED_REFUSALS = [
     { page: /./, call: /^403 GET \/api\/support\/grants/ },
-    { page: /^admin-us-calendar\.html/, call: /^403 GET \/api\/us\// }
+    { page: /^admin-us-calendar\.html/, call: /^403 GET \/api\/us\// },
+    // the owner page opens for anyone who may read the activity log; it asks for roles and billing and hides those tabs on a 403
+    { page: /^admin-us-owner\.html/, call: /^403 GET \/api\/us\/(roles|roles\/users|billing)(\?|$)/ }
 ];
 
 /** Console lines that say nothing about the page itself */
@@ -41,7 +43,10 @@ async function openPage(page, url) {
     const seen = { errors: [], api: [] };
     const onConsole = (m) => { if (m.type() === 'error' && !NOISE.some((n) => n.test(m.text()))) seen.errors.push(`console: ${m.text().slice(0, 200)}`); };
     const onError = (e) => seen.errors.push(`script error: ${String(e.message || e).slice(0, 200)}`);
-    const onResponse = (r) => { const u = r.url(); if (/\/(api|scim|oauth)\//.test(u) && r.status() >= 400) seen.api.push(`${r.status()} ${r.request().method()} ${u.replace(/^https?:\/\/[^/]+/, '').slice(0, 110)}`); };
+    const here = url.replace(/^https?:\/\/[^/]+/, '').split(/[?#]/)[0];
+    // only answers to requests this page made: a slow answer to the page opened before must not be counted here
+    const fromHere = (r) => { const ref = (r.request().headers().referer || '').replace(/^https?:\/\/[^/]+/, '').split(/[?#]/)[0]; return !ref || ref === here; };
+    const onResponse = (r) => { const u = r.url(); if (/\/(api|scim|oauth)\//.test(u) && r.status() >= 400 && fromHere(r)) seen.api.push(`${r.status()} ${r.request().method()} ${u.replace(/^https?:\/\/[^/]+/, '').slice(0, 110)}`); };
     page.on('console', onConsole); page.on('pageerror', onError); page.on('response', onResponse);
     let finalUrl = url; let banner = '';
     try {

@@ -104,8 +104,44 @@ test('waiting for approval: what each of the eight roles is told', () => {
     assert.deepEqual(W.waitingFor(user('manager'), data).scope, { time: 'team', leave: 'team' });
     assert.deepEqual(W.waitingFor(user('payroll_admin'), data).scope, { time: 'all', leave: 'none' });
     // nothing loaded yet: zeros, and the answer about who may decide is still right
-    assert.deepEqual(W.waitingFor(user('hr_admin'), {}), { canApprove: true, scope: { time: 'all', leave: 'all' }, timesheets: 0, punchFixes: 0, leaveRequests: 0, total: 0 });
+    const empty = W.waitingFor(user('hr_admin'), {});
+    assert.deepEqual([empty.canApprove, empty.scope, empty.timesheets, empty.punchFixes, empty.leaveRequests, empty.total], [true, { time: 'all', leave: 'all' }, 0, 0, 0, 0]);
     assert.equal(W.waitingFor(null, data).total, 0);
     // a manager whose report is not in the people list is not counted (no guessing)
     assert.equal(W.waitingFor(user('manager'), { ...data, people: new Map() }).total, 0);
+});
+
+test('waiting for approval: the other kinds are counted only for someone who could decide them, and never their own', () => {
+    const people = new Map([
+        ['e1', { id: 'e1', usProfile: { managerId: 'u_manager' } }], ['e2', { id: 'e2', usProfile: { managerId: 'someone_else' } }],
+        ['u_manager', { id: 'u_manager', usProfile: { managerId: 'u_hr_admin' } }], ['u_hr_admin', { id: 'u_hr_admin' }]
+    ]);
+    const data = {
+        people,
+        swaps: [{ status: 'pending_manager', requesterId: 'e1', targetUserId: null }, { status: 'pending_manager', requesterId: 'e1', targetUserId: 'e2' }, { status: 'pending_manager', requesterId: 'u_manager', targetUserId: 'e1' }, { status: 'approved', requesterId: 'e1' }],
+        shifts: [{ status: 'published', claim: { status: 'pending', userId: 'e1' } }, { status: 'published', claim: { status: 'pending', userId: 'e2' } }, { status: 'cancelled', claim: { status: 'pending', userId: 'e1' } }, { status: 'published', claim: null }],
+        exceptions: [{ status: 'open', userId: 'e1' }, { status: 'open', userId: 'u_hr_admin' }, { status: 'resolved', userId: 'e1' }],
+        leaveCases: [{ status: 'requested', userId: 'e1' }, { status: 'requested', userId: 'u_hr_admin' }, { status: 'designated', userId: 'e2' }],
+        profileChanges: [{ status: 'pending', userId: 'e1' }, { status: 'pending', userId: 'u_hr_admin' }, { status: 'approved', userId: 'e2' }],
+        joinRequests: [{ status: 'waiting' }, { status: 'waiting' }, { status: 'approved' }],
+        payChanges: [{ status: 'pending_approval', userId: 'e1', createdBy: 'u_hr_admin' }, { status: 'pending_approval', userId: 'e2', createdBy: 'someone' }, { status: 'pending_approval', userId: 'u_super_admin', createdBy: 'someone' }, { status: 'approved', userId: 'e1', createdBy: 'x' }],
+        payouts: [{ status: 'pending', userId: 'e1', requestedBy: 'u_payroll_admin' }, { status: 'pending', userId: 'e2', requestedBy: 'u_hr_admin' }, { status: 'paid', userId: 'e1', requestedBy: 'x' }],
+        training: [{ status: 'reported', userId: 'e1' }, { status: 'reported', userId: 'u_hr_admin' }, { status: 'confirmed', userId: 'e2' }],
+        requisitions: [{ status: 'pending_approval', approvals: [{ userId: 'u_executive', decision: 'pending' }, { userId: 'u_hr_admin', decision: 'approved' }] }, { status: 'closed', approvals: [{ userId: 'u_executive', decision: 'pending' }] }]
+    };
+    const KINDS = ['shiftSwaps', 'shiftClaims', 'clockProblems', 'leaveCases', 'profileChanges', 'joinRequests', 'payChanges', 'timeOffPayouts', 'training', 'jobOpenings'];
+    const told = Object.fromEntries(ROLES.map((r) => { const w = W.waitingFor(user(r), data); return [r, [w.canApprove, ...KINDS.map((k) => w[k]), w.total]]; }));
+    assert.deepEqual(told, {
+        //             can    swap claim clock cases profile join pay payout train jobs total
+        super_admin:   [true,  3,   2,    2,    2,    2,      2,   2,  2,     2,    0,   19],  // not the pay change that is their own
+        hr_admin:      [true,  3,   2,    1,    1,    1,      2,   2,  0,     1,    0,   13],  // not the pay change they entered; no payroll; never their own
+        payroll_admin: [true,  3,   2,    2,    0,    0,      0,   0,  1,     0,    0,   8],   // not the payout they asked for themself
+        manager:       [true,  1,   1,    1,    0,    0,      0,   0,  0,     0,    0,   3],   // e1 only; not a swap with someone outside the team, nor their own
+        employee:      [false, 0,   0,    0,    0,    0,      0,   0,  0,     0,    0,   0],
+        accountant:    [false, 0,   0,    0,    0,    0,      0,   0,  0,     0,    0,   0],
+        auditor:       [false, 0,   0,    0,    0,    0,      0,   0,  0,     0,    0,   0],
+        executive:     [true,  0,   0,    0,    0,    0,      0,   0,  0,     0,    1,   1]    // named as an approver on one open job opening
+    });
+    assert.equal(W.LINKS.payChanges, 'admin-us-pay.html');
+    assert.deepEqual(Object.keys(W.LINKS).sort(), ['timesheets', 'punchFixes', 'leaveRequests', ...KINDS].sort(), 'every kind has a page to decide it on');
 });

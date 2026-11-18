@@ -247,7 +247,7 @@ function hoursToPayrollProvider(orgId, weekStart, actor) {
 router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (req, res) => {
     const { userId, weekStart } = req.params;
     if (!parseIsoDate(weekStart)) return res.status(400).json({ success: false, error: 'weekStart must be a date (YYYY-MM-DD)' });
-    if (userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot approve your own hours' });
+    const own = await require('../services/own-request').guard(req, res, userId, 'time.approve', 'approve your own hours'); if (!own) return undefined;
     const decision = String((req.body && req.body.decision) || '');
     if (!['approve', 'reject'].includes(decision)) return res.status(400).json({ success: false, error: 'decision must be approve or reject' });
     const note = String((req.body && req.body.note) || '').trim().slice(0, 300);
@@ -269,7 +269,7 @@ router.put('/weeks/:userId/:weekStart/decision', APPROVER, requireOrg, async (re
         patch.days = view.days.map((d) => ({ date: d.date, workedHours: d.workedHours, regularHours: d.regularHours, overtimeHours: d.overtimeHours, doubleTimeHours: d.doubleTimeHours, premiumHours: d.premiumHours, startAt: d.startAt, endAt: d.endAt }));
     }
     await ref.update(patch);
-    audit(req.orgId, req, decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', userId, { weekStart });
+    audit(req.orgId, req, decision === 'approve' ? 'timesheet_approved' : 'timesheet_rejected', userId, { weekStart, ...own });
     require('../services/events').emit(req.orgId, decision === 'approve' ? 'timesheet.approved' : 'timesheet.rejected', decision === 'approve'
         ? { person_id: userId, week_start: weekStart, worked_hours: (patch.totals && patch.totals.workedHours) ?? null, overtime_hours: (patch.totals && patch.totals.overtimeHours) ?? null }
         : { person_id: userId, week_start: weekStart });
@@ -289,8 +289,9 @@ router.post('/weeks/:userId/:weekStart/reopen', perms.requirePermission('time.ap
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Week not found' });
     const was = snap.data().status;
     if (!['approved', 'submitted'].includes(was)) return res.status(409).json({ success: false, error: 'This week is already open' });
+    const own = await require('../services/own-request').guard(req, res, userId, 'time.approve', 'reopen your own week'); if (!own) return undefined;
     await ref.update({ status: 'open', reopenedAt: new Date().toISOString(), reopenedBy: req.user.id, reopenReason: reason.slice(0, 300), reopenedFrom: was });
-    audit(req.orgId, req, 'timesheet_reopened', userId, { weekStart, reason: reason.slice(0, 200), was });
+    audit(req.orgId, req, 'timesheet_reopened', userId, { weekStart, reason: reason.slice(0, 200), was, ...own });
     if (was === 'approved') hoursToPayrollProvider(req.orgId, weekStart, req.user.id);
     if (userId !== req.user.id) notices.notify(req.orgId, userId, 'timesheet_reopened', 'Your week was reopened', `Your hours for the week of ${weekStart} were reopened: ${reason.slice(0, 200)}. Check them and send the week again.`, { weekStart });
     res.json({ success: true, status: 'open', was });
@@ -376,7 +377,7 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Request not found' });
     const c = snap.data();
-    if (c.userId === req.user.id) return res.status(403).json({ success: false, error: 'You cannot decide your own correction' });
+    const own = await require('../services/own-request').guard(req, res, c.userId, 'time.approve', 'decide your own punch fix'); if (!own) return undefined;
     const owner = await userDoc(req.orgId, c.userId);
     if (!owner || !perms.canManage(req.user, { ...owner.data, id: owner.id }, 'time')) return res.status(403).json({ success: false, error: 'You can only decide fixes for people who report to you' });
     if (c.status !== 'pending') return res.status(409).json({ success: false, error: `This request is already ${c.status}` });
@@ -403,7 +404,7 @@ router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) =
         }
     }
     await ref.update(patch);
-    audit(req.orgId, req, decision === 'approve' ? 'punch_correction_approved' : 'punch_correction_denied', c.userId, { kind: c.kind, localDate: c.localDate, correctionId: req.params.id });
+    audit(req.orgId, req, decision === 'approve' ? 'punch_correction_approved' : 'punch_correction_denied', c.userId, { kind: c.kind, localDate: c.localDate, correctionId: req.params.id, ...own });
     notices.notify(req.orgId, c.userId, decision === 'approve' ? 'correction_approved' : 'correction_denied', decision === 'approve' ? 'Punch fix approved' : 'Punch fix not approved',
         `Your fix for ${c.localDate} was ${decision === 'approve' ? 'approved' : 'not approved'}.${patch.decisionNote ? ` Note: ${patch.decisionNote}` : ''}`, { correctionId: req.params.id, date: c.localDate });
     res.json({ success: true, status: patch.status });

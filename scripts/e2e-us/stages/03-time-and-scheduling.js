@@ -123,7 +123,7 @@ module.exports = {
         const eff = await call('GET', `${U}/wages/effective?state=TX&date=${today}`, hr);
         check('the minimum in force in Texas today is $7.25 an hour, $2.13 for tipped staff', eff.s === 200 && eff.b.data.hourlyMinimum === 7.25 && eff.b.data.tippedCashWage === 2.13, eff.b);
         const viol = await call('GET', `${U}/wages/violations`, hr);
-        check('the wage check looks at the four hourly people and finds nobody under the minimum', viol.s === 200 && viol.b.checked === 4 && viol.b.violations.length === 0, { checked: viol.b.checked, violations: viol.b.violations });
+        check('the wage check looks at the hourly people (four, plus anyone hired in an earlier stage) and finds nobody under the minimum', viol.s === 200 && viol.b.checked >= 4 && viol.b.violations.length === 0, { checked: viol.b.checked, violations: viol.b.violations });
         // a city rule that starts later: the check for that date must flag the stock clerk ($17.00 an hour)
         const later = ctx.addDays(today, 200);
         const cityName = `Austin ${stamp}`;
@@ -189,7 +189,7 @@ module.exports = {
         check('a second shift that overlaps the cashier\'s Monday shift is refused (409)', overlap.s === 409 && /overlap/i.test(overlap.b.error || ''), overlap.b);
         const draftWeek = await call('GET', `${U}/schedule/week?weekStart=${lastWeekStart}`, manager);
         const cashierRow = ((draftWeek.b.staff) || []).find((s) => s.userId === P.cashier.uid);
-        check('the week view shows the manager\'s four people and the planned shifts, not yet published', draftWeek.s === 200 && draftWeek.b.shifts.length === planned && draftWeek.b.staff.length === 4 && draftWeek.b.published === false, { shifts: (draftWeek.b.shifts || []).length, staff: (draftWeek.b.staff || []).length, published: draftWeek.b.published });
+        check('the week view shows the manager\'s people (the four, plus anyone hired in an earlier stage) and the planned shifts, not yet published', draftWeek.s === 200 && draftWeek.b.shifts.length === planned && ['cashier', 'server', 'stocker', 'leaver'].every((k) => draftWeek.b.staff.some((x) => x.userId === P[k].uid)) && draftWeek.b.published === false, { shifts: (draftWeek.b.shifts || []).length, staff: (draftWeek.b.staff || []).length, published: draftWeek.b.published });
         check('the cashier is planned for 42.5 hours', cashierRow && near(cashierRow.scheduledHours, scheduledHours.cashier), cashierRow);
         check('a week that does not start on a Monday is refused (400)', (await call('GET', `${U}/schedule/week?weekStart=${dayOf(2)}`, manager)).s === 400);
         const pub1 = await call('POST', `${U}/schedule/publish`, manager, { weekStart: lastWeekStart });
@@ -368,7 +368,7 @@ module.exports = {
         const pB2 = await call('POST', `${T}/punch`, tok.cashier, { action: 'break_end' });
         check('the cashier starts and ends a break', pB1.s === 200 && pB1.b.status.state === 'break' && pB2.s === 200 && pB2.b.status.state === 'in', { start: pB1.b, end: pB2.b });
         const nowTeam = await call('GET', `${T}/team/now`, manager);
-        check('the manager sees their four people, with the cashier working right now', nowTeam.s === 200 && nowTeam.b.data.length === 4 && nowTeam.b.counts.in === 1 && nowTeam.b.data.find((r) => r.userId === P.cashier.uid).state === 'in', nowTeam.b);
+        check('the manager sees their people (the four, plus anyone hired in an earlier stage), with the cashier working right now', nowTeam.s === 200 && ['cashier', 'server', 'stocker', 'leaver'].every((k) => nowTeam.b.data.some((r) => r.userId === P[k].uid)) && nowTeam.b.counts.in === 1 && nowTeam.b.data.find((r) => r.userId === P.cashier.uid).state === 'in', nowTeam.b);
         const nowAll = await call('GET', `${T}/team/now`, hr);
         check('HR sees everyone; an employee cannot see who is working (403)', nowAll.s === 200 && nowAll.b.data.length >= 10 && (await call('GET', `${T}/team/now`, tok.cashier)).s === 403, (nowAll.b.data || []).length);
         const pOut = await call('POST', `${T}/punch`, tok.cashier, { action: 'out', location: where });

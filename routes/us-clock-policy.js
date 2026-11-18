@@ -281,6 +281,7 @@ router.put(`${base}/exceptions/:id/resolve`, REVIEWER, requireUsOrg, async (req,
     if (!exists(s) || s.data().orgId !== req.orgId) return res.status(404).json({ success: false, error: 'Exception not found' });
     const person = await targetPerson(req.orgId, s.data().userId);
     if (!person || !canManage(req.user, person, 'time')) return res.status(403).json({ success: false, error: 'Not allowed' });
+    if (!(await require('../services/own-request').guard(req, res, s.data().userId, 'time.approve', 'close a clock problem of your own'))) return undefined;
     const patch = { status: 'resolved', resolvedBy: req.user.id, resolvedAt: new Date().toISOString(), resolution: String((req.body && req.body.note) || '').slice(0, 300) };
     await ref.update(patch);
     audit(req.orgId, req, 'clock_exception_resolved', req.params.id, { userId: s.data().userId });

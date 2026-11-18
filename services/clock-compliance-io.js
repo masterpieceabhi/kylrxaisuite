@@ -140,7 +140,7 @@ async function destroyPhotosFor(orgId, userId, reason) {
     const snap = await rawCollection('punch_photos').where('userId', '==', userId).get();
     const mine = snap.docs.filter((d) => d.data().orgId === orgId);
     for (const d of mine) await destroyPhoto(orgId, d.id);
-    if (mine.length) await rawCollection('organizations').doc(orgId).collection('audit_logs').add({ action: 'punch_photos_destroyed', targetId: userId, at: nowIso(), reason, count: mine.length }).catch(() => {});
+    if (mine.length) await require('./audit-chain').writeAudit(orgId, { action: 'punch_photos_destroyed', targetId: userId, at: nowIso(), reason, count: mine.length });
     return mine.length;
 }
 

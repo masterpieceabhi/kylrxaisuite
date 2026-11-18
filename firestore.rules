@@ -131,7 +131,8 @@ service cloud.firestore {
     // Fields of a user record that only the server may set
     function serverKeptUserFields() {
       return ['password', 'passwordHash', 'must_change_password', 'is_temporary_password', 'setup_pending',
-        'pinHash', 'pinAttempts', 'pinLockedUntil', 'pinSetAt', 'usProfile', 'usForms', 'superAdmin'];
+        'pinHash', 'pinAttempts', 'pinLockedUntil', 'pinSetAt', 'usProfile', 'usForms', 'superAdmin',
+        'sessionsValidAfter', 'signinDevices'];
     }
 
     // ─────────────────────────────────────────────────────────────────

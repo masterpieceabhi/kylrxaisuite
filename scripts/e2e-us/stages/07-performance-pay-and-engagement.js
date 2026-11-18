@@ -82,7 +82,7 @@ module.exports = {
         check('goals need a sign-in (401)', (await call('GET', G, null)).s === 401);
         const team = await call('GET', `${U}/performance/team`, manager);
         const teamIds = (team.b.data || []).map((p) => p.userId).sort().join();
-        check('the manager\'s team overview lists exactly their four direct reports', team.s === 200 && teamIds === ['cashier', 'server', 'stocker', 'leaver'].map(uid).sort().join(), team.b);
+        check('the manager\'s team overview lists their direct reports (the four, plus anyone hired in an earlier stage) and nobody above them', team.s === 200 && ['cashier', 'server', 'stocker', 'leaver'].map(uid).every((id) => teamIds.split(',').includes(id)) && !['owner', 'hr', 'payroll', 'manager'].map(uid).some((id) => teamIds.split(',').includes(id)), team.b);
         check('an employee has no team overview (403)', (await call('GET', `${U}/performance/team`, cashier)).s === 403);
 
         ctx.section('A written review, shared with the employee');
@@ -502,8 +502,8 @@ module.exports = {
         const def = { dataset: 'people', columns: ['employeeId', 'name', 'department', 'jobTitle', 'payType', 'payRate'], filters: [{ field: 'payType', op: 'is', value: 'hourly' }], sortBy: 'payRate', sortDir: 'desc', groupBy: 'department' };
         const ran = await call('POST', `${RB}/run`, hr, { definition: def });
         const rows = (ran.b.result || {}).rows || []; const groups = ((ran.b.result || {}).groups || {}).rows || [];
-        check('HR runs a people report: hourly people only, highest pay first', ran.s === 200 && rows.length === hourly && rows.every((r) => r.payType === 'hourly') && rows[0].name === 'Riley Morgan' && rows[0].payRate === 20 && rows.some((r) => r.name === P.cashier.name && r.payRate === 18.5), ran.b.result);
-        check(`and counts them by department: ${inStore} in Store, 2 in Cafe`, groups.length === 2 && groups[0].key === 'Store' && groups[0].count === inStore && groups[1].key === 'Cafe' && groups[1].count === 2, groups);
+        check('HR runs a people report: hourly people only, highest pay first', ran.s === 200 && rows.length >= hourly && rows.every((r) => r.payType === 'hourly') && rows.every((r, i) => i === 0 || rows[i - 1].payRate >= r.payRate) && rows.some((r) => r.name === 'Riley Morgan' && r.payRate === 20) && rows.some((r) => r.name === P.cashier.name && r.payRate === 18.5), ran.b.result);
+        check(`and counts them by department: at least ${inStore} in Store and 2 in Cafe, adding up to everyone listed`, (groups.find((x) => x.key === 'Store') || {}).count >= inStore && (groups.find((x) => x.key === 'Cafe') || {}).count >= 2 && groups.reduce((n, x) => n + x.count, 0) === rows.length, groups);
         check('a column that does not exist is refused (400)', (await call('POST', `${RB}/run`, hr, { definition: { dataset: 'people', columns: ['name', 'ssn'] } })).s === 400);
         check('the executive cannot ask for a pay column (400)', (await call('POST', `${RB}/run`, executive, { definition: { dataset: 'people', columns: ['name', 'payRate'] } })).s === 400);
         const exeRun = await call('POST', `${RB}/run`, executive, { definition: { dataset: 'people', columns: ['name', 'department'], groupBy: 'department' } });
@@ -522,7 +522,7 @@ module.exports = {
         const savedList = await call('GET', `${RB}/saved`, executive);
         check('the saved report is in the list, also for the executive', savedList.s === 200 && (savedList.b.data || []).some((r) => r.id === repId), savedList.b);
         const runSaved = await call('POST', `${RB}/saved/${repId}/run`, hr, {});
-        check(`HR runs the saved report: ${hourly} hourly people with their pay`, runSaved.s === 200 && runSaved.b.result.total === hourly && runSaved.b.result.rows.every((r) => typeof r.payRate === 'number') && runSaved.b.removedColumns.length === 0, runSaved.b);
+        check(`HR runs the saved report: the same hourly people (${hourly} or more) with their pay`, runSaved.s === 200 && runSaved.b.result.total >= hourly && runSaved.b.result.total === rows.length && runSaved.b.result.rows.every((r) => typeof r.payRate === 'number') && runSaved.b.removedColumns.length === 0, runSaved.b);
         const exeSaved = await call('POST', `${RB}/saved/${repId}/run`, executive, {});
         check('the executive is refused: the saved report filters on pay type, which that role cannot see (403)', exeSaved.s === 403, exeSaved.b);
         const plainRep = await call('POST', `${RB}/saved`, hr, { name: `People and pay ${tag}`, dataset: 'people', columns: ['name', 'department', 'payRate'], sortBy: 'name' });
@@ -530,7 +530,7 @@ module.exports = {
         check('for a saved report that only shows pay, the executive gets it with the pay column taken out', plainRep.s === 201 && exePlain.s === 200 && exePlain.b.removedColumns.join() === 'payRate' && exePlain.b.result.rows.length >= 11 && exePlain.b.result.rows.every((r) => !('payRate' in r)) && !has(JSON.stringify(exePlain.b.result), '18.5'), exePlain.b);
         check('the auditor cannot make a dated copy (403)', (await call('POST', `${RB}/saved/${repId}/copies`, auditor, {})).s === 403);
         const copy = await call('POST', `${RB}/saved/${repId}/copies`, hr, {});
-        check('HR makes a dated copy of the saved report', copy.s === 201 && copy.b.copy && copy.b.copy.day === companyToday && copy.b.copy.rows === hourly && copy.b.copy.includesPay === true, copy.b);
+        check('HR makes a dated copy of the saved report', copy.s === 201 && copy.b.copy && copy.b.copy.day === companyToday && copy.b.copy.rows === rows.length && copy.b.copy.includesPay === true, copy.b);
         const copies = await call('GET', `${RB}/saved/${repId}/copies`, hr);
         check('the copy is listed under the report', copies.s === 200 && (copies.b.data || []).some((c) => c.id === (copy.b.copy || {}).id), copies.b);
         const dl = await call('GET', `${RB}/saved/${repId}/copies/${(copy.b.copy || {}).id}`, hr);

@@ -29,7 +29,7 @@ router.post('/grants', requirePermission('support.impersonate'), async (req, res
     if (reason.length < 5) return res.status(400).json({ success: false, error: 'Say why support needs access (at least 5 characters)' });
     const grant = { orgId, grantedBy: req.user.id, grantedByEmail: req.user.email || null, reason: reason.slice(0, 300), mode: 'read_only', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + hours * 3600000).toISOString(), revokedAt: null };
     const ref = await rawCollection('support_grants').add(grant);
-    rawCollection('organizations').doc(orgId).collection('audit_logs').add({ action: 'support_access_granted', targetId: ref.id, actorId: req.user.id, at: grant.createdAt, hours, reason: grant.reason }).catch(() => {});
+    require('../services/audit-chain').writeAudit(orgId, { action: 'support_access_granted', targetId: ref.id, actorId: req.user.id, at: grant.createdAt, hours, reason: grant.reason });
     res.status(201).json({ success: true, grant: { id: ref.id, ...grant } });
 });
 
@@ -46,7 +46,7 @@ router.delete('/grants/:id', requirePermission('support.impersonate'), async (re
     const snap = await ref.get();
     if (!exists(snap) || snap.data().orgId !== orgIdOf(req)) return res.status(404).json({ success: false, error: 'Grant not found' });
     await ref.update({ revokedAt: new Date().toISOString(), revokedBy: req.user.id });
-    rawCollection('organizations').doc(orgIdOf(req)).collection('audit_logs').add({ action: 'support_access_revoked', targetId: req.params.id, actorId: req.user.id, at: new Date().toISOString() }).catch(() => {});
+    require('../services/audit-chain').writeAudit(orgIdOf(req), { action: 'support_access_revoked', targetId: req.params.id, actorId: req.user.id, at: new Date().toISOString() });
     res.json({ success: true });
 });
 
@@ -77,7 +77,7 @@ router.post('/session', async (req, res) => {
     if (g.revokedAt || g.expiresAt <= new Date().toISOString()) return res.status(403).json({ success: false, error: 'This grant is no longer active' });
     const secondsLeft = Math.floor((new Date(g.expiresAt) - Date.now()) / 1000);
     const token = jwt.sign({ type: 'support_session', id: `support:${email}`, email, orgId: g.orgId, grantId: snap.id }, process.env.JWT_SECRET, { expiresIn: Math.min(3600, secondsLeft) });
-    rawCollection('organizations').doc(g.orgId).collection('audit_logs').add({ action: 'support_session_started', targetId: snap.id, actorId: `support:${email}`, at: new Date().toISOString() }).catch(() => {});
+    require('../services/audit-chain').writeAudit(g.orgId, { action: 'support_session_started', targetId: snap.id, actorId: `support:${email}`, at: new Date().toISOString() });
     res.json({ success: true, token, orgId: g.orgId, readOnly: true, expiresInSeconds: Math.min(3600, secondsLeft) });
 });
 

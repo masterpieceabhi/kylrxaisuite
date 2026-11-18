@@ -188,6 +188,7 @@ router.post('/leave-cases/:id/action', DECIDE, requireUsOrg, async (req, res) =>
     const k = await loadCase(req, res); if (!k) return;
     const [cfg, info] = await Promise.all([getConfig(req.orgId), orgInfo(req.orgId)]);
     const b = req.body || {};
+    if (!(await require('../services/own-request').guard(req, res, k.data.userId, 'leave.decide', 'decide your own leave case'))) return undefined;
     const r = C.applyAction(k.data, String(b.action || ''), b, cfg.settings, todayIn(info.tz));
     if (r.errors.length) return res.status(r.conflict ? 409 : 400).json({ success: false, errors: r.errors });
     const { historyEntry, ...patch } = r.patch;

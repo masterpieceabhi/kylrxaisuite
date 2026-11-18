@@ -321,6 +321,7 @@ async function reissueAccess(orgId, uid, method, actorId) {
         Object.assign(out, await createSetupLink(orgId, uid, actorId));
     }
     await admin.auth().revokeRefreshTokens(uid).catch(() => {});
+    await ref.set(require('./session-cutoff').stamp(), { merge: true }); // the token already in hand stops working too
     return out;
 }
 

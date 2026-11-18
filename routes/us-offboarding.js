@@ -38,9 +38,9 @@ async function applyDueTerminations() {
         const info = await orgInfo(data.orgId);
         if (last <= todayIn(info.tz)) {
             await svc.cutAccess({ id: doc.id, ref: doc.ref, data });
-            rawCollection('organizations').doc(data.orgId).collection('audit_logs').add({
+            require('../services/audit-chain').writeAudit(data.orgId, {
                 action: 'us_termination_effective', targetId: doc.id, actorId: 'system', at: new Date().toISOString(), lastDay: last
-            }).catch(() => {});
+            });
             applied += 1;
         }
     }
@@ -75,6 +75,33 @@ router.get('/offboarding', READ, requireUsOrg, async (req, res) => {
     res.json({ success: true, today, data: rows });
 });
 
+/**
+ * Leaving is a COBRA qualifying event. When the company's benefit settings mark it "auto" (the default), the record
+ * is opened as the exit is recorded, so the notice deadlines start being tracked without HR remembering to. Nothing
+ * is opened for someone with no health cover on their last day. A problem here never fails the exit itself.
+ */
+async function openCobraForExit(orgId, userId, lastDay, req) {
+    try {
+        const h = require('./us-benefits').helpers;
+        const cfg = (await h.getSettings(orgId)).cobra;
+        const ev = ((cfg && cfg.events) || []).find((e) => e.key === 'termination');
+        if (!ev || ev.auto !== true) return null;
+        const r = await h.createCobraRecord({ orgId, req, userId, input: { eventType: 'termination', eventDate: lastDay }, cfg });
+        if (r.status !== 201) return null; // no health cover, or a record for this exit is already there
+        await rawCollection('cobra_records').doc(r.record.id).update({ openedBy: 'exit_recorded' });
+        return r.record.id;
+    } catch (e) { logger.warn(`COBRA record for an exit could not be opened: ${e.message}`); return null; }
+}
+/** An exit that is taken back takes its untouched, automatically opened COBRA record with it */
+async function closeCobraForCancelledExit(orgId, userId, lastDay) {
+    try {
+        const snap = await rawCollection('cobra_records').where('userId', '==', userId).get();
+        const mine = snap.docs.filter((d) => { const c = d.data(); return c.orgId === orgId && c.eventType === 'termination' && c.eventDate === lastDay && c.openedBy === 'exit_recorded' && c.status === 'pending_notice'; });
+        await Promise.all(mine.map((d) => d.ref.delete()));
+        return mine.length;
+    } catch (e) { logger.warn(`COBRA record of a cancelled exit could not be removed: ${e.message}`); return 0; }
+}
+
 router.post('/offboarding/:id/terminate', WRITE, requireUsOrg, async (req, res) => {
     const emp = await findEmployee(req.orgId, req.params.id);
     if (!emp) return res.status(404).json({ success: false, error: 'Employee not found' });
@@ -94,8 +121,13 @@ router.post('/offboarding/:id/terminate', WRITE, requireUsOrg, async (req, res) 
     if (immediate) await svc.cutAccess({ ...emp });
     const cancelledLeave = await svc.cancelLeaveAfter(req.orgId, emp.id, value.lastDay);
     await store.createChecklist(req.orgId, emp, 'offboarding', value.lastDay, { skipFederalHolidays: Boolean(req.org.usProfile && req.org.usProfile.i9SkipFederalHolidays) });
-    audit(req.orgId, req, 'us_termination_recorded', emp.id, { lastDay: value.lastDay, type: value.type, immediate, cancelledLeave });
-    res.status(201).json({ success: true, immediate, cancelledLeaveRequests: cancelledLeave, termination });
+    const cobraRecordId = await openCobraForExit(req.orgId, emp.id, value.lastDay, req);
+    // The same departure with a new last day (an exit was recorded, taken back, and recorded again): what the person
+    // already wrote in their exit interview goes with it instead of being left behind under the old date.
+    const before = emp.data.usProfile && emp.data.usProfile.terminationCancelled;
+    const carried = before && before.lastDay && before.lastDay !== value.lastDay ? await exitInterviews.carryOver(req.orgId, emp.id, before, value.lastDay).catch(() => false) : false;
+    audit(req.orgId, req, 'us_termination_recorded', emp.id, { lastDay: value.lastDay, type: value.type, immediate, cancelledLeave, cobraRecordOpened: Boolean(cobraRecordId), exitInterviewCarried: Boolean(carried) });
+    res.status(201).json({ success: true, immediate, cancelledLeaveRequests: cancelledLeave, termination, cobraRecordId });
 });
 
 /** Take back a scheduled termination before the last day has passed */
@@ -107,6 +139,7 @@ router.post('/offboarding/:id/cancel', WRITE, requireUsOrg, async (req, res) => 
     await emp.ref.update({ status: 'Active', terminationStatus: null, 'usProfile.termination': null, 'usProfile.terminationCancelled': { ...t, cancelledAt: new Date().toISOString(), cancelledBy: req.user.id } });
     const list = await rawCollection('checklists').doc(store.docIdFor(emp.id, 'offboarding')).get();
     if (store.exists(list)) await list.ref.update({ cancelled: true });
+    await closeCobraForCancelledExit(req.orgId, emp.id, t.lastDay);
     audit(req.orgId, req, 'us_termination_cancelled', emp.id, { lastDay: t.lastDay });
     res.json({ success: true });
 });
