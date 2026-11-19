@@ -1,0 +1,40 @@
+# What must never be in the image, and what the running server does not need.
+
+# settings and keys: these come from the host's environment
+.env
+.env.*
+!.env.example
+serviceAccountKey.json
+config/serviceAccountKey.json
+*.pem
+*.key
+*.p12
+
+# installed inside the image from the lock file
+node_modules
+functions/node_modules
+
+# history, editor and assistant folders
+.git
+.github
+.claude
+.vscode
+.idea
+
+# local runs: logs, emulator output, exports, saved test companies
+logs
+*.log
+data/exports
+ids.json
+scripts/e2e-us/.state
+
+# not used by the running server
+tests
+docs
+Dockerfile
+.dockerignore
+*.md
+
+# stored sample data and attendance reports with real names: never shipped
+data
+reports

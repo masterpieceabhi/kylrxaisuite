@@ -13,6 +13,12 @@ const base = `http://${host}/v1/projects/${projectId}/databases/(default)/docume
 const emulatorUp = await fetch(`http://${host}/`).then(() => true).catch(() => false);
 const skip = emulatorUp ? false : 'the Firestore emulator is not running';
 
+// Where the emulator is expected (the "rules" job in CI, npm run test:rules) a missing emulator is a failure, not a skip:
+// a run that quietly tested nothing must not look green.
+test('the Firestore emulator is there when these tests are required', { skip: process.env.REQUIRE_FIRESTORE_EMULATOR === '1' ? false : 'not required in this run' }, () => {
+    assert.equal(emulatorUp, true, `no Firestore emulator answered on ${host}; the rules were not tested`);
+});
+
 const run = String(Date.now()).slice(-8);
 const US = `org_rules_us_${run}`; const IN = `org_rules_in_${run}`; const OLD_US = `org_rules_oldus_${run}`; const OTHER = `org_rules_other_${run}`;
 const token = ({ uid, role = 'employee', orgId, super_admin = false }) => jwt.sign({ sub: uid, user_id: uid, email: `${uid}@example.test`, role, ...(orgId ? { orgId } : {}), super_admin }, 'emulator_signing_secret');

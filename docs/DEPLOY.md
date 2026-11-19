@@ -17,6 +17,45 @@ Written 2026-11-12 for branch `feature/usa-foundation`. Read `docs/SECURITY.md` 
 
 Start command: `npm start` (runs `node server.js`). The port comes from `PORT`.
 
+### Addresses
+
+- `onnhr.com` is the public website and stays where it is hosted now. It is a domain, not a place this server runs.
+- `app.onnhr.com` is the product: this one server answers for the pages and for `/api`. Point that name at the host in DNS. The Gusto return address is already registered as `https://app.onnhr.com/api/us/gusto/oauth/callback`.
+- A client app served from `app.onnhr.com` by this server is on the same address as the API, so it needs no entry in `ALLOWED_ORIGINS` and the "known device" cookie of the PIN sign-in works as it is. A client app on any other address must be named in `ALLOWED_ORIGINS`, and on a different domain (not just a different subdomain) that cookie is not sent, so the PIN would always fall back to a code.
+
+### One server per country
+
+The same code serves every country, and a company's own country decides its rules. What a country address decides is where the data is kept. Each server is told which countries it takes:
+
+| Address | Settings | Database |
+|---|---|---|
+| `us.onnhr.com` (and `app.onnhr.com` until there is a front door) | `SERVED_COUNTRIES=US`, `COUNTRY_ADDRESSES=US=https://us.onnhr.com,IN=https://in.onnhr.com` | its own Firebase project in a US region |
+| `in.onnhr.com` | `SERVED_COUNTRIES=IN`, the same `COUNTRY_ADDRESSES` | its own Firebase project in an India region |
+
+- A company of another country is turned away at sign-up (409 `wrong_address`, with the address to use). Nothing is created.
+- A sign-up that names no country gets the server's own country when it serves exactly one. A country we do not know is refused instead of being stored as India.
+- `GET /api/auth/region` (public) says what this server takes and where the other countries go, for a front door or the sign-up page. The sign-up page does not use it yet.
+- Not set: the server takes every country into one database, as before. `npm run check:production` warns about that.
+- Only sign-up is checked. A company of another country that is already in a server's database keeps working there.
+- Gusto's return address is registered for `app.onnhr.com`. Register `us.onnhr.com` with Gusto too, or keep the US server answering on `app.onnhr.com`.
+
+### As a container
+
+`Dockerfile` and `.dockerignore` build the server for any host that runs containers (Render, Railway, Fly.io, a VM with Docker):
+
+```
+docker build -t onnhr-server .
+docker run -p 3000:3000 --env-file production.env -v onnhr-data:/data onnhr-server
+```
+
+- Run one copy only, always on (see the table above). Do not let the host scale it to zero or to two.
+- Mount a disk that is kept and backed up at `/data`. Documents and clock photos go to `/data/vault`, the error log to `/data/logs`. Without the mount they are lost at every release.
+- Settings come from the host's environment. No `.env` file, key file, test, doc, log or stored data file is copied into the image.
+- The image leaves out the tracked `data/` and `reports/` folders (sample data and attendance reports with names). An older India page that loads a report file from `reports/` gets a 404 from the image.
+- The health check calls `/api/health`.
+
+Checked on 2026-11-18 without Docker (it is not installed on the developer PC): the exact file set the image would hold was copied to an empty folder, `npm ci --omit=dev` was run there, and the server was started with `NODE_ENV=production` against the local emulators. It answered `/api/health`, served the pages, refused `/.env`, `/server.js`, `/package.json` and `/firestore.rules` with 404, and at start listed the production settings that were missing. The image itself has not been built or run.
+
 ## 2. Settings
 
 Set these in the host's environment. Do not put real values in a file inside the app folder. Check them on the server with:
@@ -112,7 +151,8 @@ Never set on a real server: `ALLOW_DEV_AUTH`, `FIRESTORE_EMULATOR_HOST`, `FIREBA
 
 - `npm ci`, then `npm test` (all rule tests and the two server tests).
 - `node scripts/static-audit.js`, which fails the tests if a page loads a file the static-file guard refuses.
-- A second job runs `npm audit` and reports; it does not fail the build yet (see section 8).
+- A job named `rules` starts the Firestore emulator and runs the database-rule tests (`npm run test:rules`). In the `test` job there is no emulator, so those tests are skipped there; in the `rules` job a missing emulator is a failure. This job was added on 2026-11-18 and has not run on GitHub yet; its tests pass against the local emulator.
+- Another job runs `npm audit` and reports; it does not fail the build yet (see section 8).
 
 The workflow uses throwaway secrets written in the file, for the tests only. It deploys nothing: there is no host to deploy to yet. When one is chosen, add a deploy job that runs only on `main` after `test` passes, and keep the real settings in the host, not in GitHub.
 
@@ -130,7 +170,9 @@ The pages and the server code sit in the same folder, and that folder is served 
 - Errors are appended to `LOG_DIR/errors.jsonl`. Nothing alerts anyone unless Sentry or a monitor is set up.
 - **Back up three things, and test a restore:** the Firestore database (Google's scheduled export), the `VAULT_DIR` folder, and the secret values from section 2. A database backup without `PII_ENCRYPTION_KEY` cannot show SSNs, bank numbers or documents.
 
-Backups are not scheduled by anything in this repository, and nothing alerts anyone. `npm run backup` and `npm run restore` exist for small installs and for moving data; read `docs/BACKUP.md` first. A real restore has not been run.
+Backups are not scheduled by anything in this repository, and nothing alerts anyone. `npm run backup` and `npm run restore` exist for small installs and for moving data; read `docs/BACKUP.md` first. On the chosen host, run `npm run backup -- --out /data/backups` once a day from the host's own scheduler and copy that folder somewhere else.
+
+A real restore was run on 2026-11-18, on the local emulator: a backup of the whole local database (9,483 documents in 120 collections, 5,802 of them in sub-collections, and 60 vault files) was restored into a new empty project and compared document by document. Every document was there with the same content and the same value types (dates stayed dates), and the vault files were byte for byte the same. The restore refused a wrong `--project` name and refused to write into a database that already had data. Not covered by that run: a real Firebase project, sign-in accounts (they are not in the backup), and reading encrypted fields with the key after a restore.
 
 ## 8. Known problems to fix before real customers
 

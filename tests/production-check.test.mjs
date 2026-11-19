@@ -12,7 +12,7 @@ const appDir = path.resolve('/srv/app');
 const good = () => ({
     NODE_ENV: 'production', JWT_SECRET: rnd(24), REFRESH_SECRET: rnd(24), PII_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'), AUDIT_CHAIN_KEY: rnd(24),
     FIREBASE_SERVICE_ACCOUNT: JSON.stringify({ project_id: 'p', private_key: 'k', client_email: 'e' }), RESEND_API_KEY: 're_x', VAULT_DIR: path.resolve('/srv/vault'), LOG_DIR: path.resolve('/var/log/app'),
-    MONITORING_TOKEN: rnd(16), PLATFORM_OPERATOR_TOKEN: rnd(16), SENTRY_DSN: 'https://x@sentry.example/1', RETENTION_AUTO: 'on', BACKUP_DIR: '/srv/backups', FIREBASE_WEB_CONFIG: JSON.stringify({ apiKey: 'k', projectId: 'onnhr-prod' }), GUSTO_CLIENT_ID: 'id', GUSTO_CLIENT_SECRET: 'secret', GUSTO_MODE: 'demo', BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_WEBHOOK_SECRET: 'whsec_x'
+    MONITORING_TOKEN: rnd(16), PLATFORM_OPERATOR_TOKEN: rnd(16), SENTRY_DSN: 'https://x@sentry.example/1', RETENTION_AUTO: 'on', BACKUP_DIR: '/srv/backups', SERVED_COUNTRIES: 'US', FIREBASE_WEB_CONFIG: JSON.stringify({ apiKey: 'k', projectId: 'onnhr-prod' }), GUSTO_CLIENT_ID: 'id', GUSTO_CLIENT_SECRET: 'secret', GUSTO_MODE: 'demo', BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_live_x', STRIPE_WEBHOOK_SECRET: 'whsec_x'
 });
 const run = (over = {}, opts = {}) => checkProductionEnv({ ...good(), ...over }, { appDir, canWrite: () => true, ...opts });
 const hasProblem = (r, re) => r.problems.some((p) => re.test(p));

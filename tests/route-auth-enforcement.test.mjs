@@ -26,6 +26,9 @@ describe('Global Route Authentication & RBAC Enforcement Suite', () => {
         'POST /api/auth/signup',
         'POST /api/auth/register-organization',
         'POST /api/auth/refresh-token',
+        // which countries this server takes and where the others sign up: asked before anyone has an account, and it
+        // holds nothing about any company or person (services/served-countries.js)
+        'GET /api/auth/region',
         'GET /api/health'
     ]);
 

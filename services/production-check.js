@@ -53,6 +53,9 @@ function checkProductionEnv(env, opts = {}) {
         if (w === false) problems.push('VAULT_DIR cannot be written to by the server.');
     }
     if (!has('LOG_DIR')) warnings.push('LOG_DIR is not set. Error logs are written to a "logs" folder inside the app folder.');
+    const served = require('./served-countries').configured(e);
+    for (const p of served.problems) problems.push(p);
+    if (!served.codes.length) warnings.push('SERVED_COUNTRIES is not set. This server then takes companies of every country into one database. Set it (for example SERVED_COUNTRIES=US) so the data of each country stays on its own server.');
     const origins = require('../middleware/allowed-origins').configured(e);
     if (origins.rejected.length) problems.push(`ALLOWED_ORIGINS has ${origins.rejected.length} entr${origins.rejected.length === 1 ? 'y' : 'ies'} that will be ignored. Each must be an exact https address with no path and no wildcard.`);
     if (!has('MONITORING_TOKEN')) warnings.push('MONITORING_TOKEN is not set. The detailed health check and the metrics page cannot be read by a monitoring service.');

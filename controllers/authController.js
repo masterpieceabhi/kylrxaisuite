@@ -107,6 +107,12 @@ exports.registerOrganization = async (req, res, next) => {
         return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
     }
 
+    // Is this server for that country? (services/served-countries.js: us.onnhr.com keeps its data in the United States,
+    // in.onnhr.com in India.) A company of another country is pointed to its own address; nothing is created here.
+    const where = require('../services/served-countries').checkSignup(organization.country);
+    if (!where.ok) return res.status(where.status).json({ success: false, code: where.code, error: where.error, country: where.country || null, address: where.address || null });
+    organization.country = where.country; // the server's own country when none was sent and it serves exactly one
+
     // Country decides the defaults. Before this, a company that named a country but no time zone, currency or
     // fiscal year was given India's (Asia/Kolkata, INR, April), whatever the country.
     const countryConfig = getCountryConfig(organization.country);

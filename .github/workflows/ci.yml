@@ -40,6 +40,33 @@ jobs:
       - name: Server starts without syntax errors
         run: node --check server.js
 
+  rules:
+    # The database rules are the only thing between a signed-in person with the public web key and the data, and
+    # their tests need the Firestore emulator. In the "test" job above there is no emulator, so those tests are
+    # skipped there; this job starts one and fails if they could not run.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-real-0123456789
+      REFRESH_SECRET: ci-only-refresh-secret-not-used-anywhere-real-9876543210
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+      REQUIRE_FIRESTORE_EMULATOR: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Install (exactly the lock file)
+        run: npm ci
+      - name: Database rules, against the Firestore emulator
+        run: npm run test:rules
+
   audit:
     # Reports known problems in the libraries. It does not fail the build yet: see the open list in docs/DEPLOY.md.
     runs-on: ubuntu-latest

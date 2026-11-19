@@ -47,7 +47,7 @@ const useEmulator = !serviceAccount && !!process.env.FIRESTORE_EMULATOR_HOST;
 if (serviceAccount || useEmulator) {
   if (!admin.apps.length) {
     admin.initializeApp({
-      ...(serviceAccount ? { credential: admin.credential.cert(serviceAccount) } : { projectId: 'kylrxai' }),
+      ...(serviceAccount ? { credential: admin.credential.cert(serviceAccount) } : { projectId: process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || 'kylrxai' } /* emulator only: which pretend project to use */),
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "kylrxai.firebasestorage.app"
     });
     console.log("Firebase Admin SDK initialized successfully!");

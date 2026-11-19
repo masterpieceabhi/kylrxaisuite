@@ -20,6 +20,13 @@ router.post('/verify-mfa', verifyMfa);
 router.post('/verify-otp', verifyMfa);
 router.post('/resend-mfa', resendMfa);
 
+// Public: which countries this server takes, and where the others sign up. For the front door (app.onnhr.com) and the
+// sign-up page, so a person is sent to the right country's address before they fill anything in.
+router.get('/region', (req, res) => {
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ success: true, ...require('../services/served-countries').publicInfo() });
+});
+
 const { verifyToken, authorize } = require('../middleware/authMiddleware');
 
 // Admin-only unlock endpoint (protected with verifyToken and Admin role)
