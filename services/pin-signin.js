@@ -158,7 +158,27 @@ function create(deps) {
         return { saved: true };
     }
 
-    return { start, requestCode, verifyCode, setPin };
+    /**
+     * Remembers this device for a person who has just proved who they are somewhere else (company sign-up, a personal
+     * set-up link). Those steps hand the page a short-lived grant; the page brings it here, where the device cookie is
+     * sent (its path is /api/auth/pin), so a device already known for other people keeps its one token.
+     */
+    async function rememberDevice({ grant, deviceToken: held }) {
+        const g = read(grant, 'device_grant');
+        const person = await deps.findPerson(cleanEmail(g.email));
+        if (!person || person.uid !== g.uid || person.active === false) throw fail(401, 'expired', 'That took too long. Start again.');
+        const deviceToken = /^[a-f0-9]{64}$/.test(String(held || '')) ? String(held) : crypto.randomBytes(32).toString('hex');
+        const devices = [{ h: sha(deviceToken), at: now().toISOString() }, ...(person.signinDevices || []).filter((d) => d && d.h !== sha(deviceToken))].slice(0, MAX_DEVICES);
+        await deps.savePerson(person.uid, { signinDevices: devices });
+        return { remembered: true, deviceToken };
+    }
+
+    return { start, requestCode, verifyCode, setPin, rememberDevice };
 }
 
-module.exports = { create, weakPin, validPin, tenDigits, PIN_MAX_ATTEMPTS, PIN_LOCK_MINUTES, CODE_TTL_SECONDS };
+/** The grant another step hands out for rememberDevice: ten minutes, one person. */
+function deviceGrant(secret, uid, email) {
+    return jwt.sign({ type: 'device_grant', uid, email: cleanEmail(email) }, secret, { expiresIn: CODE_TTL_SECONDS });
+}
+
+module.exports = { create, deviceGrant, weakPin, validPin, tenDigits, PIN_MAX_ATTEMPTS, PIN_LOCK_MINUTES, CODE_TTL_SECONDS };

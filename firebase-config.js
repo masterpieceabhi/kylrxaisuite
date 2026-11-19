@@ -136,8 +136,19 @@ const USE_EMULATOR = (() => {
   }
 })();
 
+// Which Firebase project the pages use. A server set up for its own project (FIREBASE_WEB_CONFIG) says so at
+// /firebase-web-config.json; without that, the built-in values below are used (local development and the emulators).
+const FROM_SERVER = await (async () => {
+  try {
+    if (USE_EMULATOR || typeof window === 'undefined') return null;
+    const base = window.API_BASE || window.location.origin;
+    const res = await fetch(`${base}/firebase-web-config.json`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    return res.ok ? await res.json() : null;
+  } catch (_) { return null; }
+})();
+
 // Your web app's Firebase configuration
-const firebaseConfig = {
+const BUILT_IN_CONFIG = {
   apiKey: "AIzaSyBQCO1FI1mPsWxsTvInyLlwIQVFGnUBlco",
   // On HTTPS the Kylrx server proxies /__/auth to Firebase and is its own authDomain (needed for
   // redirect sign-in). The Firebase SDK always opens https://<authDomain>/__/auth/handler, so on
@@ -151,6 +162,14 @@ const firebaseConfig = {
   appId: "1:483232913511:web:769faab820b2eead141cc2",
   measurementId: "G-3F6VW2MEJG"
 };
+const firebaseConfig = FROM_SERVER && FROM_SERVER.projectId && FROM_SERVER.apiKey
+  ? {
+      ...FROM_SERVER,
+      authDomain: (typeof window !== 'undefined' && window.location.protocol === 'https:' && window.location.host)
+        ? window.location.host
+        : `${FROM_SERVER.projectId}.firebaseapp.com`
+    }
+  : BUILT_IN_CONFIG;
 
 // Resilient Firebase initialization with InPrivate / Private-mode graceful degradation
 // Long-polling fallback enabled via experimentalAutoDetectLongPolling: true

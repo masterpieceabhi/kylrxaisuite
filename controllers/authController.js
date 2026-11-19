@@ -155,17 +155,9 @@ exports.registerOrganization = async (req, res, next) => {
             throw authErr;
         }
 
-        // With a PIN: it is stored hashed, and this device is remembered so the PIN signs in here next time
-        let pinFields = null; let deviceToken = null;
-        if (usePin) {
-            const crypto = require('crypto');
-            const held = /(?:^|;\s*)onnhr_device=([a-f0-9]{64})(?:;|$)/.exec(String(req.headers.cookie || ''));
-            deviceToken = held ? held[1] : crypto.randomBytes(32).toString('hex');
-            pinFields = {
-                pinHash: await bcrypt.hash(pin, 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: new Date().toISOString(),
-                signinDevices: [{ h: crypto.createHash('sha256').update(deviceToken).digest('hex'), at: new Date().toISOString() }]
-            };
-        }
+        // With a PIN it is stored hashed. The device is remembered afterwards by the page, through /api/auth/pin/remember
+        // (the device cookie is sent only to /api/auth/pin, so it cannot be read or set safely from here).
+        const pinFields = usePin ? { pinHash: await bcrypt.hash(pin, 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: new Date().toISOString() } : null;
 
         // Set claims straight away so the onUserCreated Cloud Function sees them and skips
         await admin.auth().setCustomUserClaims(uid, { role: 'super_admin', super_admin: true, orgId });
@@ -287,12 +279,14 @@ exports.registerOrganization = async (req, res, next) => {
         })]).finally(() => clearTimeout(timer));
 
         logger.info(`Organization signup completed: ${orgId} by ${uid}`);
-        let token;
+        let extra = {};
         if (usePin) {
-            res.cookie('onnhr_device', deviceToken, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
-            token = await admin.auth().createCustomToken(uid); // the page signs in with this; no password exists to type
+            extra = {
+                token: await admin.auth().createCustomToken(uid), // the page signs in with this; no password exists to type
+                deviceGrant: require('../services/pin-signin').deviceGrant(JWT_SECRET, uid, officialEmail)
+            };
         }
-        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency, ...(token ? { token } : {}) });
+        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency, ...extra });
     } catch (error) {
         // Roll back the Auth user so the person can retry with the same email
         if (uid) {

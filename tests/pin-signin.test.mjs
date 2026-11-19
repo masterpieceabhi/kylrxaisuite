@@ -196,3 +196,18 @@ test('the code is shown to the page only on a development server', async () => {
     const out = await dev.byEmail({ email: 'ana@shop.test', pin: '' });
     assert.equal(out.devCode, dev.sent[0].code);
 });
+
+test('a device grant from sign-up or a set-up link adds this device without pushing out the people already on it', async () => {
+    const w = world(); await w.add('u1', 'ana@shop.test', '4826'); await w.add('u2', 'ben@shop.test', '1357');
+    const shared = await w.knownDevice('ana@shop.test', '4826');
+    const grant = pinSignin.deviceGrant('test-secret', 'u2', 'Ben@Shop.test');
+    const out = await w.service.rememberDevice({ grant, deviceToken: shared });
+    assert.equal(out.deviceToken, shared, 'the shared device keeps its one token');
+    assert.equal((await w.service.start({ email: 'ana@shop.test', pin: '4826', deviceToken: shared })).next, 'signed_in');
+    assert.equal((await w.service.start({ email: 'ben@shop.test', pin: '1357', deviceToken: shared })).next, 'signed_in');
+    const fresh = await w.service.rememberDevice({ grant, deviceToken: '' });
+    assert.match(fresh.deviceToken, /^[a-f0-9]{64}$/);
+    await rejects(w.service.rememberDevice({ grant: 'made.up.token' }), 'expired');
+    await rejects(w.service.rememberDevice({ grant: pinSignin.deviceGrant('other-secret', 'u2', 'ben@shop.test') }), 'expired');
+    await rejects(w.service.rememberDevice({ grant: pinSignin.deviceGrant('test-secret', 'u1', 'ben@shop.test') }), 'expired'); // the grant names someone else
+});

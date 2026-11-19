@@ -68,13 +68,11 @@ router.post('/team/setup/complete', actLimiter, async (req, res) => {
     noStore(res);
     const b = req.body || {};
     if (typeof b.pin === 'string' && b.pin) {
-        // the same cookie, path and lifetime as routes/pin-signin.js: this device is now known for the PIN sign-in
-        const held = /(?:^|;\s*)onnhr_device=([a-f0-9]{64})(?:;|$)/.exec(String(req.headers.cookie || ''));
-        const p = await svc.completeSetupWithPin(b.token, b.pin.slice(0, 12), held ? held[1] : '');
+        const p = await svc.completeSetupWithPin(b.token, b.pin.slice(0, 12));
         if (!p.ok) return res.status(p.status).json({ success: false, error: p.status === 404 ? DEAD_LINK : p.error });
         auditFor(p.orgId, req, 'us_setup_link_used', p.uid);
-        res.cookie('onnhr_device', p.deviceToken, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
-        return res.json({ success: true, email: p.email, next: 'us-onboarding.html', token: p.signinToken });
+        // the page takes deviceGrant to /api/auth/pin/remember, where the device cookie lives
+        return res.json({ success: true, email: p.email, next: 'us-onboarding.html', token: p.signinToken, deviceGrant: p.deviceGrant });
     }
     const r = await svc.completeSetup(b.token, typeof b.password === 'string' ? b.password : '');
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.status === 404 ? DEAD_LINK : r.error });

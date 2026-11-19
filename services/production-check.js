@@ -69,6 +69,12 @@ function checkProductionEnv(env, opts = {}) {
     if (!stripeOn && has('STRIPE_SECRET_KEY')) warnings.push('STRIPE_SECRET_KEY is set but BILLING_PROVIDER is not "stripe", so billing still runs in practice mode.');
     if (!stripeOn && !has('STRIPE_SECRET_KEY')) warnings.push('Stripe is not set up (BILLING_PROVIDER=stripe, STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET). Billing runs in practice mode.');
 
+    let web = null;
+    try { web = JSON.parse(e.FIREBASE_WEB_CONFIG || 'null'); } catch (_) { web = null; }
+    if (!has('FIREBASE_WEB_CONFIG')) problems.push('FIREBASE_WEB_CONFIG is not set. The pages would sign people in to the built-in development Firebase project, not this server\'s own. Paste the web app settings from the Firebase console as one line of JSON.');
+    else if (!web || !web.apiKey || !web.projectId) problems.push('FIREBASE_WEB_CONFIG is not readable. It must be one line of JSON with at least apiKey and projectId.');
+    else if (web.projectId === 'kylrxai') warnings.push('FIREBASE_WEB_CONFIG names the "kylrxai" project. For US customers use Prompt AI\'s own project.');
+
     if (e.DAILY_JOBS === 'off') warnings.push('DAILY_JOBS is "off". Nothing deletes expired data or makes a backup by itself.');
     else {
         if (e.RETENTION_AUTO !== 'on') warnings.push('RETENTION_AUTO is not "on". The daily run only counts what has passed its retention date; it deletes nothing. Turn it on once the retention periods are confirmed.');

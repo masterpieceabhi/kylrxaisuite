@@ -145,6 +145,7 @@ $('setup').addEventListener('submit', async (ev) => {
     history.replaceState(null, '', location.pathname); // the link is used up; take it out of the address bar
     show('done');
     try {
+      if (r.deviceGrant) await fetch('/api/auth/pin/remember', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ grant: r.deviceGrant }) }).catch(() => {}); // so the PIN signs in on this device next time
       await signInWithCustomToken(auth, r.token);
       window.location.replace(r.next === 'us-onboarding.html' ? 'us-onboarding.html' : 'login.html');
     } catch (_) { say(tr('signInFail'), true); $('done').querySelector('[data-t=doneP]').hidden = true; }

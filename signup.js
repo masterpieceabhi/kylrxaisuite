@@ -727,6 +727,7 @@ async function executeRegistrationAndOrganizationSetup() {
         console.log(`✅ Organization ${orgId} and Super Admin ${result.uid} provisioned`);
 
         // Sign in so the session carries the new super_admin custom claims
+        if (result.deviceGrant) await fetch('/api/auth/pin/remember', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ grant: result.deviceGrant }) }).catch(() => {}); // so the PIN signs in on this device next time
         await (result.token ? signInWithCustomToken(auth, result.token) : signInWithEmailAndPassword(auth, officialEmail, password));
         console.log(`✅ Signed in as ${officialEmail}`);
 

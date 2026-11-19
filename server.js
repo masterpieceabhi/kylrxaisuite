@@ -56,7 +56,22 @@ const PORT = process.env.PORT || 3000;
 // 0. Firebase Auth reverse proxy (/__/auth/*, /__/firebase/*) so Google sign-in can use
 // signInWithRedirect with this server as authDomain (same-origin, no popup, no third-party
 // storage). Registered first so helmet's CSP and the body sanitizer don't touch Google's pages.
-const FIREBASE_AUTH_HOST = 'https://kylrxai.firebaseapp.com';
+// The browser's Firebase settings for this server's own project (FIREBASE_WEB_CONFIG, the web app settings from the
+// Firebase console as one line of JSON). They are public by design: Firebase protects data with sign-in and rules.
+const WEB_CONFIG_KEYS = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'];
+const FIREBASE_WEB_CONFIG = (() => {
+    try {
+        const raw = JSON.parse(process.env.FIREBASE_WEB_CONFIG || 'null');
+        if (!raw || typeof raw !== 'object' || !raw.apiKey || !/^[a-z0-9-]{4,40}$/.test(String(raw.projectId || ''))) return null;
+        return Object.fromEntries(WEB_CONFIG_KEYS.filter((k) => typeof raw[k] === 'string' && raw[k].length < 200).map((k) => [k, raw[k]]));
+    } catch (_) { return null; }
+})();
+app.get('/firebase-web-config.json', (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    if (!FIREBASE_WEB_CONFIG) return res.status(404).json({ error: 'not set' }); // the pages then use their built-in values
+    res.json(FIREBASE_WEB_CONFIG);
+});
+const FIREBASE_AUTH_HOST = `https://${FIREBASE_WEB_CONFIG ? FIREBASE_WEB_CONFIG.projectId : 'kylrxai'}.firebaseapp.com`;
 app.use(['/__/auth', '/__/firebase'], async (req, res) => {
     try {
         const upstream = await fetch(FIREBASE_AUTH_HOST + req.originalUrl, {

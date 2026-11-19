@@ -1,0 +1,28 @@
+# Onn HR, one copy of the server (the background jobs and the sign-in rate limit live in its memory).
+# Installed by deploy/setup-server.sh as /etc/systemd/system/onnhr.service.
+[Unit]
+Description=Onn HR app server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=onnhr
+Group=onnhr
+WorkingDirectory=/srv/onnhr/app
+EnvironmentFile=/etc/onnhr/onnhr.env
+# refuses to start when a required setting is missing or wrong (npm run check:production)
+ExecStartPre=/usr/bin/node scripts/check-production-env.js
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+# only these folders can be written; everything else is read-only to the app
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/srv/onnhr/vault /srv/onnhr/backups /srv/onnhr/logs
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

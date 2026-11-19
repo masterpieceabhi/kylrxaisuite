@@ -108,6 +108,7 @@ const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sam
 router.post('/pin/start', limiter, run((b, req) => service.start({ email: text(b.email, 254), pin: text(b.pin, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
+router.post('/pin/remember', limiter, run((b, req) => service.rememberDevice({ grant: text(b.grant, 2000), deviceToken: deviceOf(req) })));
 router.post('/pin/set', limiter, run((b) => service.setPin({ setupToken: text(b.setupToken, 2000), pin: text(b.pin, 12) })));
 
 module.exports = router;
