@@ -1,0 +1,5 @@
+
+# server files run on Linux: always Linux line endings, whatever this PC prefers
+deploy/*.sh text eol=lf
+deploy/onnhr.service text eol=lf
+deploy/onnhr.env.template text eol=lf
