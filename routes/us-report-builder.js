@@ -215,7 +215,8 @@ async function runDue() {
 let timer = null;
 function startJobs() {
     if (timer) return false;
-    const tick = () => runDue().catch((err) => console.error(`[ReportBuilder] schedule check failed: ${err.message}`));
+    const due = require('../services/job-lock').guard('report_copies', 60 * 60 * 1000, runDue); // one copy of the server makes the dated copies
+    const tick = () => due().catch((err) => console.error(`[ReportBuilder] schedule check failed: ${err.message}`));
     setTimeout(tick, 60 * 1000).unref();
     timer = setInterval(tick, 60 * 60 * 1000); timer.unref();
     return true;

@@ -232,7 +232,7 @@ router.get('/approvals', APPROVAL_VIEWER, requireOrg, async (req, res) => {
     const rows = (await teamScope.filterRows(req.user, req.orgId, snap.docs.map((d) => ({ id: d.id, ...d.data() })), 'time')).filter((w) => w.status === status)
         .sort((a, b) => b.weekStart.localeCompare(a.weekStart) || String(a.name).localeCompare(String(b.name)));
     res.json({ success: true, status, count: rows.length, canDecide: perms.can(req.user, 'time.approve') || perms.can(req.user, 'time.approve_team'), canReopen: perms.can(req.user, 'time.approve'),
-        data: rows.slice(0, 300).map((w) => ({ ...w, weekEnd: weekEndOf(w) })) });
+        ...require('../utils/paging').pageFields(rows, req.query, 300, (w) => ({ ...w, weekEnd: weekEndOf(w) })) });
 });
 
 /**
@@ -367,7 +367,7 @@ router.get('/corrections', requireOrg, async (req, res) => {
     if (scope !== 'mine') rows = await teamScope.filterRows(req.user, req.orgId, rows, 'time');
     if (scope === 'pending') rows = rows.filter((r) => r.status === 'pending');
     rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    res.json({ success: true, count: rows.length, data: rows.slice(0, 200) });
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows, req.query, 200) });
 });
 
 router.put('/corrections/:id/decision', APPROVER, requireOrg, async (req, res) => {

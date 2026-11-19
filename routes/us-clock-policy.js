@@ -291,7 +291,8 @@ router.put(`${base}/exceptions/:id/resolve`, REVIEWER, requireUsOrg, async (req,
 /* ------------------------------ hourly photo purge ------------------------------ */
 
 if (process.env.NODE_ENV !== 'test' && !process.env.DISABLE_PHOTO_PURGE_JOB) {
-    const timer = setInterval(() => { io.purgeExpiredPhotos().catch((e) => logger.error(`Photo purge failed: ${e.message}`)); }, 60 * 60 * 1000);
+    const purge = require('../services/job-lock').guard('photo_purge', 60 * 60 * 1000, () => io.purgeExpiredPhotos());
+    const timer = setInterval(() => { purge().catch((e) => logger.error(`Photo purge failed: ${e.message}`)); }, 60 * 60 * 1000);
     if (timer.unref) timer.unref();
 }
 

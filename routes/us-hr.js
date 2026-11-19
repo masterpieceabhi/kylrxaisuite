@@ -41,6 +41,10 @@ function orgIdOf(req) {
 }
 
 /** Loads the caller's organization and refuses anything that is not a US company. */
+// What a company with a suspended or cancelled subscription may still change: its billing, privacy requests, and each
+// person's own things (notices, sign-in set-up)
+const BILLING_FREE = new RegExp('^/api/us/(billing|privacy|me)(/|\\?|$)');
+
 async function requireUsOrg(req, res, next) {
     const orgId = orgIdOf(req);
     if (!orgId) return res.status(404).json({ success: false, error: 'No organization for this user' });
@@ -52,6 +56,14 @@ async function requireUsOrg(req, res, next) {
         }
         req.orgId = orgId;
         req.org = data;
+        // A company whose subscription is suspended or cancelled can still read everything, clock in, send hours, pay its
+        // bill and use its privacy rights, but cannot change anything else. Off unless BILLING_ENFORCE=on, so a server
+        // that has not set up billing behaves as before. (The clock and timesheet routes are under /api/time and are
+        // not held back: hours worked must always be recorded.)
+        if (process.env.BILLING_ENFORCE === 'on' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !BILLING_FREE.test(req.originalUrl || '')) {
+            const bill = await require('../services/billing-service').getBillingState(orgId);
+            if (bill.readOnly) return res.status(402).json({ success: false, code: 'account_read_only', billingState: bill.state, error: 'This company account is read-only because of a billing problem. The owner can fix it in Billing.' });
+        }
         next();
     } catch (error) {
         logger.error(`US org lookup failed: ${error.message}`);
@@ -146,7 +158,7 @@ router.get('/employees', PEOPLE_LIST, requireUsOrg, async (req, res) => {
     const snaps = await Promise.all(PEOPLE_COLLECTIONS.map((name) => db.collection(name).get()));
     const rows = snaps.flatMap((s) => s.docs)
         .filter((d) => d.data().orgId === req.orgId && d.data().employeeId)
-        .slice(0, 500)
+        .sort((a, b) => String(a.data().employeeId).localeCompare(String(b.data().employeeId), undefined, { numeric: true }))
         .map((d) => {
             const row = publicProfile({ id: d.id, data: d.data(), usProfile: d.data().usProfile });
             return {
@@ -158,7 +170,8 @@ router.get('/employees', PEOPLE_LIST, requireUsOrg, async (req, res) => {
                 lastDay: (d.data().usProfile && d.data().usProfile.termination && d.data().usProfile.termination.lastDay) || null
             };
         });
-    res.json({ success: true, count: rows.length, data: rows });
+    // sorted by employee number; up to 500 at a time, with nextCursor when the company has more
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows, req.query, 500) });
 });
 
 router.get('/employees/:id/profile', requireUsOrg, async (req, res) => {

@@ -189,7 +189,7 @@ router.get('/leave/requests', requireUsOrg, async (req, res) => {
     }
     if (req.query.status) rows = rows.filter((r) => r.status === req.query.status);
     rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    res.json({ success: true, count: rows.length, data: rows.slice(0, 300) });
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows, req.query, 300) });
 });
 
 router.put('/leave/requests/:id/decision', LEAVE_DECIDER, requireUsOrg, async (req, res) => {

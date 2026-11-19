@@ -199,7 +199,7 @@ router.get('/hiring/candidates', view, requireUsOrg, async (req, res) => {
     for (const k of ['stage', 'requisitionId', 'source']) if (req.query[k]) rows = rows.filter((c) => c[k] === req.query[k]);
     if (req.query.q) { const q = String(req.query.q).toLowerCase(); rows = rows.filter((c) => `${c.name} ${c.email}`.toLowerCase().includes(q)); }
     rows.sort((a, b) => String(b.appliedAt).localeCompare(String(a.appliedAt)));
-    res.json({ success: true, count: rows.length, data: rows.slice(0, 500).map((c) => pubCand(c.id, c)) });
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows, req.query, 500, (c) => pubCand(c.id, c)) });
 });
 
 router.get('/hiring/candidates/:id', view, requireUsOrg, async (req, res) => {

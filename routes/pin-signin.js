@@ -36,6 +36,8 @@ async function findPerson(email) {
     return {
         uid, email, phone: d.phone || (d.usProfile && (d.usProfile.mobilePhone || d.usProfile.phone)) || '', pinHash: d.pinHash || null, pinAttempts: d.pinAttempts || 0, pinLockedUntil: d.pinLockedUntil || null,
         signinDevices: Array.isArray(d.signinDevices) ? d.signinDevices : [],
+        // the authenticator app, when the person has set one up (routes/authenticator.js); the secret is stored encrypted
+        totp: require('../services/authenticator').forSignin(uid, d.totp),
         active: !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(d.status || 'Active'))
     };
 }
@@ -80,6 +82,7 @@ async function sendText(phone, code) {
 }
 
 const service = pinSignin.create({
+    totp: require('../services/totp'),
     findPerson, savePerson, sendCode, sendText,
     otp: require('../services/otp-verification-service'),
     mintToken: (uid) => admin.auth().createCustomToken(uid),

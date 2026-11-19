@@ -132,7 +132,7 @@ service cloud.firestore {
     function serverKeptUserFields() {
       return ['password', 'passwordHash', 'must_change_password', 'is_temporary_password', 'setup_pending',
         'pinHash', 'pinAttempts', 'pinLockedUntil', 'pinSetAt', 'usProfile', 'usForms', 'superAdmin',
-        'sessionsValidAfter', 'signinDevices'];
+        'sessionsValidAfter', 'signinDevices', 'totp'];
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -515,7 +515,7 @@ service cloud.firestore {
     // belongs here when a route or service uses it and no page does. Split in two lists to keep each one short.
     function isServerOnlyCollection(name) {
       return name in [
-        'signin_qr_links',
+        'signin_qr_links', 'job_locks', 'platform_jobs',
         'aca_offers', 'alerts', 'analytics_dashboards', 'announcement_reads', 'announcements', 'api_access_log',
         'api_idempotency', 'api_keys', 'approval_resolutions', 'asset_audit_logs', 'asset_declarations', 'attendance_policies',
         'audit_chain', 'automation_audit_logs', 'automation_runs', 'automations', 'background_checks', 'benefit_enrollments',

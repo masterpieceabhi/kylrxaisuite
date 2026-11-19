@@ -254,6 +254,9 @@ const ERROR_TEXT = {
 
 const kioskLimiter = rateLimit({
     windowMs: 60 * 1000, max: 40, standardHeaders: true, legacyHeaders: false,
+    // Counted per tablet, not per network address: three tablets in one store share an address, and each gets its
+    // own forty tries a minute. A request with no usable tablet key is counted by address.
+    keyGenerator: (req) => { const k = String(req.get('X-Kiosk-Key') || ''); return k.length >= 20 ? `kiosk:${sha256(k)}` : rateLimit.ipKeyGenerator(req.ip || ''); },
     message: { success: false, error: 'Too many attempts. Please wait a minute.' }
 });
 
@@ -292,11 +295,15 @@ router.post('/kiosk/identify', kioskLimiter, async (req, res) => {
     const generic = () => res.status(401).json({ success: false, code: 'wrong_pin', error: 'Number or PIN is not right' });
     if (!doc) { await bcrypt.compare(pin, '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvali'); return generic(); }
     const u = doc.data();
-    if (u.status && !['active', 'terminating'].includes(String(u.status).toLowerCase())) return res.status(403).json({ success: false, code: 'inactive', error: 'This account is not active' });
-    if (u.pinLockedUntil && new Date(u.pinLockedUntil) > new Date()) {
-        return res.status(423).json({ success: false, code: 'locked', error: 'Too many wrong tries. Ask your manager for help.' });
-    }
-    const ok = u.pinHash ? await bcrypt.compare(pin, u.pinHash) : false;
+    // The PIN is checked before anything is said about the account. "Not active" and "locked" are told only to someone
+    // who typed the right PIN; with a wrong one the answer is the same as for a number that does not exist, so the
+    // keypad cannot be used to find out which employee numbers are real.
+    const inactive = Boolean(u.status && !['active', 'terminating'].includes(String(u.status).toLowerCase()));
+    const locked = Boolean(u.pinLockedUntil && new Date(u.pinLockedUntil) > new Date());
+    const ok = u.pinHash ? await bcrypt.compare(pin, u.pinHash) : (await bcrypt.compare(pin, '$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvali'), false);
+    if (ok && inactive) return res.status(403).json({ success: false, code: 'inactive', error: 'This account is not active' });
+    if (ok && locked) return res.status(423).json({ success: false, code: 'locked', error: 'Too many wrong tries. Ask your manager for help.' });
+    if (!ok && (inactive || locked)) return generic(); // no more counting while locked: the lock already runs its time
     if (!ok) {
         const attempts = (u.pinAttempts || 0) + 1;
         const patch = { pinAttempts: attempts };

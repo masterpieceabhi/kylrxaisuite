@@ -98,6 +98,27 @@ async function previewDeletion(orgId, userId, settings, todayIso = nowIso().slic
 }
 
 /* ------------------------------ access export ------------------------------ */
+
+/**
+ * The newer records about a person, for their copy of their data: approved weeks, punch fixes, shifts, changes to
+ * their time-off balance, what they were paid, their pay history and the notices they were sent. Each is cut to the
+ * fields that are about the person; who decided something, internal ids and anything secret are left out (P.redact
+ * also masks account-like numbers).
+ */
+function moreForExport(more) {
+    const m = { weeks: [], corrections: [], shifts: [], adjustments: [], payResults: [], compHistory: [], notices: [], ...(more || {}) };
+    const pick = (o, keys) => P.redact(Object.fromEntries(keys.filter((k) => o[k] !== undefined && o[k] !== null).map((k) => [k, o[k]])));
+    const by = (key) => (a, b) => String(b[key] || '').localeCompare(String(a[key] || ''));
+    return {
+        timesheetWeeks: [...m.weeks].sort(by('weekStart')).map((w) => pick(w, ['weekStart', 'weekEnd', 'status', 'submittedAt', 'decidedAt', 'decisionNote', 'totals', 'days', 'holidayPay', 'timeZone'])),
+        punchFixes: [...m.corrections].sort(by('createdAt')).map((c) => pick(c, ['kind', 'type', 'localDate', 'at', 'originalAt', 'reason', 'status', 'createdAt', 'decidedAt', 'decisionNote'])),
+        shifts: m.shifts.filter((x) => x.status !== 'draft').sort(by('date')).map((x) => pick(x, ['date', 'startTime', 'endTime', 'status', 'role', 'notes', 'publishedAt'])),
+        timeOffAdjustments: [...m.adjustments].sort(by('date')).map((a) => pick(a, ['date', 'hours', 'reason', 'createdAt'])),
+        payResults: [...m.payResults].sort(by('payDate')).map((r) => pick(r, ['payDate', 'periodStart', 'periodEnd', 'status', 'currency', 'gross', 'net', 'employeeTaxes', 'deductions', 'hours', 'source'])),
+        payHistory: [...m.compHistory].sort(by('effectiveDate')).map((r) => pick(r, ['effectiveDate', 'payType', 'payRate', 'payFrequency', 'jobTitle', 'reason', 'status', 'createdAt'])),
+        notices: [...m.notices].sort(by('createdAt')).slice(0, 500).map((n) => pick(n, ['type', 'title', 'message', 'createdAt', 'read']))
+    };
+}
 const exportFileId = (requestId) => `privx_${requestId}`;
 
 async function generateExport(orgId, request, settings, requestRef) {
@@ -107,6 +128,7 @@ async function generateExport(orgId, request, settings, requestRef) {
         now: nowIso(), requestId: request.id, user: g.user, punches: g.punches.sort((a, b) => String(b.at).localeCompare(String(a.at))), leave: g.leave,
         documents: g.docs.filter((d) => !d.deleted), consents: g.consents, eeo: g.eeo, audit: g.audit, requests: g.requests
     });
+    Object.assign(bundle, moreForExport(g.more));
     const buf = Buffer.from(JSON.stringify(bundle, null, 2), 'utf8');
     const fileId = exportFileId(request.id);
     await store.removeFile(orgId, fileId).catch(() => {});
@@ -204,7 +226,7 @@ async function executeDeletion(orgId, userId, settings, todayIso = nowIso().slic
                     await deleteDocs('schedule_notices', ((g.more || {}).notices || []).map((x) => x.id));
                     await deleteDocs('signin_qr_links', ((g.more || {}).qrLinks || []).map((x) => x.id));
                     await deleteDocs('gusto_links', ((g.more || {}).gustoLinks || []).map((x) => x.id));
-                    await userRef.update({ pinHash: FV.delete(), signinDevices: FV.delete(), password: FV.delete() });
+                    await userRef.update({ pinHash: FV.delete(), signinDevices: FV.delete(), password: FV.delete(), totp: FV.delete() });
                     try { await admin.auth().deleteUser(userId); } catch (e) { if (e.code !== 'auth/user-not-found') logger.warn(`Auth user removal failed for ${userId}: ${e.message}`); }
                     break;
                 }
@@ -226,4 +248,4 @@ async function applyFlags(orgId, userId, type, on = true) {
     return key;
 }
 
-module.exports = { loadSettings, saveSettings, gather, planningFacts, previewDeletion, generateExport, readExport, executeDeletion, applyFlags, exportFileId };
+module.exports = { moreForExport, loadSettings, saveSettings, gather, planningFacts, previewDeletion, generateExport, readExport, executeDeletion, applyFlags, exportFileId };

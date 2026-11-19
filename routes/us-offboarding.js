@@ -48,7 +48,8 @@ async function applyDueTerminations() {
 }
 
 if (process.env.NODE_ENV !== 'test') {
-    const run = () => applyDueTerminations().catch((e) => logger.error(`Termination job failed: ${e.message}`));
+    const due = require('../services/job-lock').guard('exits_taking_effect', 60 * 60 * 1000, applyDueTerminations);
+    const run = () => due().catch((e) => logger.error(`Termination job failed: ${e.message}`));
     setTimeout(run, 15000).unref();
     setInterval(run, 60 * 60 * 1000).unref();
 }

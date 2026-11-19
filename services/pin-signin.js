@@ -103,7 +103,17 @@ function create(deps) {
     /** Sends the code by email or by text. The answer is the same whether or not anything was sent. */
     async function requestCode({ challenge, via, phone }) {
         const c = read(challenge, 'signin_choose');
-        if (via !== 'email' && via !== 'phone') throw fail(400, 'bad_input', 'Choose email or text message.');
+        if (via === 'app') {
+            // A code from an authenticator app (services/totp.js). Nothing is sent, and the answer does not say whether
+            // this person has set an app up: that is only learnt by typing a code that works.
+            const usableChoice = !c.none && c.uid;
+            return {
+                next: 'code', via: 'app', message: 'Open your authenticator app and type the 6-digit code for Onn HR.',
+                challenge: sign(usableChoice ? { type: 'signin_code', uid: c.uid, email: c.email, pinOk: Boolean(c.pinOk), hasPin: Boolean(c.hasPin), via: 'app' }
+                    : { type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS)
+            };
+        }
+        if (via !== 'email' && via !== 'phone') throw fail(400, 'bad_input', 'Choose email, text message or authenticator app.');
         const typed = tenDigits(phone);
         if (via === 'phone' && !typed) throw fail(400, 'bad_input', 'Enter your mobile number with its area code.');
         const out = {
@@ -134,15 +144,34 @@ function create(deps) {
         const c = read(challenge, 'signin_code');
         const wrong = () => fail(401, 'wrong_code', 'That code is not right, or it has run out.');
         if (c.none || !/^\d{4,8}$/.test(String(code || ''))) throw wrong();
-        const res = deps.otp.verifyOtp({ otpId: c.otpId, identifier: c.email, purpose: 'pin_signin', code: String(code) });
-        if (!res || !(res.success || res.valid || res.verified)) throw wrong();
-        const person = await deps.findPerson(c.email);
-        if (!person || person.uid !== c.uid || person.active === false) throw wrong();
+        let person;
+        let appPatch = {};
+        if (c.via === 'app') {
+            person = await deps.findPerson(c.email);
+            if (!person || person.uid !== c.uid || person.active === false) throw wrong();
+            const t = person.totp;
+            if (!t || !t.secret) throw wrong(); // no app set up: the same answer as a wrong code
+            if (t.lockedUntil && new Date(t.lockedUntil) > now()) throw wrong();
+            const r = deps.totp.verify(t.secret, code, now().getTime(), { lastCounter: t.lastCounter });
+            if (!r.ok) {
+                const attempts = (t.attempts || 0) + 1;
+                await deps.savePerson(person.uid, attempts >= CODE_MAX_ATTEMPTS
+                    ? { 'totp.attempts': 0, 'totp.lockedUntil': new Date(now().getTime() + PIN_LOCK_MINUTES * 60000).toISOString() }
+                    : { 'totp.attempts': attempts });
+                throw wrong();
+            }
+            appPatch = { 'totp.lastCounter': r.counter, 'totp.attempts': 0, 'totp.lockedUntil': null, 'totp.lastUsedAt': now().toISOString() };
+        } else {
+            const res = deps.otp.verifyOtp({ otpId: c.otpId, identifier: c.email, purpose: 'pin_signin', code: String(code) });
+            if (!res || !(res.success || res.valid || res.verified)) throw wrong();
+            person = await deps.findPerson(c.email);
+            if (!person || person.uid !== c.uid || person.active === false) throw wrong();
+        }
 
         // a device that already holds a token keeps it, so two people who share a screen do not push each other out
         const deviceToken = /^[a-f0-9]{64}$/.test(String(held || '')) ? String(held) : crypto.randomBytes(32).toString('hex');
         const devices = [{ h: sha(deviceToken), at: now().toISOString() }, ...(person.signinDevices || []).filter((d) => d && d.h !== sha(deviceToken))].slice(0, MAX_DEVICES);
-        await deps.savePerson(person.uid, { signinDevices: devices, lastCodeSigninAt: now().toISOString() });
+        await deps.savePerson(person.uid, { signinDevices: devices, lastCodeSigninAt: now().toISOString(), ...appPatch });
         return {
             next: 'signed_in', token: await deps.mintToken(person.uid), deviceToken,
             hasPin: Boolean(person.pinHash), pinWasRight: Boolean(c.pinOk),

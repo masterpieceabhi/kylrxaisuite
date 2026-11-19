@@ -262,14 +262,18 @@ async function tick() {
     }
 }
 /** Called by emit() after it writes to the outbox */
-function kick() { if (timer) setImmediate(tick); }
+function kick() { if (timer) setImmediate(leased || tick); }
+let leased = null; // tick, run only on the copy of the server that holds the lease (services/job-lock.js)
 
 function start({ intervalMs = 5000 } = {}) {
     if (timer) return;
-    timer = setInterval(tick, intervalMs);
+    // Only the copy of the server that holds the lease delivers, on the timer and when emit() asks for it at once.
+    // On another copy a new event waits for the holder's next tick (a few seconds).
+    leased = require('./job-lock').guard('webhook_delivery', intervalMs, tick);
+    timer = setInterval(leased, intervalMs);
     if (timer.unref) timer.unref();
 }
-function stop() { if (timer) clearInterval(timer); timer = null; }
+function stop() { if (timer) clearInterval(timer); timer = null; leased = null; }
 
 async function replay(orgId, deliveryId) {
     const snap = await rawCollection('webhook_deliveries').doc(String(deliveryId)).get();

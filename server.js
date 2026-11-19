@@ -133,7 +133,8 @@ app.use(helmet({
 // 3. Rate Limiting (100 requests per 15 mins for external clients, relaxed for localhost / tests)
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
-    max: process.env.NODE_ENV === 'test' ? 10000 : 2000,
+    // per network address. A whole workplace often shares one address, so a large site can raise it with API_RATE_LIMIT.
+    max: process.env.NODE_ENV === 'test' ? 10000 : (Number(process.env.API_RATE_LIMIT) >= 100 ? Math.floor(Number(process.env.API_RATE_LIMIT)) : 2000),
     skip: (req) => {
         if (process.env.NODE_ENV === 'test') return true;
         if (process.env.NODE_ENV === 'production') return false;

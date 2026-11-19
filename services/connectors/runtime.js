@@ -296,7 +296,7 @@ async function noteCrash(d, e) {
         await alerts.recordSyncResult(data.orgId, { id: d.id, name: data.name }, failureStreak, message);
     } catch (_) { /* next tick */ }
 }
-function startScheduler({ intervalMs = 60000 } = {}) { if (timer) return; timer = setInterval(tick, intervalMs); if (timer.unref) timer.unref(); }
+function startScheduler({ intervalMs = 60000 } = {}) { if (timer) return; timer = setInterval(require('../job-lock').guard('connector_scheduler', intervalMs, tick), intervalMs); if (timer.unref) timer.unref(); }
 function stopScheduler() { if (timer) clearInterval(timer); timer = null; }
 
 /** Preview of a mapping on a sample record (for the editor) */

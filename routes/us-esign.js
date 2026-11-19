@@ -149,7 +149,7 @@ router.get('/esign/requests', requirePermission('compliance.view'), requireUsOrg
     let rows = snap.docs.map((d) => S.publicRequest(d.id, d.data(), now));
     for (const k of ['status', 'userId', 'candidateId', 'signerType']) if (req.query[k]) rows = rows.filter((r) => r[k] === req.query[k]);
     rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    res.json({ success: true, count: rows.length, data: rows.slice(0, 500) });
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows, req.query, 500) });
 });
 
 router.get('/esign/reminders', manage, requireUsOrg, async (req, res) => {

@@ -202,6 +202,7 @@ async function health(ctx) {
 function startPollJob({ makeContext, store, intervalMs = 5 * 60 * 1000, log = console }) {
     const timer = setInterval(async () => {
         try {
+            if (!(await require('../job-lock').acquire('gusto_poll', intervalMs))) return; // one copy of the server polls
             for (const orgId of await store.listConnectedOrgIds()) {
                 try { await pollEvents(await makeContext(orgId)); } catch (e) { log.warn && log.warn(`gusto poll failed for ${orgId}: ${errMessage(e)}`); }
             }

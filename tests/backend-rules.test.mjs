@@ -213,3 +213,55 @@ test('the container build file is not handed out, and the page helper for countr
     for (const p of ['/Dockerfile', '/dockerfile', '/DOCKERFILE.', '/.dockerignore']) assert.equal(guard.isBlocked(p), true, `${p} should be refused`);
     assert.equal(guard.isBlocked('/region.js'), false);
 });
+
+/* ------------------------------- one copy of the server runs each background job ------------------------------- */
+
+test('two copies of the server: one holds a job\'s lease and runs it, the other skips; the lease passes on when the holder stops', async () => {
+    const lock = require('../services/job-lock.js');
+    const docs = new Map(); let writes = 0; let clock = 1_000_000;
+    const store = { transact: async (name, fn) => { const out = fn(docs.get(name) || null); if (out.write) { docs.set(name, out.write); writes += 1; } return out.result; } };
+    const copy = (holder) => ({ store, now: () => clock, holder, memory: new Map(), env: {} });
+    const A = copy('A'); const B = copy('B');
+    const HOUR = 3600000;
+
+    assert.equal(await lock.acquire('report_copies', HOUR, A), true, 'the first to ask gets it');
+    assert.equal(await lock.acquire('report_copies', HOUR, B), false, 'the other copy skips');
+    assert.equal(await lock.acquire('exits', HOUR, B), true, 'each job has its own lease');
+    assert.equal(lock.leaseFor(HOUR), 5400000, 'a lease lasts one and a half intervals');
+    assert.equal(lock.leaseFor(5000), 30000, 'and never less than half a minute');
+
+    // the holder keeps it tick after tick; the other keeps skipping
+    for (let i = 0; i < 5; i += 1) { clock += HOUR; assert.equal(await lock.acquire('report_copies', HOUR, A), true); assert.equal(await lock.acquire('report_copies', HOUR, B), false); }
+    // the holder stops: once its lease has run out the other copy takes over
+    clock += 5400001;
+    assert.equal(await lock.acquire('report_copies', HOUR, B), true);
+    assert.equal(await lock.acquire('report_copies', HOUR, A), false, 'and the old holder, back again, now skips');
+
+    // a frequent job does not write to the database on every tick
+    writes = 0;
+    for (let i = 0; i < 12; i += 1) { clock += 5000; assert.equal(await lock.acquire('webhook_delivery', 5000, A), true); }
+    assert.ok(writes <= 4, `one minute of five-second ticks renewed the lease ${writes} times`);
+    assert.equal(await lock.acquire('webhook_delivery', 5000, B), false);
+});
+
+test('a lease that cannot be checked does not stop the jobs, and the switch turns leases off', async () => {
+    const lock = require('../services/job-lock.js');
+    const said = [];
+    const broken = { store: { transact: async () => { throw new Error('database is down'); } }, now: () => 5, holder: 'A', memory: new Map(), env: {}, log: (m) => said.push(m) };
+    lock._reset();
+    assert.equal(await lock.acquire('x', 1000, broken), true, 'a single server must keep working');
+    assert.equal(await lock.acquire('x', 1000, broken), true);
+    assert.equal(said.length, 1, 'said once, not on every tick');
+    const never = { store: { transact: async () => { throw new Error('should not be called'); } }, now: () => 5, holder: 'A', memory: new Map(), env: { JOB_LOCKS: 'off' } };
+    assert.equal(await lock.acquire('x', 1000, never), true);
+    lock._reset();
+
+    // guard(): the job runs with its arguments on the holder, and is skipped (undefined) elsewhere
+    const docs = new Map();
+    const store = { transact: async (name, fn) => { const out = fn(docs.get(name) || null); if (out.write) docs.set(name, out.write); return out.result; } };
+    const ran = [];
+    const onA = lock.guard('job', 60000, async (v) => { ran.push(`A${v}`); return 'done'; }, { store, now: () => 10, holder: 'A', memory: new Map(), env: {} });
+    const onB = lock.guard('job', 60000, async (v) => { ran.push(`B${v}`); return 'done'; }, { store, now: () => 10, holder: 'B', memory: new Map(), env: {} });
+    assert.equal(await onA(1), 'done'); assert.equal(await onB(1), undefined); assert.equal(await onA(2), 'done');
+    assert.deepEqual(ran, ['A1', 'A2']);
+});

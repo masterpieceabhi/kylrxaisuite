@@ -53,6 +53,7 @@ function checkProductionEnv(env, opts = {}) {
         if (w === false) problems.push('VAULT_DIR cannot be written to by the server.');
     }
     if (!has('LOG_DIR')) warnings.push('LOG_DIR is not set. Error logs are written to a "logs" folder inside the app folder.');
+    if (!has('APP_URL')) warnings.push('APP_URL is not set. Links in emails then point at a developer PC instead of this server. Set it to the address people open (for example https://app.onnhr.com).');
     const served = require('./served-countries').configured(e);
     for (const p of served.problems) problems.push(p);
     if (!served.codes.length) warnings.push('SERVED_COUNTRIES is not set. This server then takes companies of every country into one database. Set it (for example SERVED_COUNTRIES=US) so the data of each country stays on its own server.');

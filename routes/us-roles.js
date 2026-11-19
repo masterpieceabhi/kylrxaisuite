@@ -57,7 +57,8 @@ router.get('/me', async (req, res) => {
         success: true,
         user: {
             id: u.id || u.uid || null, employeeId: u.employeeId || null, name: u.name || u.displayName || null, email: u.email || null,
-            role, roleLabel: ROLE_LABELS[role], mustChangePassword: u.must_change_password === true
+            role, roleLabel: ROLE_LABELS[role], mustChangePassword: u.must_change_password === true,
+            authenticatorApp: Boolean(u.totp && u.totp.enabledAt) // a code from an authenticator app can be used to sign in
         },
         permissions: permissionsFor(role),
         company
@@ -90,6 +91,9 @@ router.post('/me/notices/:id/read', requireUsOrg, async (req, res) => {
     if (!n.read) await n.ref.update({ read: true, readAt: new Date().toISOString() });
     res.json({ success: true });
 });
+
+// Setting up an authenticator app for your own sign-in
+router.use(require('./authenticator'));
 
 // A personal one-time QR to sign in with: made here by HR or the owner for one person, or by anyone for themself
 router.use(require('./qr-signin').staff);

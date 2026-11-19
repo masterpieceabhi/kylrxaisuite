@@ -173,7 +173,7 @@ router.get('/training/completions', ...VIEW, async (req, res) => {
     let rows = all.filter((c) => c.status !== 'removed');
     for (const k of ['status', 'userId', 'trainingId']) if (req.query[k]) rows = rows.filter((c) => c[k] === req.query[k]);
     rows.sort((a, b) => String(b.reportedAt || b.completedOn).localeCompare(String(a.reportedAt || a.completedOn)));
-    res.json({ success: true, count: rows.length, waiting: all.filter((c) => c.status === 'reported').length, data: rows.slice(0, 500).map((c) => pubCompletion(c, names, tn)) });
+    res.json({ success: true, count: rows.length, waiting: all.filter((c) => c.status === 'reported').length, ...require('../utils/paging').pageFields(rows, req.query, 500, (c) => pubCompletion(c, names, tn)) });
 });
 
 /** HR records that a person finished a training (counts at once). If the person had reported that day, this confirms it. */

@@ -204,8 +204,9 @@ async function runDue() {
 }
 function startJobs() {
     if (jobTimer || process.env.COMP_HISTORY_JOB === 'off') return false;
-    setTimeout(runDue, 90 * 1000).unref();
-    jobTimer = setInterval(runDue, 60 * 60 * 1000); jobTimer.unref();
+    const due = require('../services/job-lock').guard('comp_changes_due', 60 * 60 * 1000, runDue); // one copy of the server applies the changes that are due
+    setTimeout(due, 90 * 1000).unref();
+    jobTimer = setInterval(due, 60 * 60 * 1000); jobTimer.unref();
     return true;
 }
 // Started when this file loads (as before), so it runs even if nothing else calls startJobs().

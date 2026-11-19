@@ -376,7 +376,7 @@ router.delete('/me/change-requests/:id', requireUsOrg, async (req, res) => {
 router.get('/change-requests', requirePermission('people.read'), requireUsOrg, async (req, res) => {
     const status = req.query.status ? String(req.query.status) : null;
     const rows = (await store.listByOrg('profile_change_requests', req.orgId)).filter((r) => !status || r.status === status);
-    res.json({ success: true, count: rows.length, data: rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 300).map(publicRequest) });
+    res.json({ success: true, count: rows.length, ...require('../utils/paging').pageFields(rows.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), req.query, 300, publicRequest) });
 });
 router.post('/change-requests/:id/approve', requirePermission('people.write'), requireUsOrg, (req, res) => decide(req, res, 'approved'));
 router.post('/change-requests/:id/reject', requirePermission('people.write'), requireUsOrg, (req, res) => decide(req, res, 'rejected'));
