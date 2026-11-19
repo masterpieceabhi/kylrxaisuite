@@ -366,6 +366,31 @@ function applyCountry() {
 }
 countryInput.addEventListener('change', applyCountry);
 
+// This server may take only some countries (region.js): us.onnhr.com keeps its data in the United States,
+// in.onnhr.com in India. The country list then offers the countries served here, and choosing one that is served
+// at another address shows that address instead of letting the person fill in a form the server will refuse.
+let regionInfo = null;
+function showRegionLine(entry, R) {
+    const old = document.getElementById('regionLine'); if (old) old.remove();
+    const line = entry ? R.addressLine(entry, 'sign up', 'signup.html') : null;
+    if (!line) return;
+    line.id = 'regionLine';
+    (countryInput.closest('.form-group') || countryInput.parentElement).appendChild(line);
+}
+import('./region.js').then(async (R) => {
+    regionInfo = await R.loadRegion();
+    if (!regionInfo || !regionInfo.restricted) return;
+    const known = [...regionInfo.serves, ...regionInfo.elsewhere];
+    for (const opt of [...countryInput.options]) if (!known.some((c) => c.name.toLowerCase() === opt.value.trim().toLowerCase())) opt.remove();
+    for (const c of known) if (![...countryInput.options].some((o) => o.value.trim().toLowerCase() === c.name.toLowerCase())) countryInput.add(new Option(c.name, c.name));
+    const firstHere = regionInfo.serves[0] && regionInfo.serves[0].name;
+    if (!R.servedHere(regionInfo, countryInput.value) && firstHere) { countryInput.value = firstHere; applyCountry(); }
+    countryInput.addEventListener('change', () => {
+        const away = R.elsewhereFor(regionInfo, countryInput.value);
+        if (away && firstHere) { showRegionLine(away, R); countryInput.value = firstHere; applyCountry(); } else showRegionLine(null, R);
+    });
+}).catch(() => { /* the server still refuses a sign-up for the wrong country and says where to go */ });
+
 function validateStep4() {
     if (isUsSignup()) { hideError(); return true; }
     const pan = panInput.value.trim().toUpperCase();

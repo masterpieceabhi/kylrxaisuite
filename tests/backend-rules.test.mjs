@@ -207,3 +207,9 @@ test('a second exit gets a fresh checklist; an exit still in progress keeps the 
     await rawCollection('checklists').doc(on1.id).update({ marker: 'kept' });
     assert.equal((await lists.createChecklist(ORG, emp, 'onboarding', '2026-02-01')).marker, 'kept');
 });
+
+test('the container build file is not handed out, and the page helper for country addresses is', () => {
+    const guard = require('../middleware/static-guard.js');
+    for (const p of ['/Dockerfile', '/dockerfile', '/DOCKERFILE.', '/.dockerignore']) assert.equal(guard.isBlocked(p), true, `${p} should be refused`);
+    assert.equal(guard.isBlocked('/region.js'), false);
+});

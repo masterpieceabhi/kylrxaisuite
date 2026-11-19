@@ -858,3 +858,12 @@ if (googleLoginBtn) {
         });
     } catch (_) {}
 }
+
+// A company of another country signs in at that country's own address (region.js). Shown under the form, only when
+// this server takes some countries and knows where the others are.
+import('./region.js').then(async (R) => {
+    const info = await R.loadRegion();
+    const form = document.getElementById('loginForm');
+    if (!info || !info.restricted || !form) return;
+    for (const c of info.elsewhere) { const line = R.addressLine(c, 'sign in', 'login.html'); if (line) form.insertAdjacentElement('afterend', line); }
+}).catch(() => {});

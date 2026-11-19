@@ -22,7 +22,7 @@ const ALLOWED = {
 };
 
 /** Files in the app's own folder that are server code, settings, scripts or working files */
-const DENIED_ROOT_FILES = new Set(['server.js', 'package.json', 'package-lock.json', 'firebase.json', 'firestore.indexes.json', 'tsconfig.json', 'ids.json', 'requirements.txt', 'runtime.txt',
+const DENIED_ROOT_FILES = new Set(['dockerfile', 'server.js', 'package.json', 'package-lock.json', 'firebase.json', 'firestore.indexes.json', 'tsconfig.json', 'ids.json', 'requirements.txt', 'runtime.txt',
     'scan_db.js', 'send_live_test.js', 'sync_firebase_backend.js', 'compare_hrms_sidebars.js', 'inject_hrms_scrollbar.js']);
 const DENIED_ROOT_PATTERNS = [/^check_.*\.js$/, /^test[._-].*$/, /^trigger.*\.js$/, /^seed_.*\.js$/];
 
