@@ -90,7 +90,7 @@ function create(deps) {
 const realDeps = () => {
     const { rawCollection } = require('../config/firebase');
     const { encryptField, decryptField } = require('./pii-crypto');
-    const FV = () => require('firebase-admin').firestore.FieldValue;
+    const FV = () => require('../config/firebase-admin').firestore.FieldValue;
     return {
         encrypt: encryptField, decrypt: decryptField,
         // a patch of { totp: null } removes the whole object; dotted keys change one field

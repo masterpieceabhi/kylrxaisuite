@@ -43,7 +43,7 @@ if (fs.existsSync(envPath)) {
   dotenv.config();
 }
 
-const admin = require('firebase-admin');
+const admin = require('../config/firebase-admin');
 
 // ============================================================================
 // 1. CONFIGURATION & CONSTANTS

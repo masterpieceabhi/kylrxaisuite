@@ -9,7 +9,7 @@
 process.env.FIRESTORE_EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080';
 process.env.FIREBASE_AUTH_EMULATOR_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST || '127.0.0.1:9099';
 
-const admin = require('firebase-admin');
+const admin = require('../config/firebase-admin');
 const bcrypt = require('bcrypt');
 
 const PASSWORD = process.env.SEED_PASSWORD || 'LocalTest#2026';

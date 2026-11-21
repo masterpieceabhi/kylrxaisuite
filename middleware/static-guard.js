@@ -12,7 +12,7 @@
 const path = require('path');
 
 /** Folders no page loads anything from (checked by scripts/static-audit.js) */
-const DENIED_FOLDERS = new Set(['config', 'controllers', 'data', 'docs', 'functions', 'logs', 'middleware', 'migrations', 'modules', 'node_modules', 'root_configs', 'routes', 'scripts', 'tests', 'types']);
+const DENIED_FOLDERS = new Set(['config', 'controllers', 'data', 'docs', 'functions', 'logs', 'middleware', 'migrations', 'modules', 'node_modules', 'reports', 'root_configs', 'routes', 'scripts', 'tests', 'types']);
 
 /** Folders that hold mostly server code, where only these browser files may be served */
 const ALLOWED = {

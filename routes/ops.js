@@ -7,6 +7,7 @@
  *   POST /api/billing/webhook        payment provider webhooks (signature + idempotent)
  *   /api/platform/billing/*          platform operator only: cross-customer summary, plan catalog, billing run, credits
  *   POST /api/platform/retention/run platform operator: run retention jobs across all companies
+ *   GET  /api/platform/alerts        monitoring token or platform operator: the newest alerts (services/ops-alerts.js)
  * (/api/health stays in server.js.)
  */
 const express = require('express');
@@ -170,6 +171,14 @@ router.post('/billing/webhook', async (req, res) => {
 
 /* ----------------------------------- platform operator: billing ----------------------------------- */
 const op = requireOperator();
+
+/* ----------------------------------- platform operator: alerts ----------------------------------- */
+// The newest alerts this copy of the server raised (services/ops-alerts.js), and whether they were emailed.
+router.get('/platform/alerts', requireOperator({ allowMonitoring: true }), (req, res) => {
+    const A = require('../services/ops-alerts');
+    const s = A.settings();
+    res.json({ success: true, emailing: !s.off && s.to.length > 0, recipients: s.to.length, alerts: A.instance().recent() });
+});
 
 router.get('/platform/billing/summary', op, async (req, res) => {
     res.json({ success: true, ...(await billing.platformSummary()) });

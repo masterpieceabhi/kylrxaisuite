@@ -576,7 +576,7 @@ class AutomationEngine {
                 
                 // Also append to automation run logs array if run exists
                 if (auditEntry.runId) {
-                    const admin = require('firebase-admin');
+                    const admin = require('../config/firebase-admin');
                     db.collection('automation_runs').doc(auditEntry.runId).set({
                         logs: admin.firestore.FieldValue.arrayUnion(auditEntry)
                     }, { merge: true }).catch(() => {});

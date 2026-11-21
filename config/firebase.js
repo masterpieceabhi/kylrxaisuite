@@ -1,4 +1,4 @@
-const admin = require("firebase-admin");
+const admin = require("./firebase-admin");
 require('dotenv').config();
 
 let serviceAccount;
@@ -249,21 +249,11 @@ if (serviceAccount || useEmulator) {
     }
   };
 
-  admin.firestore = function() {
-    return db;
-  };
-
-  admin.auth = function() {
-    return {
-      verifyIdToken: async function(token) {
-        return {
-          uid: 'superadmin_dev',
-          email: 'superadmin@kylrx.ai',
-          role: 'super_admin'
-        };
-      }
-    };
-  };
+  // admin.firestore() and admin.auth() are deliberately left as the real SDK's here (they fail with "no app"). This
+  // file used to replace them with this pretend database and a sign-in check that accepted any token as a super
+  // admin, but firebase-admin 13 silently ignored both assignments, so they never took effect and the tests rely on
+  // that: a token that is not ours must be refused even on the in-memory database. Since 2026-11-20 `admin` is
+  // config/firebase-admin.js, where such an assignment would take effect, so they are gone. Use `db` instead.
 
   messaging = {
     send: async () => ({ success: true })

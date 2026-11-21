@@ -40,6 +40,7 @@ function observability(req, res, next) {
         metrics.counter('kylrx_http_requests_total', 'HTTP requests', { method: req.method, route, status_class: cls });
         metrics.observe('kylrx_http_request_duration_seconds', 'HTTP request duration in seconds', { method: req.method, route }, seconds);
         if (status >= 500) metrics.counter('kylrx_http_errors_total', 'HTTP 5xx responses', { route });
+        if (status >= 500) { try { require('../services/ops-alerts').instance().noteServerError(route); } catch (_) {} } // a burst emails the operator
         if (QUIET) return;
         const line = {
             ts: new Date().toISOString(), level: status >= 500 ? 'error' : (status >= 400 ? 'warn' : 'info'), msg: 'request', requestId: req.id,

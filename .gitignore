@@ -22,3 +22,11 @@ __pycache__/
 
 # US end-to-end run: companies and sign-ins it made locally
 scripts/e2e-us/.state/
+
+# Working files the server writes: attendance logs, report copies, local stores and exports. Never committed
+# (they hold names, emails and punch times). Removed from git on 2026-11-20; older commits still contain them.
+/logs/
+/reports/
+/data/*_store.json
+/data/exports/
+/ids.json

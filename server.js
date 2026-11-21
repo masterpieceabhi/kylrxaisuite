@@ -499,6 +499,7 @@ async function startServer() {
       if (require('./routes/us-gusto').startJobs()) logger.info('[Gusto] Event poll job started');
       if (require('./routes/us-report-builder').startJobs()) logger.info('[ReportBuilder] Scheduled report copies job started');
       if (require('./services/daily-jobs').startJobs()) logger.info('[DailyJobs] Daily retention and backup job started');
+      if (require('./services/ops-alerts').startJobs()) logger.info(process.env.ALERT_EMAIL_TO ? '[Alert] Health and daily-run alerts started' : '[Alert] Health and daily-run checks started (ALERT_EMAIL_TO is not set: alerts are logged, not emailed)');
       logger.info('[Integrations] Webhook delivery worker and connector scheduler started');
     } catch (intErr) {
       logger.error(`[Integrations] Could not start background workers: ${intErr.message}`);
