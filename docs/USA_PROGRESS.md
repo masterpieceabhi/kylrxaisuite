@@ -1,32 +1,38 @@
 # USA build progress
 
-As of 2026-11-12 on branch `feature/usa-foundation`. Measured against the 111 functions in `USA_BUILD_PLAN.md`.
+As of 2026-11-20 on branch `feature/usa-foundation` (last full count 2026-11-12, brought up to date from the commits of 2026-11-13 to 2026-11-20). Measured against the 111 functions in `USA_BUILD_PLAN.md`.
 
-**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes (794 tests). Run live against the local emulators, by scripts that call the real routes: everything built on 2026-11-12 (goals and reviews, surveys, equipment, policies, report builder, holiday pay and rest breaks, review rounds, news and thanks, past-payroll import, tags, pay schedules, time-off payout, the audit chain, integration alerts, notice texts, exit interviews) and payroll on the mock Gusto server (setup, one regular payroll through the page, and the extras by script). The new pages were opened in a browser to see that they load and show data; their buttons were not each clicked. Everything else is a code read, not a live run.
+**Where it stands on 2026-11-20.** A staging copy runs at `app-staging.onnhr.com` (Google Cloud server behind a Cloudflare Tunnel, see `docs/DEPLOY_GOOGLE.md`); its health check answers, and a test company was signed up there through `/signup.html` on 2026-11-20. Payroll now follows the Gusto App Integration route (the customer keeps their own Gusto account), and hours have gone to Gusto's demo environment for real. Production (`app.onnhr.com`) is not set up.
+
+**How this was measured.** Each function was checked in the code for four things: rules or service code, a route mounted in `server.js`, a page (where the function needs one), and tests. `npm test` passes on 2026-11-20: 1,239 tests, none failing, 8 skipped (was 794 on 2026-11-12). Run live against the local emulators, by scripts that call the real routes: everything built on 2026-11-12 (goals and reviews, surveys, equipment, policies, report builder, holiday pay and rest breaks, review rounds, news and thanks, past-payroll import, tags, pay schedules, time-off payout, the audit chain, integration alerts, notice texts, exit interviews) and payroll on the mock Gusto server (setup, one regular payroll through the page, and the extras by script). The new pages were opened in a browser to see that they load and show data; their buttons were not each clicked. Everything else is a code read, not a live run.
 
 Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = core works, the named pieces are missing; **Existing, not adapted** = old India-app code only; **Not started** = nothing.
 
 ## Totals
 
-| Status | Count | Was (morning of 2026-11-11) |
-|---|---|---|
-| Done | 69 | 22 |
-| Partial | 41 | 24 |
-| Existing, not adapted | 0 | 8 |
-| Not started | 1 | 29 |
-| Later (Gusto/connectors) | 0 | 28 |
-| **All** | **111** | **111** |
+| Status | Count | 2026-11-12 | Morning of 2026-11-11 |
+|---|---|---|---|
+| Done | 72 | 69 | 22 |
+| Partial | 38 | 41 | 24 |
+| Existing, not adapted | 0 | 0 | 8 |
+| Not started | 1 | 1 | 29 |
+| Later (Gusto/connectors) | 0 | 0 | 28 |
+| **All** | **111** | **111** | **111** |
 
-**The main gap now is outside accounts.** Almost everything still "Partial" is built and tested on this PC and waits for a real account or decision: Gusto demo credentials, accounting vendors, Stripe, a background-check vendor, a mail service, a host. The one "Not started" item is an independent security test (L06), which cannot be done from inside the project.
+Moved to Done since 2026-11-12: A07 (permissions on every US route), A10 (every audit writer chained), D09 (hours sent to Gusto's demo through the whole product).
+
+**The main gap now is outside accounts and real use.** Almost everything still "Partial" is built and tested and waits for a real account or decision: Gusto's review of the application (production), accounting vendors, Stripe, a background-check vendor, an SSO setup. Gusto demo, email (Resend on `onnhr.com`) and a host (Google Cloud staging) are now chosen. The one "Not started" item is an independent security test (L06), which cannot be done from inside the project.
+
+**Payroll route changed (2026-11-16).** The Gusto application filed by Prompt AI Ethical Solutions USA LLC is an App Integration: the customer runs payroll in their own Gusto account; Onn HR connects, matches people, sends approved hours, asks Gusto to put them on a payroll and reads what was paid (`docs/GUSTO_APP_INTEGRATION.md`). Gusto does not let an app integration set up a company, run payroll, fetch pay stubs or tax forms, or pay contractors, so with `GUSTO_INTEGRATION=app` those routes answer 409 and the payroll page hides their tabs. The Embedded Payroll code behind F01, F05 to F07, F10 and F11 is still in the repository and passes its tests on the mock, but is not the route being taken.
 
 ## By module
 
 | Module | Done | Partial | Existing | Not started |
 |---|---|---|---|---|
-| A Platform and country | 2 | 8 | 0 | 0 |
+| A Platform and country | 4 | 6 | 0 | 0 |
 | B People and organization | 9 | 1 | 0 | 0 |
 | C Hiring and onboarding | 8 | 2 | 0 | 0 |
-| D Time, attendance, scheduling | 10 | 1 | 0 | 0 |
+| D Time, attendance, scheduling | 11 | 0 | 0 | 0 |
 | E Leave and holidays | 6 | 2 | 0 | 0 |
 | F Payroll (Gusto) | 3 | 10 | 0 | 0 |
 | G Benefits | 4 | 2 | 0 | 0 |
@@ -46,10 +52,10 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-A04 | Partial | India menus hidden for US | A few India cards may remain on the payroll Documents tab (not confirmed) |
 | US-A05 | Partial | `country-format.js` included in about 37 old pages | Not checked that every screen uses it |
 | US-A06 | Partial | Dated minimum-wage rules with history and a page | Overtime, meal-break and sick-leave rules are company settings, not dated state tables |
-| US-A07 | Partial | Eight roles in `permissions.js`, role routes, tests, role page in `admin-us-owner.html`. Sign-in now sends each US role to a working page: owner to the dashboard, employees to the clock, everyone else to `us-home.html` (a menu built from their permissions). Before this, payroll admins, accountants, auditors and executives could not sign in, and HR admins, managers and employees landed on India pages | `us-hr.js` now uses permissions (tests cover all eight roles on each route; auditors can now read the people list and profiles, as their role says). `us-people.js` and `us-offboarding.js` still use the old role check |
+| US-A07 | Done | Eight roles in `permissions.js`, role routes, tests, role page in `admin-us-owner.html`. Sign-in sends each US role to a working page. Since 2026-11-13 the compliance, vault, checklists, forms, offboarding and people routes use permissions too, with tests for each role. Since 2026-11-18: nobody decides their own hours, time off, punch fix, shift change and similar requests unless they are the only person who could (marked in the audit log); a team manager changes only their own department's open shifts; a token made before a role change or sign-in reset is refused | |
 | US-A08 | Done | SSN/ITIN encryption, masking, reveal with reason | |
-| US-A09 | Partial | `npm run backup` and `npm run restore` (`scripts/backup.js`, `scripts/restore.js`): every collection to files with a checksum list, plus the document folder; restore refuses a database that is not empty unless forced, and has a dry run. `docs/BACKUP.md`. Tests prove a full round trip in memory; backup and a restore dry run were run on the emulator | A real restore was never run; sign-in accounts and the encryption key are not in the backup; no schedule; data region is chosen when the Firebase project is made and is not chosen yet; Google's managed export is the right tool at scale |
-| US-A10 | Partial | Audit list, CSV and chain check routes, viewer in `admin-us-owner.html`. The main audit writer now writes the tamper-evident chain; a chain failure never fails the request (the entry is saved unchained and the problem logged). Checked live | Direct writers in `api-v1.js`, `sso.js`, `support-access.js` and `time-approval.js` are still unchained (shown as such); chained writes go one at a time per company, about 130 ms each on the emulator; changing the integrity key makes old entries fail the check |
+| US-A09 | Partial | `npm run backup` and `npm run restore` (`scripts/backup.js`, `scripts/restore.js`): every collection to files with a checksum list, plus the document folder; restore refuses a database that is not empty unless forced, and has a dry run. `docs/BACKUP.md`. Tests prove a full round trip in memory; backup and a restore dry run were run on the emulator | A real restore was run on 2026-11-18 on the local emulator (9,483 documents and 60 vault files compared one by one, see `docs/DEPLOY.md`). A once-a-day run (`services/daily-jobs.js`) makes a backup to `BACKUP_DIR` and keeps 35 days | Sign-in accounts and the encryption key are not in the backup; no restore on a real Firebase project; Google's managed export is the right tool at scale |
+| US-A10 | Done | Audit list, CSV and chain check routes, viewer in `admin-us-owner.html`. Every audit writer goes through the tamper-evident chain (the nine direct writers were moved on 2026-11-18); a chain failure never fails the request | Chained writes go one at a time per company, about 130 ms each on the emulator; changing the integrity key makes old entries fail the check |
 
 ## B. People and organization
 
@@ -93,7 +99,7 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 | US-D06 | Done | Shifts, publish, open-shift claims, swaps, availability, tests; pages `admin-us-schedule.html` and `my-schedule.html` (English and Spanish) | Shift templates and one-day availability exceptions have no screen; a manager can approve their own request |
 | US-D07 | Done | Predictive-scheduling rules and premium report, on the Rules and "Planned and worked" tabs of `admin-us-schedule.html` | Premium amounts are listed only, not sent to payroll |
 | US-D08 | Done | Tips and tip pools, employee page, linked from the clock page | |
-| US-D09 | Partial | CSV hours export; hours feed into Gusto with a page | Proven on the mock Gusto only |
+| US-D09 | Done | CSV hours export; approved hours go to the customer's own Gusto as time sheets ("Hours to Gusto" tab on the payroll page): one per day, a repeat send changes nothing, changed days are updated, days no longer approved are removed, optionally sent by themselves on approval. Run against Gusto's demo on 2026-11-17 and, on 2026-11-18, through the whole product by hand (import, first sign-in, clock, approve, send) | One person only on the demo; a time sheet already on a payroll and a Gusto outage not tried; the open questions are listed in `docs/GUSTO_APP_INTEGRATION.md` |
 | US-D10 | Done | Punch corrections | |
 | US-D11 | Done | Jobs, time allocation, report, tests; Jobs tab in `admin-us-schedule.html`, "Which job I worked on" in `my-schedule.html` | Charging one clock period to a job from the clock page |
 
@@ -112,7 +118,9 @@ Status meanings: **Done** = rules, mounted route, page and tests; **Partial** = 
 
 ## F. Payroll through Gusto
 
-All of F runs against the mock Gusto server only. A real run needs Gusto demo credentials (`GUSTO_CLIENT_ID`, `GUSTO_CLIENT_SECRET`, `GUSTO_MODE=demo`); production also needs Gusto's approval and `GUSTO_ALLOW_PRODUCTION=true`. Routes: `routes/us-gusto.js` at `/api/us/gusto`, public webhook receiver at `/api/webhooks/gusto/:orgId`. Pages: `admin-us-payroll.html`, `my-pay.html`. Tests: 20 service-level tests against the mock; the routes were checked live (44 checks), not by an automated test file.
+**Since 2026-11-16 the route is the App Integration** (see Totals and `docs/GUSTO_APP_INTEGRATION.md`): connect, match people, send hours, put them on a payroll, read pay back. The demo application "Onn HR" is registered at dev.gusto.com and was used on 2026-11-17 and 2026-11-18 (connect, read 13 demo employees, match, send and change time sheets, token renewal). Putting hours on a payroll and reading pay back have run on the mock only. Production needs Gusto's approval and `GUSTO_ALLOW_PRODUCTION=true`.
+
+The rows below describe the Embedded Payroll code from 2026-11-12, which runs against the mock Gusto server only and is switched off with `GUSTO_INTEGRATION=app`. Routes: `routes/us-gusto.js` at `/api/us/gusto`, public webhook receiver at `/api/webhooks/gusto/:orgId`. Pages: `admin-us-payroll.html`, `my-pay.html`. Tests: 20 service-level tests against the mock; the routes were checked live (44 checks), not by an automated test file.
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
@@ -149,7 +157,7 @@ Server code, mounted routes and tests exist for all six. Pages: `admin-us-benefi
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-H01 | Done | Document vault | Retention jobs have no page or test |
+| US-H01 | Done | Document vault; retention jobs run once a day for every company (`services/daily-jobs.js`), only counting unless `RETENTION_AUTO=on`; last runs at `GET /api/us/retention/schedule` | Retention jobs have no page |
 | US-H02 | Done | E-sign service, certificate, tests; pages `admin-us-esign.html`, `sign.html`, "to sign" list in `my-documents.html` | |
 | US-H03 | Done | Deadline and expiry lists; `admin-us-calendar.html` puts every dated duty in one list (I-9, documents, E-Verify, new-hire reports, background checks, privacy requests, COBRA, benefits, signing links, workplace notices) | Built in the page from the existing lists, so it shows only what the signed-in role may see |
 | US-H04 | Partial | Notice tracker; three federal starting drafts (FMLA, COBRA general notice, Marketplace notice) the company can edit, with versions, a review record and attach-to-notice, on the compliance page. Checked live | The drafts are not legal text until a US compliance advisor reviews them (each shows a banner until then); no state notices or state lists |
@@ -202,28 +210,50 @@ Routes now mounted: `/api/us/integrations`, `/api/v1`, `/oauth`, `/scim/v2`. The
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-L01 | Partial | Email one-time code; SSO service, routes and settings page (now linked) | SSO depends on Firebase Identity Platform setup (not verified); no TOTP |
-| US-L02 | Partial | Login bypass fixed; tenant read scoping on in production; the server no longer hands out its own source, database rules, scripts, stored data files or logs as static files (`middleware/static-guard.js`, with a test that fails if a page needs a blocked file); `npm run check:production` checks a server's settings before start; `docs/DEPLOY.md` written | `npm audit`: the non-breaking fixes were applied on 2026-11-12 (32 findings down to 10, none critical); `nodemailer`, `xlsx` and `firebase-admin` still need a major upgrade or a vendor build (see `docs/DEPLOY.md`); personal data in tracked files under `reports/`, `data/` and `logs/`; inline scripts allowed; the demo password is no longer in `login.js` (the local quick sign-in buttons ask a helper that exists only on a developer PC with the emulators) |
+| US-L01 | Partial | Sign-in with email and PIN; a new device gets a code by email, by text to the number on record (Twilio), or from an authenticator app (TOTP, since 2026-11-19); personal one-time QR sign-in with notices to the person; sign-up and set-up links ask for a PIN, not a password; `PASSWORD_SIGNIN=off` refuses password sign-in. SSO service, routes and settings page | SSO depends on Firebase Identity Platform setup (not verified); text messages need Twilio keys; the set-up link PIN step has no automated test |
+| US-L02 | Partial | Since 2026-11-17: database rules let a browser in a US company read only the person's own record and company and write nothing (rule tests run in CI's `rules` job); a person can no longer clear a forced password change or edit their own pay fields; the server refuses to start on an unreadable Firebase key or with no database in production; `ALLOWED_ORIGINS` is matched exactly. nodemailer upgraded to 10.6 on 2026-11-19 (`npm audit` on 2026-11-20: 9 findings, 1 high, from `xlsx`). Before that: login bypass fixed; tenant read scoping on in production; the server no longer hands out its own source, database rules, scripts, stored data files or logs as static files (`middleware/static-guard.js`, with a test that fails if a page needs a blocked file); `npm run check:production` checks a server's settings before start; `docs/DEPLOY.md` written | `npm audit`: the non-breaking fixes were applied on 2026-11-12 (32 findings down to 10, none critical); `xlsx` and `firebase-admin` still need a major upgrade or a vendor build (nodemailer done 2026-11-19) (see `docs/DEPLOY.md`); personal data in tracked files under `reports/`, `data/` and `logs/`; inline scripts allowed; the demo password is no longer in `login.js` (the local quick sign-in buttons ask a helper that exists only on a developer PC with the emulators) |
 | US-L03 | Done | Field-level encryption | |
 | US-L04 | Done | Privacy export and deletion, tests; pages `admin-us-privacy.html` and `my-privacy.html` (English and Spanish) | |
-| US-L05 | Partial | Request logs, metrics, deep health check; backup and restore scripts (see A09) | Alerting, scheduled backups, a tested restore |
+| US-L05 | Partial | Request logs, metrics, deep health check; daily backup and a tested restore (see A09); background jobs run on one server copy at a time (`services/job-lock.js`); every setting documented in `.env.example`, with a test | Alerting |
 | US-L06 | Not started | | Security audit, pen test, SOC 2 |
-| US-L07 | Partial | Billing rules, service, Stripe adapter, tests, page in `admin-us-owner.html` (practice mode with test cards) | Real Stripe never exercised; no real card entry; tax is a placeholder |
+| US-L07 | Partial | Billing rules, service, Stripe adapter, tests, page in `admin-us-owner.html` (practice mode with test cards) | Real Stripe never exercised; no real card entry; tax is a placeholder. `BILLING_ENFORCE=on` (off by default) makes a suspended or cancelled company read-only |
 | US-L08 | Done | Support access with consent and audit; status endpoint; public page `status.html`; platform staff screen `admin-support.html` listing support-access grants (closed unless the platform settings name the user) | The staff screen was not opened as platform staff in a browser |
-| US-L09 | Partial | CI workflow `.github/workflows/ci.yml` (install from the lock file, all tests, static-file check, library audit report). Its steps were run by hand from a fresh copy of the repository and passed, and the workflow passed on GitHub on 2026-11-12 (both jobs) | Nothing deploys automatically because no host is chosen; no separate test and live environments |
+| US-L09 | Partial | CI workflow `.github/workflows/ci.yml` (install from the lock file, all tests, static-file check, library audit report). Its steps were run by hand from a fresh copy of the repository and passed, and the workflow passed on GitHub on 2026-11-12 (both jobs) | Since 2026-11-18: a `rules` CI job, a Dockerfile (image not built yet), one server per country (`SERVED_COUNTRIES`), and a Google Cloud server kit in `deploy/` with release scripts that switch back on a failed start. Staging runs at `app-staging.onnhr.com`. Missing: nothing deploys automatically; no production environment yet |
 
-## Next, in order of value (no outside accounts needed)
+## Also added from 2026-11-13 to 2026-11-20
+
+Not tied to one row above, or spread over several:
+
+- Time: the company's workweek start day and time zone drive timesheets, approval, scheduling, tips, reports and the Gusto hours feed; clock access rules (network and location) on the punch page and kiosk; punches saved without a connection can be refused
+- Training records with HR and employee pages; an I-9 page; team import with join links and a QR code; a "Waiting for me" approvals list covering thirteen kinds of request
+- Email notices (`services/email-notices.js`) for hours and time off waiting for a decision, decisions, announcements and policies; one mail sender for everything; covered by tests, not yet seen arriving from staging
+- In-app notices and `GET /api/us/me` (user, role, permissions, company, time zone) for a separate client app
+- Paging on eight lists; a fuller personal-data export and privacy deletion (timesheets, punch fixes, shifts, pay results, pay history)
+- Onn HR by Prompt AI USA branding on every page; pay slips and offer letters name the customer's company
+- A US end-to-end script (`scripts/e2e-us`) that takes a new company through every module; nine stages pass on a local server (the payroll stage was not run)
+- Real-server fixes found on staging (2026-11-20): page scripts that start after the page has loaded now run, and a US-only sign-up shows US fields
+
+## Next, in order of value
+
+Open on 2026-11-20:
+
+1. Use staging for real: sign in, run a week of hours through to the Gusto demo, and confirm email arrives through Resend.
+2. Check every place marked "verify against Gusto" for the App Integration (time sheet already on a payroll, more than one person, payroll syncs and reading pay back against the demo); then submit for Gusto's review.
+3. Replace `xlsx` with the vendor's build and upgrade `firebase-admin`; re-test file uploads and exports.
+4. Take the personal data out of the tracked files under `reports/`, `data/` and `logs/`.
+5. Alerting (L05) and a restore on a real Firebase project.
+6. Set up production (`app.onnhr.com`) after staging has been used for real.
+7. Have a US compliance advisor review the notice drafts and the company-set rules.
+8. Independent security test (L06).
+
+Done earlier:
 
 1. Done on 2026-11-12: holiday pay hours, rest breaks and missed-break pay (D04, E06), as company settings.
 2. Done on 2026-11-12: US versions of the old India modules: goals and reviews (I01), surveys (I03), equipment (I05), policy library (H08), report builder (J05).
 3. Done on 2026-11-12: `docs/DEPLOY.md`, the static-file guard, the production settings check and the CI workflow (L02, L09). Choosing a host and deploying is still open.
 4. Done on 2026-11-12: the Gusto setup and one payroll were run on the local mock through the page (F01).
 5. Done on 2026-11-12 (second round): review rounds and 360 feedback (I02), news and thanks (I04), exit interviews (I06), past-payroll import (F13), tags (B06), industry code and fiscal year (A02), local pay-schedule page (F02), time-off payout (E07), the audit chain in the main writer (A10), permissions in `us-hr.js` (A07), connector and SCIM tests (K05, K06, K07, K10), integration alerts (K12), status page and support screen (L08), backup and restore scripts (A09), notice drafts (H04), and on the mock Gusto: off-cycle payrolls, contractor payments, W-2 and 1099 lists, garnishments, benefit deductions, bank and state tax (F06, F07, F10, F11, G03, F03).
-6. Email: checklist reminders, signing links, and notices for new surveys, policies, equipment, announcements and review rounds (needs a mail service decision).
-7. Finish the library findings: major upgrades of `nodemailer` and `firebase-admin`, and the vendor's build of `xlsx`. The non-breaking fixes were applied on 2026-11-12. Re-test email, file uploads and PDF creation on the updated libraries.
-8. Take the personal data out of the tracked files under `reports/`, `data/` and `logs/`, and serve attendance reports through a signed-in route.
-9. Choose a host, then follow `docs/DEPLOY.md`. Only one copy of the server can run until the background jobs share a lock.
-10. Get Gusto demo credentials and check every place marked "verify against Gusto" in `services/gusto/` (off-cycle, contractors, forms, garnishments, benefits, bank and state tax).
-11. Have a US compliance advisor review the notice drafts and the company-set rules.
+6. Done 2026-11-18: email notices for hours, time off, announcements and policies (Resend on `onnhr.com` chosen). Still open: checklist reminders, signing links, and notices for surveys, equipment and review rounds.
+7. Done 2026-11-19: nodemailer upgraded. 2026-11-18 to 2026-11-20: host chosen (Google Cloud), background jobs share a lock, staging set up. 2026-11-17: Gusto demo credentials obtained.
 
-Needs an outside account before it can move: Gusto demo credentials (all of F), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10).
+Needs an outside account before it can move: Gusto's review of the application (production payroll), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10), an SSO setup (L01).
