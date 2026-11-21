@@ -5,7 +5,7 @@ const centralAssignmentEngine = require('../services/central-assignment-engine')
 const assignmentAi = require('../services/assignment-ai-service');
 const eventBus = require('../services/event-bus');
 const { db, rawCollection } = require('../config/firebase');
-const { ownerOrgId, LEGACY_ORG_ID } = require('../config/tenant');
+const { ownerOrgId, orgDocs } = require('../config/tenant');
 const logger = require('../utils/logger');
 const { verifyToken } = require('../middleware/authMiddleware');
 
@@ -13,8 +13,14 @@ router.use(verifyToken);
 
 
 function orgOf(req) {
-    return req.tenantOrgId || (req.user && req.user.orgId) || LEGACY_ORG_ID;
+    return (req.user && req.user.orgId) || req.tenantOrgId || null;
 }
+
+// Every call works on the caller's own company; an account without one is refused
+router.use((req, res, next) => {
+    if (!orgOf(req)) return res.status(403).json({ success: false, error: 'No company on this account' });
+    next();
+});
 
 
 // The employee's profile documents, only if they belong to the caller's organization
@@ -142,7 +148,9 @@ router.post('/transition', async (req, res) => {
 // GET /api/assignments/matrix - Retrieve configured assignment matrix rules
 router.get('/matrix', (req, res) => {
     try {
-        const rules = centralAssignmentEngine.getMatrixRules();
+        // The standard rules are shared; a rule saved by a company (it carries an orgId) is shown to that company only
+        const orgId = orgOf(req);
+        const rules = centralAssignmentEngine.getMatrixRules().filter(r => !r.orgId || r.orgId === orgId);
         res.status(200).json({ success: true, count: rules.length, data: rules });
     } catch (error) {
         logger.error('[AssignmentsAPI] Error fetching matrix rules:', error);
@@ -201,10 +209,10 @@ router.get('/firebase-status', async (req, res) => {
 
         if (db) {
             try {
-                const aSnap = await db.collection('employee_assignments').limit(10).get();
-                assignmentsCount = aSnap.size;
-                const rSnap = await db.collection('assignment_rules').limit(10).get();
-                rulesCount = rSnap.size;
+                // Counts of the caller's own company only
+                const orgId = orgOf(req);
+                assignmentsCount = (await orgDocs(rawCollection, 'employee_assignments', orgId, 10)).length;
+                rulesCount = (await orgDocs(rawCollection, 'assignment_rules', orgId, 10)).length;
                 isConnected = true;
             } catch (e) {
                 // If firestore read times out, fallback gracefully
@@ -243,6 +251,7 @@ router.post('/sync-firebase', async (req, res) => {
         }
 
         const pingDoc = {
+            orgId: orgOf(req),
             pingId: `PING_${Date.now()}`,
             service: 'Central Assignment & Requirements Engine',
             event: 'FIREBASE_BACKEND_SYNC_PING',

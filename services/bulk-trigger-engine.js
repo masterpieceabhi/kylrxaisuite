@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const logger = require('../utils/logger');
-const { db } = require('../config/firebase');
+const { db, rawCollection } = require('../config/firebase');
+const { orgDocs, LEGACY_ORG_ID } = require('../config/tenant');
 const otpVerificationService = require('./otp-verification-service');
 
 /**
@@ -59,7 +60,13 @@ function safeFirestoreWrite(writePromise, timeoutMs = 4000) {
  *   • Bulk email respects provider rate limits & recipient consent rules
  */
 class BulkTriggerEngine {
-    constructor() {
+    /**
+     * One engine per company (see forOrg). The module's default instance has no company: it loads nothing from
+     * Firestore and reads no recipients; routes always use the caller's company engine.
+     */
+    constructor(orgId = null) {
+        this.orgId = orgId || null;
+
         // Jobs Store: jobId -> Job Record
         this.jobs = new Map();
 
@@ -88,6 +95,22 @@ class BulkTriggerEngine {
         this.initFirestoreSync().catch(() => {});
     }
 
+    /** This company's engine (created on first use) */
+    forOrg(orgId) {
+        return engineForOrg(orgId);
+    }
+
+    /** The company's own settings document (the original company keeps the old id) */
+    configDocId() {
+        return this.orgId && this.orgId !== LEGACY_ORG_ID ? `${this.orgId}__bulk_trigger_config` : 'bulk_trigger_config';
+    }
+
+    /** This company's documents of a top-level collection, newest first by `field` */
+    async loadOrgDocs(name, field, max) {
+        const docs = await orgDocs(rawCollection, name, this.orgId, 500);
+        return docs.sort((a, b) => String(b[field] || '').localeCompare(String(a[field] || ''))).slice(0, max);
+    }
+
     /**
      * Compute SHA-256 hash for audit integrity
      */
@@ -99,10 +122,10 @@ class BulkTriggerEngine {
      * Synchronize bulk trigger configurations, recent jobs, and audit logs with Firebase Firestore
      */
     async initFirestoreSync() {
-        if (!db || typeof db.collection !== 'function') return;
+        if (!db || typeof db.collection !== 'function' || !this.orgId) return;
         try {
-            // 1. Sync System Config
-            const configDoc = await db.collection('system_configs').doc('bulk_trigger_config').get().catch(() => null);
+            // 1. Sync System Config (this company's own document)
+            const configDoc = await db.collection('system_configs').doc(this.configDocId()).get().catch(() => null);
             if (configDoc && configDoc.exists && typeof configDoc.data === 'function') {
                 const remoteConfig = configDoc.data();
                 if (remoteConfig && remoteConfig.batchSize) {
@@ -110,18 +133,18 @@ class BulkTriggerEngine {
                 }
             } else {
                 // Seed default configuration to Firestore
-                await db.collection('system_configs').doc('bulk_trigger_config').set({
+                await db.collection('system_configs').doc(this.configDocId()).set({
                     ...this.config,
+                    orgId: this.orgId,
                     updatedAt: new Date().toISOString(),
                     seeded: true
                 }, { merge: true }).catch(() => {});
             }
 
-            // 2. Load latest historical audit logs from Firestore
-            const auditSnap = await db.collection('bulk_trigger_audit_logs').orderBy('timestamp', 'desc').limit(50).get().catch(() => null);
-            if (auditSnap && !auditSnap.empty && Array.isArray(auditSnap.docs)) {
-                auditSnap.docs.forEach(docSnap => {
-                    const data = docSnap.data();
+            // 2. Load this company's latest historical audit logs from Firestore
+            const auditDocs = await this.loadOrgDocs('bulk_trigger_audit_logs', 'timestamp', 50).catch(() => []);
+            if (auditDocs.length) {
+                auditDocs.forEach(({ id: _docId, ...data }) => {
                     if (data && data.auditId && !this.auditLogs.some(l => l.auditId === data.auditId)) {
                         this.auditLogs.push(data);
                     }
@@ -129,11 +152,10 @@ class BulkTriggerEngine {
                 this.auditLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
             }
 
-            // 3. Load active or recent jobs from Firestore
-            const jobsSnap = await db.collection('bulk_trigger_jobs').orderBy('createdAt', 'desc').limit(20).get().catch(() => null);
-            if (jobsSnap && !jobsSnap.empty && Array.isArray(jobsSnap.docs)) {
-                jobsSnap.docs.forEach(docSnap => {
-                    const jobData = docSnap.data();
+            // 3. Load this company's active or recent jobs from Firestore
+            const jobDocs = await this.loadOrgDocs('bulk_trigger_jobs', 'createdAt', 20).catch(() => []);
+            if (jobDocs.length) {
+                jobDocs.forEach(({ id: _docId, ...jobData }) => {
                     if (jobData && jobData.jobId && !this.jobs.has(jobData.jobId)) {
                         const restoredJob = {
                             ...jobData,
@@ -166,6 +188,7 @@ class BulkTriggerEngine {
             }
 
             const docData = {
+                orgId: this.orgId,
                 jobId: job.jobId,
                 action: job.action,
                 status: job.status,
@@ -209,6 +232,14 @@ class BulkTriggerEngine {
         if (!db || typeof db.collection !== 'function') {
             return { success: true, source: 'memory_fallback', count: 0, recipients: [] };
         }
+        // Only the company's own people; an engine without a company reads none
+        if (!this.orgId) {
+            return { success: true, source: 'firestore', count: 0, recipients: [] };
+        }
+        const orgSnap = async (name, max) => {
+            const docs = (await orgDocs(rawCollection, name, this.orgId, max)).slice(0, max);
+            return { empty: docs.length === 0, docs: docs.map(({ id, ...data }) => ({ id, data: () => data })) };
+        };
 
         try {
             if (cohortType === '100') {
@@ -217,7 +248,7 @@ class BulkTriggerEngine {
 
             // 1. Fetch live registered users from Firestore 'users' collection
             const usersSnap = await Promise.race([
-                db.collection('users').limit(limit).get(),
+                orgSnap('users', limit),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore users query timeout')), 3500))
             ]).catch(err => {
                 logger.warn(`[BulkTriggerEngine] users collection read notice: ${err.message}`);
@@ -259,7 +290,7 @@ class BulkTriggerEngine {
             const remaining = Math.max(0, limit - recipients.length);
             if (remaining > 0) {
                 const empSnap = await Promise.race([
-                    db.collection('employees').limit(remaining).get(),
+                    orgSnap('employees', remaining),
                     new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore employees query timeout')), 3500))
                 ]).catch(err => {
                     logger.warn(`[BulkTriggerEngine] employees collection read notice: ${err.message}`);
@@ -401,8 +432,9 @@ class BulkTriggerEngine {
         // Persist updated configuration to Firebase Firestore asynchronously
         if (db && typeof db.collection === 'function') {
             safeFirestoreWrite(
-                db.collection('system_configs').doc('bulk_trigger_config').set({
+                db.collection('system_configs').doc(this.configDocId()).set({
                     ...this.config,
+                    orgId: this.orgId,
                     updatedAt: new Date().toISOString(),
                     updatedBy: actor
                 }, { merge: true }),
@@ -737,6 +769,7 @@ class BulkTriggerEngine {
                 if (db && typeof db.collection === 'function') {
                     safeFirestoreWrite(
                         db.collection('notifications').add({
+                            orgId: this.orgId,
                             id: crypto.randomUUID ? crypto.randomUUID() : `notif-${Date.now()}-${item.itemId}`,
                             title: subject,
                             message: body,
@@ -1007,6 +1040,7 @@ class BulkTriggerEngine {
             safeFirestoreWrite(
                 db.collection('bulk_trigger_audit_logs').doc(auditPayload.auditId).set({
                     ...auditPayload,
+                    orgId: this.orgId,
                     syncedAt: new Date().toISOString()
                 }),
                 600
@@ -1030,6 +1064,14 @@ class BulkTriggerEngine {
     }
 }
 
-// Export singleton instance
+// One engine per company: jobs, audit trail and settings are never shared between companies
+const orgEngines = new Map();
+function engineForOrg(orgId) {
+    if (!orgId) throw new Error('A company is required for bulk triggering.');
+    if (!orgEngines.has(orgId)) orgEngines.set(orgId, new BulkTriggerEngine(orgId));
+    return orgEngines.get(orgId);
+}
+
+// Default instance (no company) for existing callers and tests; routes use bulkTriggerEngine.forOrg(orgId)
 const bulkTriggerEngine = new BulkTriggerEngine();
 module.exports = bulkTriggerEngine;

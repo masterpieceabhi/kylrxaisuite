@@ -37,9 +37,17 @@ import multer from 'multer';
 import { ReconciliationEngine } from '../services/reconciliation-engine.mjs';
 import { InMemoryReconciliationStore } from '../services/reconciliation-exception-store.mjs';
 
-// ─── In-memory store instance (swap with FirestoreReconciliationStore in prod) ─
-const store = new InMemoryReconciliationStore();
-const engine = new ReconciliationEngine({ store, verbose: false });
+// ─── In-memory store, one per company (swap with FirestoreReconciliationStore in prod) ─
+// Runs, exceptions and review items of one company are never visible to another.
+const orgStores = new Map(); // orgId -> { store, engine }
+export function reconciliationFor(orgId) {
+  if (!orgId) throw new Error('A company is required for reconciliation.');
+  if (!orgStores.has(orgId)) {
+    const store = new InMemoryReconciliationStore();
+    orgStores.set(orgId, { store, engine: new ReconciliationEngine({ store, verbose: false }) });
+  }
+  return orgStores.get(orgId);
+}
 
 // ─── Multer: accept file uploads up to 10 MB in memory ───────────────────────
 const upload = multer({
@@ -70,6 +78,15 @@ const router = Router();
 router.use(verifyToken);
 router.use(authorize(ADMIN_HR_ROLES));
 
+// Every call works on the caller's own company store; the company never comes from the request body
+router.use((req, res, next) => {
+  const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+  if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+  req.orgId = orgId;
+  req.recon = reconciliationFor(orgId);
+  next();
+});
+
 // ─── Helper: detect format from filename/mimetype ─────────────────────────────
 function detectFormat(fileName = '', mimetype = '') {
   const name = fileName.toLowerCase();
@@ -95,7 +112,7 @@ function errorResponse(res, statusCode, errorCode, message, details = {}) {
  * ============================================================================
  * Body options:
  *   (a) Multipart form: field "bank_response_file" + optional fields:
- *       batch_id, batch (JSON string), operator_id, organization_id, file_format
+ *       batch_id, batch (JSON string), operator_id, file_format (the company is always the caller's own)
  *   (b) JSON body: { batch, file_content, file_format, file_name, operator_id }
  */
 router.post('/ingest', upload.single('bank_response_file'), async (req, res) => {
@@ -105,7 +122,7 @@ router.post('/ingest', upload.single('bank_response_file'), async (req, res) => 
     let fileName     = 'bank_response';
     let batchPayload = null;
     let operatorId   = req.body?.operator_id || req.user?.id || 'SYSTEM_RECON_BOT';
-    let orgId        = req.body?.organization_id || null;
+    const orgId      = req.orgId;
 
     // ── Case A: Multipart upload ──────────────────────────────────────────
     if (req.file) {
@@ -144,13 +161,13 @@ router.post('/ingest', upload.single('bank_response_file'), async (req, res) => 
     }
 
     // Run the reconciliation engine
-    const result = await engine.ingestBankFile({
+    const result = await req.recon.engine.ingestBankFile({
       batch:          batchPayload,
       fileContent,
       fileFormat,
       fileName,
       operatorId,
-      organizationId: orgId || batchPayload.organization_id || 'UNKNOWN',
+      organizationId: orgId,
     });
 
     return res.status(200).json({
@@ -186,8 +203,8 @@ router.get('/exceptions/:batchId', async (req, res) => {
     const showAll = req.query.show_all === 'true';
 
     const entries = showAll
-      ? await store.listAllExceptionsByBatch(batchId)
-      : await store.listOpenExceptionsByBatch(batchId);
+      ? await req.recon.store.listAllExceptionsByBatch(batchId)
+      : await req.recon.store.listOpenExceptionsByBatch(batchId);
 
     return res.status(200).json({
       success:   true,
@@ -209,7 +226,7 @@ router.get('/exceptions/:batchId', async (req, res) => {
 router.get('/exceptions/:batchId/summary', async (req, res) => {
   try {
     const { batchId } = req.params;
-    const summary = await store.getExceptionSummary(batchId);
+    const summary = await req.recon.store.getExceptionSummary(batchId);
     return res.status(200).json({
       success:   true,
       ...summary,
@@ -228,7 +245,7 @@ router.get('/exceptions/:batchId/summary', async (req, res) => {
 router.get('/finance-ops/review-items', async (req, res) => {
   try {
     const batchIdFilter = req.query.batch_id || null;
-    const items = await store.listPendingReviewItems(batchIdFilter);
+    const items = await req.recon.store.listPendingReviewItems(batchIdFilter);
 
     // Optional priority filter
     const priority = (req.query.priority || '').toUpperCase();
@@ -257,7 +274,7 @@ router.get('/finance-ops/review-items', async (req, res) => {
 router.get('/finance-ops/review-items/:batchId', async (req, res) => {
   try {
     const { batchId } = req.params;
-    const items = await store.listPendingReviewItems(batchId);
+    const items = await req.recon.store.listPendingReviewItems(batchId);
     return res.status(200).json({
       success:      true,
       batch_id:     batchId,
@@ -290,7 +307,7 @@ router.patch('/exceptions/:exceptionId/resolve', async (req, res) => {
       return errorResponse(res, 400, 'MISSING_EXCEPTION_ID', 'exceptionId is required.');
     }
 
-    const existing = await store.getExceptionById(exceptionId);
+    const existing = await req.recon.store.getExceptionById(exceptionId);
     if (!existing) {
       return errorResponse(res, 404, 'EXCEPTION_NOT_FOUND',
         `ExceptionQueueEntry '${exceptionId}' not found.`);
@@ -305,10 +322,10 @@ router.patch('/exceptions/:exceptionId/resolve', async (req, res) => {
     const resolveNotes = notes || waiver_justification ||
       'Resolved via Finance Ops exception resolution endpoint.';
 
-    const updated = await store.resolveException(exceptionId, resolvedBy, resolveNotes);
+    const updated = await req.recon.store.resolveException(exceptionId, resolvedBy, resolveNotes);
 
     // Re-check batch closure block
-    const openExceptions = await store.listOpenExceptionsByBatch(existing.batch_id);
+    const openExceptions = await req.recon.store.listOpenExceptionsByBatch(existing.batch_id);
 
     return res.status(200).json({
       success:              true,
@@ -331,7 +348,7 @@ router.patch('/exceptions/:exceptionId/resolve', async (req, res) => {
 router.get('/runs/:runId', async (req, res) => {
   try {
     const { runId } = req.params;
-    const manifest = await store.getReconciliationRun(runId);
+    const manifest = await req.recon.store.getReconciliationRun(runId);
     if (!manifest) {
       return errorResponse(res, 404, 'RUN_NOT_FOUND',
         `Reconciliation run '${runId}' not found.`);
@@ -353,9 +370,9 @@ router.get('/runs/:runId', async (req, res) => {
 router.get('/batches/:batchId/status', async (req, res) => {
   try {
     const { batchId } = req.params;
-    const summary = await store.getExceptionSummary(batchId);
-    const openItems = await store.listOpenExceptionsByBatch(batchId);
-    const pendingReview = await store.listPendingReviewItems(batchId);
+    const summary = await req.recon.store.getExceptionSummary(batchId);
+    const openItems = await req.recon.store.listOpenExceptionsByBatch(batchId);
+    const pendingReview = await req.recon.store.listPendingReviewItems(batchId);
 
     return res.status(200).json({
       success:                     true,

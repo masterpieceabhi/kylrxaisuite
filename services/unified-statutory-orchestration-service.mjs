@@ -79,6 +79,9 @@ export class UnifiedStatutoryOrchestrator {
     this.pfEngine = options.pfEngine || globalPfEcrAutomationEngine;
     this.firestoreDb = options.firestoreDb || null;
     this.eventBus = options.eventBus || null;
+    // A company's own orchestrator (routes/unified-compliance.mjs keeps one per company): its documents carry
+    // orgId and their ids are prefixed with it, so two companies never write the same document
+    this.orgId = options.orgId || null;
 
     /** @type {Map<string, object>} Staging store for /esic_compliance_batches */
     this.esicStagingStore = new Map();
@@ -101,7 +104,7 @@ export class UnifiedStatutoryOrchestrator {
     /** @type {Map<string, object>} Execution manifests keyed by orchestration_id or source_payroll_id */
     this.executionManifests = new Map();
 
-    if (this.firestoreDb) {
+    if (this.firestoreDb && options.listen !== false) {
       this.attachPayrollRunsListener(this.firestoreDb);
     }
     if (this.eventBus) {
@@ -602,6 +605,10 @@ export class UnifiedStatutoryOrchestrator {
   async writeToFirestore(collectionName, docId, data) {
     if (this.firestoreDb && typeof this.firestoreDb.collection === 'function') {
       try {
+        if (this.orgId) {
+          await this.firestoreDb.collection(collectionName).doc(`${this.orgId}__${docId}`).set({ ...data, orgId: this.orgId }, { merge: true });
+          return;
+        }
         await this.firestoreDb.collection(collectionName).doc(docId).set(data, { merge: true });
       } catch (err) {
         // Fallback gracefully without throwing

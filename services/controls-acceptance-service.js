@@ -25,10 +25,28 @@ const payrollEmailAccountService = require('./payroll-email-account-service');
  * 4.4 Recommended next steps, delivery roadmap, and formal client sign-off execution
  */
 class ControlsAcceptanceService {
-    constructor() {
+    // One service per company (see forOrg): decisions and sign-offs are the company's own
+    constructor(orgId = null) {
+        this.orgId = orgId || null;
         this.clientDecisions = new Map();
         this.signOffRecords = [];
         this.initializeClientDecisions();
+    }
+
+    /** This company's service (created on first use) */
+    forOrg(orgId) {
+        if (!orgId) throw new Error('A company is required for controls and sign-off.');
+        if (!orgServices.has(orgId)) orgServices.set(orgId, new ControlsAcceptanceService(orgId));
+        return orgServices.get(orgId);
+    }
+
+    /** The company's own template and bulk-trigger engines (the shared default ones when no company is set) */
+    get templateEngine() {
+        return this.orgId ? customTemplateEngine.forOrg(this.orgId) : customTemplateEngine;
+    }
+
+    get bulkEngine() {
+        return this.orgId ? bulkTriggerEngine.forOrg(this.orgId) : bulkTriggerEngine;
     }
 
     /**
@@ -220,9 +238,9 @@ class ControlsAcceptanceService {
     getPlatformRequirementsSummary() {
         // Collect cross-subsystem metrics
         const allGoals = managerGoalsEngine.listGoals({});
-        const templates = customTemplateEngine.listTemplates({});
-        const bulkConfig = bulkTriggerEngine.getConfig();
-        const bulkAudits = bulkTriggerEngine.getAuditLogs({});
+        const templates = this.templateEngine.listTemplates({});
+        const bulkConfig = this.bulkEngine.getConfig();
+        const bulkAudits = this.bulkEngine.getAuditLogs({});
         const drafts = aiAssistedBuilderService.getAllConfigurations();
         const payrollRules = payrollEmailAccountService.getAllRules({});
         const payrollAudits = payrollEmailAccountService.getChangeHistory();
@@ -329,7 +347,7 @@ class ControlsAcceptanceService {
 
         // 2. Templates: Each agreed module has a usable template setup
         try {
-            const templates = customTemplateEngine.listTemplates({});
+            const templates = this.templateEngine.listTemplates({});
             const modules = new Set(templates.map(t => t.module));
             const hasAgreedModules = templates.length >= 3;
 
@@ -356,7 +374,7 @@ class ControlsAcceptanceService {
                 { id: 'acc-1', email: 'acc1@kylrx.com', name: 'Acc One', consentStatus: 'granted' },
                 { id: 'acc-2', email: 'acc2@kylrx.com', name: 'Acc Two', consentStatus: 'granted' }
             ];
-            const job = await bulkTriggerEngine.executeBulkTrigger({
+            const job = await this.bulkEngine.executeBulkTrigger({
                 action: 'EMAIL_NOTIFICATION',
                 recipients: testItems,
                 payload: { subject: 'Acceptance Verification Bulk Action', message: 'Hello {{name}}' },
@@ -770,6 +788,8 @@ class ControlsAcceptanceService {
     }
 }
 
-// Singleton instance
+const orgServices = new Map();
+
+// Default instance (no company) for existing callers and tests; routes use controlsAcceptanceService.forOrg(orgId)
 const controlsAcceptanceService = new ControlsAcceptanceService();
 module.exports = controlsAcceptanceService;

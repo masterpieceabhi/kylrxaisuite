@@ -889,6 +889,7 @@ router.post('/approvals/:id/action', async (req, res) => {
         await automationEngine.recordAuditLog({
             runId: `run-${id}-${Date.now()}`,
             automationId: 'central-approval-gate',
+            ...(orgId ? { orgId } : {}),
             stage: 'Approval Resolution',
             status: decision || 'approved',
             details: { approvalId: id, remarks: remarks || 'Resolved via Central Command Center', ...approval }
@@ -897,7 +898,9 @@ router.post('/approvals/:id/action', async (req, res) => {
         // Sync approval resolution asynchronously to Firebase Firestore
         try {
             if (db && typeof db.collection === 'function') {
-                db.collection('approval_resolutions').doc(id).set({
+                // Namespaced per company, so one company's resolution never overwrites another's
+                db.collection('approval_resolutions').doc(orgId ? `${orgId}__${id}` : id).set({
+                    ...(orgId ? { orgId } : {}),
                     approvalId: id,
                     decision: decision || 'approved',
                     remarks: remarks || 'Resolved via Central Command Center',
@@ -984,8 +987,8 @@ router.get('/firebase-status', async (req, res) => {
         if (db && typeof db.collection === 'function') {
             for (const t of targets) {
                 try {
-                    const snap = await db.collection(t).limit(10).get();
-                    collectionsFound[t] = snap.size;
+                    // Counts of the caller's own company only
+                    collectionsFound[t] = req.user && req.user.orgId ? (await orgDocs(t, req.user.orgId, 10)).length : 0;
                     isConnected = true;
                 } catch (e) {
                     collectionsFound[t] = 0;
@@ -1017,6 +1020,7 @@ router.post('/sync-firebase', async (req, res) => {
         const syncId = `sync_${Date.now()}`;
         if (db && typeof db.collection === 'function') {
             db.collection('activities').add({
+                ...(req.user && req.user.orgId ? { orgId: req.user.orgId } : {}),
                 eventType: eventType || 'dashboard.sync',
                 payload: payload || {},
                 syncedAt: new Date().toISOString(),
