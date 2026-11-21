@@ -94,8 +94,17 @@ async function waitCalculated(ctx, payrollUuid, { timeoutMs = 30000, intervalMs 
     }
 }
 
-function summarize(payroll, feedRows) {
-    const names = new Map(feedRows.map((r) => [r.employeeUuid, r.name]));
+/** Every person linked to Gusto, name by Gusto id. The hours feed has rows only for people with hours, so without this
+ *  the preview showed salaried people with no name. */
+async function namesByGustoUuid(ctx) {
+    const [people, links] = await Promise.all([sync.loadPeople(ctx), ctx.store.listLinks(ctx.orgId, 'employee')]);
+    const byId = new Map(people.map((p) => [p.id, p.name]));
+    return new Map(links.filter((l) => l.gustoUuid && byId.get(l.ourId)).map((l) => [l.gustoUuid, byId.get(l.ourId)]));
+}
+
+function summarize(payroll, feedRows, known = new Map()) {
+    const names = new Map(known);
+    for (const r of feedRows) if (r.employeeUuid && r.name) names.set(r.employeeUuid, r.name);
     return {
         totals: payroll.totals || null,
         employees: (payroll.employee_compensations || []).map((e) => ({ employeeUuid: e.employee_uuid, name: names.get(e.employee_uuid) || null, gross: e.gross_pay || null, net: e.net_pay || null, excluded: Boolean(e.excluded) }))
@@ -112,7 +121,16 @@ async function preparePayroll(ctx, { start, end, actor }) {
     const feed = await buildFeed(ctx, start, end);
     if (!feed.ready) throw fail(409, 'feed_blocked', 'Fix the blockers before preparing payroll.', { feed });
     if (!feed.rows.length) throw fail(409, 'feed_empty', 'There are no hours or people to send for this pay period.', { feed });
-    const found = await findPayroll(ctx, start, end);
+    let found;
+    try { found = await findPayroll(ctx, start, end); } catch (e) {
+        if (e.code !== 'no_payroll_for_period') throw e;
+        // Gusto lists only unpaid payrolls as open, so a period that was already submitted looks like no period at all.
+        // Say what it is instead of pointing at the pay schedule.
+        let done = null;
+        try { done = await findPayroll(ctx, start, end, { processed: true }); } catch (_) { /* not a paid period either */ }
+        if (done) throw fail(409, 'already_submitted', 'This pay period was already submitted. Use an off-cycle payroll for a correction.');
+        throw e;
+    }
     if (found.processed) throw fail(409, 'already_processed', 'This payroll has already been submitted.');
     const prior = await ctx.store.getPayroll(ctx.orgId, found.payroll_uuid);
     if (prior && ['submitting', 'submitted'].includes(prior.status)) throw fail(409, 'already_submitted', 'This payroll was already submitted.');
@@ -134,7 +152,7 @@ async function preparePayroll(ctx, { start, end, actor }) {
         status: 'prepared', periodStart: start, periodEnd: end, checkDate: found.check_date, feedHash: feed.hash, feedTotals: feed.totals, feedRows: feed.rows.map((r) => ({ userId: r.userId, name: r.name, regularHours: r.regularHours, overtimeHours: r.overtimeHours, doubleTimeHours: r.doubleTimeHours, ptoHours: r.ptoHours })),
         preparedAt: nowIso(), preparedBy: actor || null, totals: calculated.totals, blockers: blockers.map((b) => b.message || b.key), issues, submittedAt: null, submittedBy: null
     });
-    return { payrollUuid: found.payroll_uuid, status: 'prepared', period: { start, end }, checkDate: found.check_date, cutoff: cutoffFor(ctx, calculated), ...summarize(calculated, feed.rows), feedTotals: feed.totals, blockers: record.blockers, issues, canSubmit: !record.blockers.length };
+    return { payrollUuid: found.payroll_uuid, status: 'prepared', period: { start, end }, checkDate: found.check_date, cutoff: cutoffFor(ctx, calculated), ...summarize(calculated, feed.rows, await namesByGustoUuid(ctx)), feedTotals: feed.totals, blockers: record.blockers, issues, canSubmit: !record.blockers.length };
 }
 
 /** Current state of a prepared payroll: Gusto totals, blockers, whether our hours changed since prepare */
@@ -152,7 +170,7 @@ async function previewPayroll(ctx, payrollUuid) {
         const feed = await buildFeed(ctx, record.periodStart, record.periodEnd);
         stale = feed.hash !== record.feedHash;
     }
-    const extra = offCycle ? { kind: 'off_cycle', reason: record.reason || null, entered: (record.offCycle && record.offCycle.people) || [], ...summarize(p, (record.offCycle && record.offCycle.people) || []) } : { kind: 'regular' };
+    const extra = offCycle ? { kind: 'off_cycle', reason: record.reason || null, entered: (record.offCycle && record.offCycle.people) || [], ...summarize(p, (record.offCycle && record.offCycle.people) || [], await namesByGustoUuid(ctx)) } : { kind: 'regular' };
     return { ...extra, payrollUuid, status: record.status, processed: Boolean(p.processed), period: { start: record.periodStart, end: record.periodEnd }, checkDate: p.check_date, cutoff: cutoffFor(ctx, p), totals: p.totals || null, blockers: blockers.map((b) => b.message || b.key), stale, issues: record.issues || [], feedTotals: record.feedTotals, preparedAt: record.preparedAt, submittedAt: record.submittedAt || null };
 }
 
@@ -284,4 +302,4 @@ async function reconciliation(ctx, start, end) {
     return { period: { start, end }, payrollUuid: payroll ? payroll.payroll_uuid : null, payrollProcessed: payroll ? Boolean(payroll.processed) : null, hasPayroll: Boolean(payroll), feedIssues: feed.issues, ...rec };
 }
 
-module.exports = { _internal: { cid, fail, summarize, cutoffFor }, register, cost, buildFeed, listPayrolls, findPayroll, preparePayroll, previewPayroll, submitPayroll, cancelPayroll, refreshPayroll, history, payStubs, taxFilings, reconciliation, waitCalculated };
+module.exports = { _internal: { cid, fail, summarize, cutoffFor, namesByGustoUuid }, register, cost, buildFeed, listPayrolls, findPayroll, preparePayroll, previewPayroll, submitPayroll, cancelPayroll, refreshPayroll, history, payStubs, taxFilings, reconciliation, waitCalculated };

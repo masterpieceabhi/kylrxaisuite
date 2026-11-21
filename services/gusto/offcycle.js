@@ -12,7 +12,7 @@ const X = require('./extras-rules');
 const sync = require('./sync');
 const payroll = require('./payroll');
 
-const { cid, fail, summarize, cutoffFor } = payroll._internal;
+const { cid, fail, summarize, cutoffFor, namesByGustoUuid } = payroll._internal;
 const nowIso = () => new Date().toISOString();
 const todayOf = (ctx) => (ctx.today ? ctx.today() : new Date().toISOString().slice(0, 10));
 
@@ -73,7 +73,7 @@ async function createOffCycle(ctx, input, { actor } = {}) {
     });
     return {
         payrollUuid, kind: 'off_cycle', reason: value.reason, status: 'prepared', period: { start: value.start, end: value.end }, checkDate: record.checkDate, cutoff: cutoffFor(ctx, calculated),
-        ...summarize(calculated, entered), entered, blockers: record.blockers, issues, canSubmit: !record.blockers.length, reused: Boolean(open)
+        ...summarize(calculated, entered, await namesByGustoUuid(ctx)), entered, blockers: record.blockers, issues, canSubmit: !record.blockers.length, reused: Boolean(open)
     };
 }
 

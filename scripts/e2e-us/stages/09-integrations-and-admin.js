@@ -406,6 +406,11 @@ module.exports = {
                 }
                 const health = await call('POST', `${C}/test`, owner, {});
                 check('the connection test passes (the folder can be written to)', health.s === 200 && health.b.health && health.b.health.ok === true, health.b);
+                // Once the company has run payroll (stage 04 on the mock provider) the export also writes a payroll journal,
+                // which needs the company's own account numbers, as a real owner sets them on the mapping screen.
+                const accounts = { 'accounts.wages_expense': '6000', 'accounts.employer_tax_expense': '6100', 'accounts.tax_payable': '2100', 'accounts.deductions_payable': '2200', 'accounts.net_pay_clearing': '1010' };
+                const setAccounts = await call('PATCH', C, owner, { config: accounts });
+                check('the owner enters the company\'s accounts for the payroll journal', setAccounts.s === 200 && ((setAccounts.b.connection || {}).config || {}).accounts && setAccounts.b.connection.config.accounts.wages_expense === '6000', setAccounts.b);
                 const sync = await call('POST', `${C}/sync`, owner, {});
                 const runRec = sync.b.run || {};
                 check('a sync runs and succeeds', sync.s === 200 && runRec.status === 'success', sync.b);

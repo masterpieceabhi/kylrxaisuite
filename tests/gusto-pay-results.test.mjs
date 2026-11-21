@@ -85,3 +85,27 @@ test('a stored row maps to the public API pay result', () => {
     assert.equal(api.gross, 100); assert.equal(api.net, 80); assert.equal(api.employee_taxes, 20); assert.equal(api.employer_taxes, 8);
     assert.deepEqual(api.pay_period, { start: '2026-11-02', end: '2026-11-15' });
 });
+
+test('shared taxes never push deductions below zero, so every row and the company total still add up', () => {
+    // People taxed at different rates: shared by gross, the lower-taxed person got a bigger share than was withheld
+    // from them, deductions were clamped at zero, and the journal came out of balance.
+    const comps = [
+        { employee_uuid: 'g1', gross_pay: '1000.00', net_pay: '850.00' }, // 15% withheld
+        { employee_uuid: 'g2', gross_pay: '1000.33', net_pay: '750.24' }, // about 25% withheld
+        { employee_uuid: 'g3', gross_pay: '0.00', net_pay: '0.00' }
+    ];
+    const grossC = 100000 + 100033; const netC = 85000 + 75024;
+    const payroll = { ...base, totals: { gross_pay: '2000.33', employee_taxes: ((grossC - netC) / 100).toFixed(2), employer_taxes: '180.01' }, employee_compensations: comps };
+    const links3 = [...links, { ourId: 'u3', gustoUuid: 'g3' }];
+    const people3 = [...people, { id: 'u3', name: 'Nora New' }];
+    const { rows } = PR.buildPayResults({ orgId: 'o1', payrollUuid: 'p1', payroll, links: links3, people: people3, nowIso: 'x' });
+    const c = (v) => Math.round(v * 100);
+    for (const r of rows) {
+        assert.ok(r.deductions >= 0, JSON.stringify(r));
+        assert.equal(c(r.gross), c(r.net) + c(r.employeeTaxes) + c(r.deductions), `${r.name} adds up`);
+    }
+    const t = PR.totalsOf(rows);
+    assert.equal(c(t.employeeTaxes), grossC - netC, 'the shares add up to the company total');
+    assert.equal(c(t.gross), c(t.net) + c(t.employeeTaxes) + c(t.deductions), 'the company total balances');
+    assert.equal(rows.find((r) => r.userId === 'u3').employeeTaxes, 0, 'nothing withheld, no tax share');
+});

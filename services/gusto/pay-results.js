@@ -4,8 +4,9 @@
  * (collection `pay_results`, shape read by services/canonical.js toPayResult).
  *
  * Gusto gives per-person taxes, deductions and benefits on each employee compensation. When a payroll
- * carries only totals (the mock server, or a trimmed response), the totals are shared out by each
- * person's part of gross pay and the row is marked `allocated: true` so nobody mistakes it for a real figure.
+ * carries only totals (the mock server, or a trimmed response), the totals are shared out (employee taxes by what was
+ * withheld from each person, employer taxes by gross pay) and the row is marked `allocated: true` so nobody mistakes it
+ * for a real figure.
  */
 const COLLECTION = 'pay_results';
 const cents = (v) => Math.round((Number(v) || 0) * 100);
@@ -41,7 +42,12 @@ function buildPayResults({ orgId, payrollUuid, payroll, links, people, status = 
     const totals = payroll.totals || {};
     const detailed = comps.some((ec) => Array.isArray(ec.taxes));
     const gross = comps.map((ec) => cents(ec.gross_pay));
-    const empTaxShare = detailed ? null : share(cents(totals.employee_taxes), gross);
+    // Employee taxes are shared by what was actually withheld from each person (gross - net), not by gross: a share can
+    // then never be more than was withheld, so deductions are never pushed below zero and every row still adds up
+    // (gross = net + taxes + deductions). Shared by gross, a cent of rounding could exceed it, and the clamp below put
+    // that cent back, leaving the accounting journal out of balance by a few cents.
+    const withheld = comps.map((ec, i) => Math.max(0, gross[i] - cents(ec.net_pay)));
+    const empTaxShare = detailed ? null : share(cents(totals.employee_taxes), withheld);
     const erTaxShare = detailed ? null : share(cents(totals.employer_taxes), gross);
     const rows = []; const unmatched = [];
     comps.forEach((ec, i) => {

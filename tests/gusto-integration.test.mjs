@@ -213,6 +213,10 @@ test('hours feed -> prepare -> preview -> submit with confirmation, stale-hours 
     assert.ok(Number(prep.totals.gross_pay) > 0);
     // gross: u1 78*20 + 2*30 = 1620 ; u2 80*20 + 5*30 = 1750 ; u3 20*20 = 400  => 3770
     assert.equal(prep.totals.gross_pay, '3770.00');
+    // everyone on the preview has a name, also Cy, the salaried person whose week is not in the hours feed
+    assert.equal(prep.employees.length, 3);
+    assert.ok(prep.employees.every((e) => e.name), JSON.stringify(prep.employees));
+    assert.deepEqual(prep.employees.map((e) => e.name).sort(), ['Ann Alpha', 'Bob Beta', 'Cy Gamma']);
     assert.equal(prep.canSubmit, true);
     assert.ok(['ok', 'soon', 'urgent'].includes(prep.cutoff.status));
 
@@ -248,6 +252,10 @@ test('hours feed -> prepare -> preview -> submit with confirmation, stale-hours 
     assert.equal(cost.totals.employerCost, cost.totals.gross + cost.totals.employerTaxes);
     await assert.rejects(() => payroll.submitPayroll(ctx, prep2.payrollUuid, { confirm: true, confirmPayrollId: prep2.payrollUuid, actor: 'p' }), (e) => e.code === 'wrong_state');
 
+    // the period is paid now: preparing it again says it was submitted, not that the pay schedule has no such period
+    await assert.rejects(() => payroll.preparePayroll(ctx, { start, end, actor: 'payroll1' }), (e) => e.status === 409 && e.code === 'already_submitted');
+    // a period Gusto has never had is still the pay-schedule answer
+    await assert.rejects(() => payroll.preparePayroll(ctx, { start: '2020-01-01', end: '2020-01-14', actor: 'payroll1' }), (e) => e.code === 'no_payroll_for_period' || e.code === 'feed_empty');
     // reconciliation agrees with Gusto after submit
     const rec = await payroll.reconciliation(ctx, start, end);
     assert.equal(rec.hasPayroll, true);
@@ -509,4 +517,19 @@ test('webhook processing failure is retried later and recorded; the receiver sti
     assert.equal((await store.listErrors(ORG)).some((e) => e.scope === 'webhook'), true);
     const retried = await webhooks.processPending(ctx, { force: true });
     assert.equal(retried.tried, 1);
+});
+
+test('payroll preview names people who have no row in the hours feed (salaried people)', async () => {
+    const { summarize, namesByGustoUuid } = payroll._internal;
+    const ctx = {
+        orgId: 'org1',
+        loadPeople: async () => [{ id: 'u1', name: 'Ann Alpha' }, { id: 'u9', name: 'Sal Aried' }],
+        store: { listLinks: async () => [{ ourId: 'u1', gustoUuid: 'g1' }, { ourId: 'u9', gustoUuid: 'g9' }, { ourId: 'gone', gustoUuid: 'g0' }] }
+    };
+    const known = await namesByGustoUuid(ctx);
+    const calc = { totals: { gross_pay: '2000.00' }, employee_compensations: [{ employee_uuid: 'g1', gross_pay: '1000.00' }, { employee_uuid: 'g9', gross_pay: '1000.00' }, { employee_uuid: 'g0', gross_pay: '0.00' }] };
+    const feedRows = [{ employeeUuid: 'g1', name: 'Ann A. (from the feed)' }];
+    const out = summarize(calc, feedRows, known);
+    assert.deepEqual(out.employees.map((e) => e.name), ['Ann A. (from the feed)', 'Sal Aried', null], 'the feed name wins; the salaried person is named; an unknown link stays unnamed');
+    assert.deepEqual(summarize(calc, feedRows).employees.map((e) => e.name), ['Ann A. (from the feed)', null, null], 'without the people list only feed rows are named (how it was)');
 });

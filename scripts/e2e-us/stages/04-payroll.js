@@ -124,6 +124,7 @@ module.exports = {
             const badSchedule = await call('POST', `${G}/setup/pay_schedule`, owner, { frequency: 'weekly', anchorPayDate: ctx.addDays(lastWeekEnd, -3), anchorEndOfPayPeriod: lastWeekEnd });
             check('a pay date before the end of the pay period is refused', badSchedule.s === 400 || badSchedule.s === 409, badSchedule.b);
         }
+        let employeesStep = null; // checked once the people list says who else is on the payroll
         for (const key of order) {
             const now = setup.b.steps.find((s) => s.key === key);
             if (now && now.status === 'done') { ctx.info(`${key}: already done`); continue; }
@@ -132,7 +133,7 @@ module.exports = {
             const after = (r.b.steps || []).find((s) => s.key === key);
             const done = check(`setup step "${key}" is done`, r.s === 200 && after && after.status === 'done', { status: r.s, code: r.b.code, error: r.b.error, errors: r.b.errors, blockedBy: r.b.blockedBy, step: after, result: r.b.result });
             if (!done && r.s !== 200) { setup = await call('GET', `${G}/setup?live=true`, payroll); if (setup.s !== 200) return; }
-            if (done && key === 'employees') check('all ten people are sent to the provider in that step, none blocked', r.b.result && r.b.result.total === 10 && r.b.result.blocked === 0 && r.b.result.errors === 0, r.b.result);
+            if (done && key === 'employees') employeesStep = r.b.result || {};
             if (done && key === 'bank') {
                 const s2 = await call('GET', `${G}/status`, payroll);
                 check('the company bank account is shown by its last four digits only', s2.b.connection.bankLast4 === '6789' && !s2.text.includes('000123456789'), s2.b.connection);
@@ -156,6 +157,15 @@ module.exports = {
         if (finished) ctx.info(`${finished} more people finished at the provider`);
         people = await call('GET', `${G}/people`, payroll);
         const mineRows = people.b.data.filter((p) => keyOf(p.userId));
+        // People hired in earlier stages (stage 02 hires one when the public apply limit allows it) are on the payroll
+        // too. They worked no hours last week, so they must be there by name, paid $0, with a warning.
+        const extraRows = people.b.data.filter((p) => p.active && p.classification === 'W2' && !keyOf(p.userId));
+        const extraIds = new Set(extraRows.map((p) => p.userId));
+        const extraNames = new Set(extraRows.map((p) => p.name));
+        const N = 10 + extraRows.length;
+        const everyoneWord = extraRows.length ? `${N} people (the ten of stage 01 and ${extraRows.length} hired later)` : 'ten people';
+        if (extraRows.length) ctx.info(`also on the payroll from earlier stages: ${extraRows.map((p) => p.name).join(', ')}`);
+        if (employeesStep) check(`all ${everyoneWord} are sent to the provider in the setup step, none blocked`, employeesStep.total === N && employeesStep.blocked === 0 && employeesStep.errors === 0, employeesStep);
         check('all ten people of stage 01 are at the provider and finished there, nobody in an error state', mineRows.length === 10 && mineRows.every((p) => p.inGusto && p.finishedInGusto && p.syncState !== 'error' && p.syncState !== 'blocked'), mineRows.filter((p) => !p.inGusto || !p.finishedInGusto || p.syncState === 'error'));
         check('each person\'s bank details went with them (never shown, only "sent")', mineRows.every((p) => p.bank === 'sent') && !/0001234/.test(people.text), mineRows.map((p) => [p.name, p.bank, p.bankNote]));
         const resend = await call('POST', `${G}/sync/people`, payroll, {});
@@ -164,9 +174,9 @@ module.exports = {
         const depts = await call('POST', `${G}/sync/departments`, payroll, {});
         check('departments are sent to the provider', depts.s === 200, depts.b);
         const pull = await call('POST', `${G}/sync/pull`, payroll, {});
-        check('reading people back from the provider finds all ten, none unknown on either side', pull.s === 200 && pull.b.gustoCount === 10 && pull.b.unmatched.length === 0 && pull.b.missingInGusto.length === 0, pull.b);
+        check(`reading people back from the provider finds all ${everyoneWord}, none unknown on either side`, pull.s === 200 && pull.b.gustoCount === N && pull.b.unmatched.length === 0 && pull.b.missingInGusto.length === 0, pull.b);
         const afterPull = await call('GET', `${G}/people`, payroll);
-        check('nothing differs between our records and the provider\'s (pay rates, pay type)', afterPull.s === 200 && afterPull.b.data.every((p) => !(p.drift || []).length) && afterPull.b.data.filter((p) => p.finishedInGusto).length === 10, (afterPull.b.data || []).filter((p) => (p.drift || []).length).map((p) => [p.name, p.drift]));
+        check('nothing differs between our records and the provider\'s (pay rates, pay type)', afterPull.s === 200 && afterPull.b.data.every((p) => !(p.drift || []).length) && afterPull.b.data.filter((p) => p.finishedInGusto).length === N, (afterPull.b.data || []).filter((p) => (p.drift || []).length).map((p) => [p.name, p.drift]));
         const end = await call('GET', `${G}/setup?live=true`, payroll);
         const open = (end.b.steps || []).filter((s) => s.status !== 'done');
         check('every setup step is done and the provider has approved the company', end.s === 200 && open.length === 0 && end.b.approved === true, open.length ? open : end.b);
@@ -188,9 +198,11 @@ module.exports = {
             const r = frow(k); const w = want[k];
             check(`feed row for ${P[k].name}: ${w.regular} regular, ${w.overtime} overtime, ${w.holiday} holiday hours (the hours approved in stage 03)`, near(r.regularHours, w.regular) && near(r.overtimeHours, w.overtime) && near(r.holidayHours || 0, w.holiday) && near(r.doubleTimeHours, 0), r);
         }
+        const extraFeed = (feed.b.rows || []).filter((r) => extraIds.has(r.userId));
+        if (extraRows.length) check('people hired later have no hours in last week\'s feed', extraFeed.every((r) => !r.regularHours && !r.overtimeHours && !r.holidayHours), extraFeed);
         const ft = feed.b.totals || {};
         const sumOf = (f) => round2(HOURLY.reduce((s, k) => s + want[k][f], 0));
-        check(`feed totals add up: ${sumOf('regular')} regular, ${sumOf('overtime')} overtime, ${sumOf('holiday')} holiday hours for 4 people`, near(ft.regularHours, sumOf('regular')) && near(ft.overtimeHours, sumOf('overtime')) && near(ft.holidayHours, sumOf('holiday')) && ft.people === 4, ft);
+        check(`feed totals add up: ${sumOf('regular')} regular, ${sumOf('overtime')} overtime, ${sumOf('holiday')} holiday hours for ${4 + extraFeed.length} people`, near(ft.regularHours, sumOf('regular')) && near(ft.overtimeHours, sumOf('overtime')) && near(ft.holidayHours, sumOf('holiday')) && ft.people === 4 + extraFeed.length, ft);
         const tipsInFeed = /tip/i.test(JSON.stringify(feed.b.rows || []));
         if (!tipsInFeed) ctx.skip('Tips on the pay run', `the hours feed has no tips: the server's $${time.tips.server.total} of declared tips and the $${time.tips.server.poolShare} tip-pool share from stage 03 never reach the payroll provider through any route (payroll has to key them in at the provider)`);
         else check('the server\'s declared tips are in the feed', new RegExp(String(time.tips.server.total)).test(JSON.stringify(frow('server'))), frow('server'));
@@ -215,8 +227,11 @@ module.exports = {
             if (!check('[needed] the payroll admin prepares last week\'s payroll at the provider', prep.s === 200 && prep.b.status === 'prepared' && prep.b.payrollUuid, prep.b)) return;
             payrollId = prep.b.payrollUuid;
             check(`the provider's pay date is ${payDate} and the deadline to submit has not passed`, prep.b.checkDate === payDate && prep.b.cutoff && prep.b.cutoff.status !== 'passed', { checkDate: prep.b.checkDate, cutoff: prep.b.cutoff });
-            check('no blockers, and it can be submitted; the only note is that holiday hours are sent as regular hours', prep.b.canSubmit === true && prep.b.blockers.length === 0 && prep.b.issues.length === 1 && prep.b.issues[0].code === 'extra_hours_as_regular', { blockers: prep.b.blockers, issues: prep.b.issues });
-            check(`the provider calculates $${wantGross} gross for ten people`, near(prep.b.totals.gross_pay, wantGross, 0.03) && prep.b.employees.length === 10, { totals: prep.b.totals, people: prep.b.employees.length });
+            const noHours = prep.b.issues.filter((i) => i.code === 'no_hours' && extraIds.has(i.userId));
+            const otherIssues = prep.b.issues.filter((i) => !noHours.includes(i));
+            check('no blockers, and it can be submitted; the only note for the ten is that holiday hours are sent as regular hours', prep.b.canSubmit === true && prep.b.blockers.length === 0 && otherIssues.length === 1 && otherIssues[0].code === 'extra_hours_as_regular', { blockers: prep.b.blockers, issues: prep.b.issues });
+            if (extraRows.length) check('each person hired later gets a warning that they have no hours this pay period', extraRows.every((p) => noHours.some((i) => i.userId === p.userId)), prep.b.issues);
+            check(`the provider calculates $${wantGross} gross for ${everyoneWord}`, near(prep.b.totals.gross_pay, wantGross, 0.03) && prep.b.employees.length === N, { totals: prep.b.totals, people: prep.b.employees.length });
             const emp = (k) => prep.b.employees.find((e) => e.name === P[k].name) || {};
             const c = time.expected.cashier;
             // (40 regular + 8 holiday) x 18.50 + 7 overtime x 18.50 x 1.5
@@ -225,9 +240,10 @@ module.exports = {
                 const e = time.expected[k];
                 check(`${P[k].name}: (${e.regularHours} worked + ${e.holidayHours} holiday) x $${e.payRate} = $${want[k].gross}`, near(emp(k).gross, want[k].gross), emp(k));
             }
-            // the six salaried people: compared by amount, because the preview only names people who have hours
+            // the six salaried people: everyone on the preview who is neither hourly nor hired later
             const hourlyNames = new Set(HOURLY.map((k) => P[k].name));
-            const salariedGross = prep.b.employees.filter((e) => !hourlyNames.has(e.name)).map((e) => Number(e.gross)).sort((a, b) => a - b);
+            if (extraRows.length) check('people hired later are on the preview by name with $0 gross', extraRows.every((p) => prep.b.employees.some((e) => e.name === p.name && near(e.gross, 0))), prep.b.employees.filter((e) => extraNames.has(e.name)));
+            const salariedGross = prep.b.employees.filter((e) => !hourlyNames.has(e.name) && !extraNames.has(e.name)).map((e) => Number(e.gross)).sort((a, b) => a - b);
             const salariedWant = SALARIED.map((k) => want[k].gross).sort((a, b) => a - b);
             check('each of the six salaried people gets one fifty-second of their yearly salary', salariedGross.length === 6 && salariedGross.every((g, i) => near(g, salariedWant[i])), { got: salariedGross, want: salariedWant });
             check('every person in the preview is shown by name, salaried people too', prep.b.employees.every((e) => Boolean(e.name)), prep.b.employees.filter((e) => !e.name).map((e) => ({ name: e.name, gross: e.gross })));
@@ -258,7 +274,7 @@ module.exports = {
             const both = await Promise.all([1, 2].map(() => call('POST', `${G}/payroll/${payrollId}/submit`, payroll, { confirm: true, confirmPayrollId: payrollId })));
             const won = both.find((r) => r.s === 200);
             check('two submits at the same moment: exactly one goes through', both.filter((r) => r.s === 200).length === 1 && both.filter((r) => r.s === 409).length === 1, both.map((r) => [r.s, r.b.code || r.b.status]));
-            check(`the payroll is submitted for $${wantGross} gross and pay results are stored for all ten people`, Boolean(won) && won.b.status === 'submitted' && near(won.b.totals.gross_pay, wantGross, 0.03) && won.b.payResults && won.b.payResults.saved === 10 && won.b.payResults.unmatched.length === 0, won ? won.b : both[0].b);
+            check(`the payroll is submitted for $${wantGross} gross and pay results are stored for all ${everyoneWord}`, Boolean(won) && won.b.status === 'submitted' && near(won.b.totals.gross_pay, wantGross, 0.03) && won.b.payResults && won.b.payResults.saved === N && won.b.payResults.unmatched.length === 0, won ? won.b : both[0].b);
             check('submitting it again is refused (409)', (await call('POST', `${G}/payroll/${payrollId}/submit`, payroll, { confirm: true, confirmPayrollId: payrollId })).s === 409);
             const again = await call('POST', `${G}/payroll/prepare`, payroll, { start: lastWeekStart, end: lastWeekEnd });
             check('preparing the same pay period again is refused: it is already submitted (409)', again.s === 409 && /already/.test(again.b.code || ''), again.b);
@@ -269,9 +285,9 @@ module.exports = {
         ctx.section('Payroll register');
         const reg = await call('GET', `${G}/payroll/${payrollId}/register`, payroll);
         const rrow = (k) => (reg.b.rows || []).find((r) => r.userId === P[k].uid) || {};
-        check('the register has ten people for last week\'s pay period', reg.s === 200 && reg.b.rows.length === 10 && reg.b.periodStart === lastWeekStart && reg.b.periodEnd === lastWeekEnd, { rows: (reg.b.rows || []).length, period: [reg.b.periodStart, reg.b.periodEnd] });
+        check(`the register has ${everyoneWord} for last week's pay period`, reg.s === 200 && reg.b.rows.length === N && reg.b.periodStart === lastWeekStart && reg.b.periodEnd === lastWeekEnd, { rows: (reg.b.rows || []).length, period: [reg.b.periodStart, reg.b.periodEnd] });
         for (const k of HOURLY) check(`register row for ${P[k].name}: ${want[k].hours} paid hours, $${want[k].gross} gross`, near(rrow(k).gross, want[k].gross) && near(rrow(k).hours, want[k].hours) && rrow(k).employeeId === P[k].employeeId, rrow(k));
-        check('the register total is the sum of its rows and matches what was submitted', near(reg.b.totals.gross, wantGross, 0.03) && near(reg.b.totals.gross, round2((reg.b.rows || []).reduce((s, r) => s + r.gross, 0))) && reg.b.totals.people === 10, reg.b.totals);
+        check('the register total is the sum of its rows and matches what was submitted', near(reg.b.totals.gross, wantGross, 0.03) && near(reg.b.totals.gross, round2((reg.b.rows || []).reduce((s, r) => s + r.gross, 0))) && reg.b.totals.people === N, reg.b.totals);
         check('on every row gross = net + employee taxes + deductions', (reg.b.rows || []).every((r) => near(r.gross, r.net + r.employeeTaxes + r.deductions, 0.02)), (reg.b.rows || []).map((r) => [r.name, r.gross, r.net, r.employeeTaxes, r.deductions]));
         check('the mock provider gives no per-person taxes, so the register says the tax split is an estimate', reg.b.allocated === true, reg.b.allocated);
         check('the six salaried people are on the register with their weekly salary', SALARIED.every((k) => near(rrow(k).gross, want[k].gross)), SALARIED.map((k) => [P[k].name, rrow(k).gross, want[k].gross]));
@@ -306,7 +322,7 @@ module.exports = {
         const dept = (name) => (cost.b.byDepartment || []).find((d) => d.key === name) || {};
         const deptWant = (name) => round2(everyone.filter((k) => DEPARTMENT[k] === name).reduce((s, k) => s + want[k].gross, 0));
         if (!alreadyPaid) {
-            check(`the accountant reads payroll cost for that pay date: $${wantGross} gross for ten people`, cost.s === 200 && near(cost.b.totals.gross, wantGross, 0.03) && cost.b.totals.people === 10, cost.b.totals);
+            check(`the accountant reads payroll cost for that pay date: $${wantGross} gross for ${everyoneWord}`, cost.s === 200 && near(cost.b.totals.gross, wantGross, 0.03) && cost.b.totals.people === N, cost.b.totals);
             check(`cost by department: Office $${deptWant('Office')}, Store $${deptWant('Store')}, Cafe $${deptWant('Cafe')} gross`, ['Office', 'Store', 'Cafe'].every((d) => near(dept(d).gross, deptWant(d), 0.03)), (cost.b.byDepartment || []).map((d) => [d.key, d.people, d.gross]));
             check('employer cost is gross pay plus the employer\'s taxes', near(cost.b.totals.employerCost, cost.b.totals.gross + cost.b.totals.employerTaxes, 0.02) && cost.b.totals.employerTaxes > 0, cost.b.totals);
         } else check('the accountant reads payroll cost for that pay date, split over the three departments', cost.s === 200 && ['Office', 'Store', 'Cafe'].every((d) => dept(d).gross > 0), (cost.b.byDepartment || []).map((d) => [d.key, d.people, d.gross]));

@@ -314,7 +314,9 @@ function reconcile({ feedRows = [], gustoCompensations = [], people = [], links 
             overtime: round2(sumOf(c, (h) => Number(h.compensation_multiplier) === 1.5)),
             doubleTime: round2(sumOf(c, (h) => Number(h.compensation_multiplier) === 2))
         };
-        const ours = { regular: row.regularHours, overtime: row.overtimeHours, doubleTime: row.doubleTimeHours };
+        // compared as sent: paid holiday and missed-break premium hours go to Gusto inside regular hours (toGustoCompensations)
+        const extra = round2((row.holidayHours || 0) + (row.premiumHours || 0));
+        const ours = { regular: round2((row.regularHours || 0) + extra), overtime: row.overtimeHours, doubleTime: row.doubleTimeHours, ...(extra ? { holidayAndPremiumInRegular: extra } : {}) };
         const mismatch = row.payType === 'hourly' && (!c || ['regular', 'overtime', 'doubleTime'].some((k) => Math.abs(g[k] - ours[k]) > 0.005));
         diffs.push({ userId: row.userId, name: row.name, ours, gusto: g, inGusto: Boolean(c), match: !mismatch });
     }

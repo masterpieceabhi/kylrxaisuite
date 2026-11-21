@@ -44,3 +44,18 @@ test('a feed without holiday or premium hours is unchanged, and adding them chan
     const withHoliday = feedFor([wk('u1', '2026-11-09', { regularHours: 40, holidayHours: 8 }), wk('u1', '2026-11-16', { regularHours: 40 })]);
     assert.notEqual(R.feedHash(withHoliday.rows), R.feedHash(plain.rows));
 });
+
+test('reconciliation counts holiday and premium hours inside regular hours, as they were sent to Gusto', () => {
+    const feed = feedFor([wk('u1', '2026-11-09', { regularHours: 32, overtimeHours: 0, holidayHours: 8 }), wk('u1', '2026-11-16', { regularHours: 40, premiumHours: 1 })]);
+    const row = feed.rows.find((r) => r.userId === 'u1');
+    const sent = R.toGustoCompensations(feed.rows, [{ employee_uuid: 'g1', hourly_compensations: [] }]);
+    const rec = R.reconcile({ feedRows: feed.rows, gustoCompensations: sent, people, links });
+    const d = rec.diffs.find((x) => x.userId === 'u1');
+    assert.equal(d.match, true, JSON.stringify(d));
+    assert.equal(d.ours.regular, round(row.regularHours + row.holidayHours + row.premiumHours));
+    assert.equal(d.ours.holidayAndPremiumInRegular, 9);
+    // a real difference is still found
+    const short = sent.map((c) => ({ ...c, hourly_compensations: c.hourly_compensations.map((h) => (Number(h.compensation_multiplier) === 1 ? { ...h, hours: String(Number(h.hours) - 8) } : h)) }));
+    assert.equal(R.reconcile({ feedRows: feed.rows, gustoCompensations: short, people, links }).diffs.find((x) => x.userId === 'u1').match, false);
+});
+const round = (n) => Math.round(n * 100) / 100;
