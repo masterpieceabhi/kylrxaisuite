@@ -323,6 +323,7 @@ app.use("/api/us", require("./routes/us-report-builder")); // custom reports and
 app.use("/api/us", require("./routes/us-review-cycles")); // review cycles and 360 feedback
 app.use("/api/us", require("./routes/us-recognition")); // announcements and thanks
 app.use("/api/us", require("./routes/us-payroll-import")); // historical payroll import
+app.use("/api/us", require("./routes/us-assistant")); // HR assistant (OpenAI)
 app.use("/api/sso", require("./routes/sso"));
 app.use("/api/support", require("./routes/support-access"));
 app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors

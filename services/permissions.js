@@ -75,7 +75,9 @@ const PERMISSIONS = {
     'billing.manage': [SA],
     'security.manage': [SA],
     'support.impersonate': [SA],
-    'privacy.manage': [SA, HR]
+    'privacy.manage': [SA, HR],
+    // HR assistant: asks OpenAI about this company's HR status (no pay, SSN, bank or health data)
+    'assistant.use': [SA, HR]
 };
 
 const KNOWN_PERMISSIONS = Object.keys(PERMISSIONS);

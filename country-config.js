@@ -21,7 +21,9 @@
         'payroll-disbursement.html',
         // India payroll in rupees with PF/ESIC and PAN; a US company pays through Gusto (admin-us-payroll.html)
         'admin-payroll-upload.html',
-        'payroll-account-views.html'
+        'payroll-account-views.html',
+        // the old demo assistant page with made-up figures; US companies use admin-us-assistant.html
+        'admin-onboarding-ai.html'
     ];
 
     const COUNTRIES = {

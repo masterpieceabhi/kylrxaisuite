@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR assistant | Onn HR</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--amber:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1000px;margin:0 auto;padding:20px 24px 60px;display:grid;gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 12px;font-size:16px}
+.note{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:8px;padding:10px 12px}
+.warn{background:#fef3c7;border:1px solid #fde68a;color:var(--amber);border-radius:8px;padding:10px 12px}
+#msg{padding:10px 14px;border-radius:8px;display:none}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.tile{border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff;text-decoration:none;color:inherit}.tile b{display:block;font-size:22px}.tile span{color:var(--muted);font-size:12px}
+.chat{display:grid;gap:10px;max-height:56vh;overflow-y:auto;padding:4px 2px 8px}
+.bubble{padding:10px 12px;border-radius:12px;max-width:85%;white-space:normal;word-wrap:break-word}
+.bubble.user{justify-self:end;background:var(--blue);color:#fff;border-bottom-right-radius:4px}
+.bubble.assistant{justify-self:start;background:#f1f5f9;border-bottom-left-radius:4px}
+.bubble.wait{color:var(--muted);font-style:italic}
+.bubble ul{margin:6px 0;padding-left:18px}.bubble p{margin:0 0 6px}.bubble p:last-child{margin:0}
+.ask{display:flex;gap:8px;align-items:flex-end;margin-top:12px}
+textarea{flex:1;min-height:44px;max-height:160px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit;resize:vertical}
+button.act{padding:10px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}button.act:disabled{opacity:.5;cursor:default}
+button.ghost{padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-size:13px;cursor:pointer}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:12px}
+[hidden]{display:none!important}
+@media (max-width:600px){header,main{padding-left:16px;padding-right:16px}.bubble{max-width:95%}}
+</style>
+</head>
+<body>
+<header><h1>HR assistant</h1><div><a href="admin-us-people.html">People</a> &nbsp;|&nbsp; <a href="admin-us-checklists.html">Checklists</a> &nbsp;|&nbsp; <a href="admin-us-reports.html">Reports</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="note">Ask about your own company in plain English, for example who still needs a W-4 or which onboarding tasks are late. The assistant reads names, departments, job titles, start dates, open checklist tasks, missing forms, time off waiting for a decision and hours waiting for approval. It never sees pay rates, Social Security numbers, bank details, dates of birth, home addresses or health details. Your question and these facts are sent to OpenAI to write the answer. Answers can be wrong: check anything important on its own page. It only reads; it changes nothing.</div>
+  <div id="off" class="warn" hidden>The HR assistant is not switched on for this server yet. The person who runs the server adds an OpenAI key (see docs/DEPLOY.md). The counts below are live either way.</div>
+
+  <div class="tiles" id="tiles" aria-live="polite"></div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">Ask a question</h2><button class="ghost" type="button" id="clear">Clear conversation</button></div>
+    <div class="chat" id="chat" aria-live="polite"></div>
+    <div class="chips" id="chips"></div>
+    <form class="ask" id="form">
+      <label for="q" hidden>Your question</label>
+      <textarea id="q" maxlength="1000" placeholder="For example: Who is missing an I-9?" rows="2"></textarea>
+      <button class="act" type="submit" id="send">Ask</button>
+    </form>
+    <div class="foot"><span>Enter sends, Shift+Enter starts a new line.</span><span id="usage"></span></div>
+  </div>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; if (ok) setTimeout(() => { if (m.textContent === t) m.className = ''; }, 5000); };
+const SUGGEST = ['Who is missing a W-4 or I-9?', 'Which onboarding tasks are overdue?', 'Who started in the last 30 days?', 'What time off is waiting for a decision?', 'Whose hours still need approval?'];
+let switchedOn = false; let busy = false;
+
+async function api(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || json.error || `Request failed (${res.status})`); e.status = res.status; e.code = json.code; throw e; }
+  return json;
+}
+
+/** The model writes plain text with simple lists and **bold**; everything is escaped first, so no HTML from the answer runs */
+function format(text) {
+  const blocks = []; let list = null;
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const lineText = raw.trim();
+    const item = lineText.match(/^(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (item) { if (!list) { list = []; blocks.push({ list }); } list.push(item[1]); continue; }
+    list = null;
+    if (lineText) blocks.push({ p: lineText });
+  }
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  return blocks.map((b) => (b.list ? `<ul>${b.list.map((x) => `<li>${inline(x)}</li>`).join('')}</ul>` : `<p>${inline(b.p)}</p>`)).join('');
+}
+
+function bubble(role, text, extraClass = '') {
+  const d = document.createElement('div');
+  d.className = `bubble ${role} ${extraClass}`.trim();
+  if (role === 'assistant' && !extraClass) d.innerHTML = format(text); else d.textContent = text;
+  $('chat').appendChild(d);
+  $('chat').scrollTop = $('chat').scrollHeight;
+  return d;
+}
+
+function showEmpty() {
+  if ($('chat').children.length) return;
+  bubble('assistant', switchedOn ? 'Hello. Ask me about your people, onboarding tasks, missing forms, time off or hours waiting for approval.' : 'The assistant is off on this server, so it cannot answer yet.');
+}
+
+const TILES = [
+  ['currentPeople', 'Current people', 'admin-us-people.html'],
+  ['peopleMissingForms', 'People with missing forms', 'admin-us-reports.html'],
+  ['openTasks', 'Open checklist tasks', 'admin-us-checklists.html'],
+  ['overdueTasks', 'Overdue tasks', 'admin-us-checklists.html'],
+  ['timeOffWaiting', 'Time off to decide', 'admin-us-leave.html'],
+  ['hoursWaiting', 'Weeks of hours to approve', 'admin-us-time.html']
+];
+
+async function loadStatus() {
+  const s = await api('GET', '/assistant/status');
+  switchedOn = s.switchedOn;
+  $('off').hidden = s.switchedOn;
+  $('send').disabled = !s.switchedOn;
+  $('q').disabled = !s.switchedOn;
+  $('tiles').innerHTML = TILES.map(([k, label, href]) => `<a class="tile" href="${href}"><b>${esc(s.counts[k])}</b><span>${esc(label)}</span></a>`).join('');
+  $('usage').textContent = s.switchedOn ? `${s.usedToday} of ${s.dailyLimit} company questions used today` : '';
+}
+
+async function loadMessages() {
+  const r = await api('GET', '/assistant/messages');
+  $('chat').innerHTML = '';
+  for (const m of r.messages) bubble(m.role === 'user' ? 'user' : 'assistant', m.text);
+  showEmpty();
+}
+
+async function ask(question) {
+  if (busy || !question.trim()) return;
+  if (!switchedOn) { say('The assistant is off on this server.', false); return; }
+  busy = true; $('send').disabled = true;
+  if ($('chat').children.length === 1 && !$('chat').querySelector('.bubble.user')) $('chat').innerHTML = '';
+  bubble('user', question);
+  const wait = bubble('assistant', 'Reading your company facts…', 'wait');
+  $('q').value = '';
+  try {
+    const r = await api('POST', '/assistant/ask', { question });
+    wait.remove();
+    bubble('assistant', r.answer);
+    $('usage').textContent = `${r.usedToday} of ${r.dailyLimit} company questions used today`;
+  } catch (e) {
+    wait.remove();
+    bubble('assistant', e.message, 'wait');
+    if (e.code === 'assistant_off') { switchedOn = false; $('off').hidden = false; }
+  } finally {
+    busy = false; $('send').disabled = !switchedOn; $('q').focus();
+  }
+}
+
+$('chips').innerHTML = SUGGEST.map((s) => `<button class="ghost" type="button">${esc(s)}</button>`).join('');
+$('chips').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) ask(b.textContent); });
+$('form').addEventListener('submit', (e) => { e.preventDefault(); ask($('q').value); });
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask($('q').value); } });
+$('clear').addEventListener('click', async () => {
+  if (!confirm('Clear your conversation with the assistant? This cannot be undone.')) return;
+  try { await api('DELETE', '/assistant/messages'); $('chat').innerHTML = ''; showEmpty(); say('Conversation cleared.'); } catch (e) { say(e.message, false); }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try { await loadStatus(); await loadMessages(); } catch (e) {
+    say(e.status === 403 ? 'Only the company owner and HR admins can use the HR assistant.' : e.status === 409 ? 'The HR assistant is for US companies.' : e.message, false);
+  }
+});
+</script>
+</body>
+</html>

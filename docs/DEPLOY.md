@@ -110,6 +110,7 @@ Use the first for `JWT_SECRET`, `REFRESH_SECRET` and `AUDIT_CHAIN_KEY` (run it t
 | File exports from connectors | `CONNECTOR_EXPORT_DIR` (default `data/exports` inside the app folder; move it outside). |
 | Vendor support access | `PLATFORM_ORG_ID`, `PLATFORM_SUPPORT_EMAILS`, `PLATFORM_OPERATOR_TOKEN`. |
 | Automation builder with AI | `OPENAI_API_KEY`, `OPENAI_MODEL`. Without a key it uses the built-in rules. |
+| HR assistant | `OPENAI_API_KEY` (same key), optional `ASSISTANT_DAILY_LIMIT` (questions per company per day, default 200, 0 = off). Without a key the page says the assistant is off. Company data goes to OpenAI: name it in the Privacy Policy before switching it on. |
 
 Never set on a real server: `ALLOW_DEV_AUTH`, `FIRESTORE_EMULATOR_HOST`, `FIREBASE_AUTH_EMULATOR_HOST`, `DEV_DEFAULT_ORG_ID`, `SEED_PASSWORD`.
 
