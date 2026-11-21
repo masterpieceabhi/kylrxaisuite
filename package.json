@@ -32,6 +32,7 @@
   "homepage": "https://github.com/infokylrxai-rgb/kylrx-enterprise-suite#readme",
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@sentry/node": "^11.16.0",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
