@@ -17,6 +17,30 @@ import {
 // @ts-ignore
 import { getStorage } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
+// 0. Late page-ready listeners. This file waits for /firebase-web-config.json (the top-level await further down), so
+// on a real server every page script that imports it runs only after that answer, which is often after the page has
+// already loaded. A DOMContentLoaded or load listener added that late would never run (on staging the sign-up page's
+// buttons did nothing). From here on, such a listener added after the event has happened runs on the next tick.
+if (typeof document !== 'undefined' && !window.__onnhrLateReady) {
+  window.__onnhrLateReady = true;
+  const runSoon = (target, type, listener) => setTimeout(() => {
+    const ev = new Event(type);
+    if (typeof listener === 'function') listener.call(target, ev);
+    else if (listener && typeof listener.handleEvent === 'function') listener.handleEvent(ev);
+  }, 0);
+  const docAdd = document.addEventListener.bind(document);
+  document.addEventListener = function (type, listener, options) {
+    if (type === 'DOMContentLoaded' && document.readyState !== 'loading') return runSoon(document, type, listener);
+    return docAdd(type, listener, options);
+  };
+  const winAdd = window.addEventListener.bind(window);
+  window.addEventListener = function (type, listener, options) {
+    if (type === 'DOMContentLoaded' && document.readyState !== 'loading') return runSoon(window, type, listener);
+    if (type === 'load' && document.readyState === 'complete') return runSoon(window, type, listener);
+    return winAdd(type, listener, options);
+  };
+}
+
 // 1. Completely silence internal Firebase logger chatter
 try {
   setLogLevel('silent');

@@ -384,7 +384,8 @@ import('./region.js').then(async (R) => {
     for (const opt of [...countryInput.options]) if (!known.some((c) => c.name.toLowerCase() === opt.value.trim().toLowerCase())) opt.remove();
     for (const c of known) if (![...countryInput.options].some((o) => o.value.trim().toLowerCase() === c.name.toLowerCase())) countryInput.add(new Option(c.name, c.name));
     const firstHere = regionInfo.serves[0] && regionInfo.serves[0].name;
-    if (!R.servedHere(regionInfo, countryInput.value) && firstHere) { countryInput.value = firstHere; applyCountry(); }
+    if (!R.servedHere(regionInfo, countryInput.value) && firstHere) countryInput.value = firstHere;
+    applyCountry(); // always: on a US-only server the list is just "United States", already chosen, so no change event ever fires
     countryInput.addEventListener('change', () => {
         const away = R.elsewhereFor(regionInfo, countryInput.value);
         if (away && firstHere) { showRegionLine(away, R); countryInput.value = firstHere; applyCountry(); } else showRegionLine(null, R);
