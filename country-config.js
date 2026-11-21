@@ -18,7 +18,10 @@
         'admin-bank-approvals.html',
         'admin-bank-transfer.html',
         'admin-payroll-disbursement.html',
-        'payroll-disbursement.html'
+        'payroll-disbursement.html',
+        // India payroll in rupees with PF/ESIC and PAN; a US company pays through Gusto (admin-us-payroll.html)
+        'admin-payroll-upload.html',
+        'payroll-account-views.html'
     ];
 
     const COUNTRIES = {
