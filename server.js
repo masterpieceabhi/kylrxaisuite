@@ -34,6 +34,8 @@ const notificationCenterRoutes = require("./routes/notification-center");
 const documentTemplatesRoutes = require("./routes/document-templates");
 const workflowBuilderRoutes = require("./routes/workflow-builder");
 const integrationsRoutes = require("./routes/integrations");
+// Older India-era modules: refused for US/CA companies and on servers that do not serve India (see the file)
+const { indiaOnly } = require('./middleware/india-only-modules');
 const hrOsRoutes = require("./routes/hr-os");
 const policiesRoutes = require("./routes/policies");
 const assetsRoutes = require("./routes/assets");
@@ -261,24 +263,24 @@ app.use("/api/auth", require("./routes/qr-signin")); // sign-in by scanning a pe
 app.use("/api/auth", authRoutes);
 app.use("/api/data", dataRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/admin", adminRoutes);
+app.use("/api/admin", indiaOnly, adminRoutes);
 
 app.use("/api/messages", messageRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/payroll-runs", payrollRoutes);
-app.use("/api/email", emailRoutes);
+app.use("/api/email", indiaOnly, emailRoutes);
 app.use("/api/automations", automationRoutes);
-app.use("/api/assignments", assignmentRoutes);
-app.use("/api/alerts", alertRoutes);
+app.use("/api/assignments", indiaOnly, assignmentRoutes);
+app.use("/api/alerts", indiaOnly, alertRoutes);
 app.use("/api/analytics", analyticsRoutes);
-app.use("/api/central-dashboard", centralDashboardRoutes);
+app.use("/api/central-dashboard", indiaOnly, centralDashboardRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notification-center", notificationCenterRoutes);
-app.use("/api/document-templates", documentTemplatesRoutes);
+app.use("/api/document-templates", indiaOnly, documentTemplatesRoutes);
 app.use("/api/workflow-builder", workflowBuilderRoutes);
 app.use("/api/integrations", integrationsRoutes);
-app.use("/api/hr-os", hrOsRoutes);
+app.use("/api/hr-os", indiaOnly, hrOsRoutes);
 app.use("/api/policies", policiesRoutes);
 app.use("/api/assets", assetsRoutes);
 app.use("/api/exits", exitsRoutes);
@@ -334,10 +336,10 @@ app.use("/oauth", require("./routes/oauth")); // OAuth 2.0 token and revocation
 app.use("/scim/v2", require("./routes/scim")); // SCIM 2.0 provisioning (Okta, Entra ID, Google Workspace)
 app.use("/api/manager-goals", managerGoalsRoutes);
 app.use("/api/employee-goals", employeeGoalsRoutes);
-app.use("/api/custom-templates", customTemplatesRoutes);
-app.use("/api/bulk-trigger", bulkTriggerRoutes);
+app.use("/api/custom-templates", indiaOnly, customTemplatesRoutes);
+app.use("/api/bulk-trigger", indiaOnly, bulkTriggerRoutes);
 app.use("/api/payroll-settings", payrollSettingsRoutes);
-app.use("/api/controls-acceptance", controlsAcceptanceRoutes);
+app.use("/api/controls-acceptance", indiaOnly, controlsAcceptanceRoutes);
 
 // ─────────────────────────────────────────────
 // Dynamic ESM Route Registration (Reconciliation, ESIC, Gratuity, NPS, Compliance, PF)
@@ -345,7 +347,7 @@ app.use("/api/controls-acceptance", controlsAcceptanceRoutes);
 async function registerDynamicRoutes(targetApp = app) {
   try {
     const { default: reconciliationRoutes } = await import('./routes/reconciliation.mjs');
-    targetApp.use('/api/reconciliation', reconciliationRoutes);
+    targetApp.use('/api/reconciliation', indiaOnly, reconciliationRoutes);
     logger.info('[ReconciliationEngine] Routes registered at /api/reconciliation');
   } catch (err) {
     logger.error('[ReconciliationEngine] Failed to load reconciliation routes:', err.message);
@@ -380,7 +382,7 @@ async function registerDynamicRoutes(targetApp = app) {
 
   try {
     const { default: unifiedComplianceRoutes } = await import('./routes/unified-compliance.mjs');
-    targetApp.use('/api/v1/compliance', unifiedComplianceRoutes);
+    targetApp.use('/api/v1/compliance', indiaOnly, unifiedComplianceRoutes);
     targetApp.use('/api/compliance', unifiedComplianceRoutes);
     logger.info('[UnifiedStatutoryOrchestrator] Routes registered at /api/v1/compliance and /api/compliance');
   } catch (err) {

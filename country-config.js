@@ -23,7 +23,17 @@
         'admin-payroll-upload.html',
         'payroll-account-views.html',
         // the old demo assistant page with made-up figures; US companies use admin-us-assistant.html
-        'admin-onboarding-ai.html'
+        'admin-onboarding-ai.html',
+        // Older India-era screens checked on 2026-11-20: made-up or India figures, browser reads a US company is not
+        // allowed to make (so they show nothing real), or a newer US page does the job. A US company's home is us-home.html.
+        'admin-dashboard.html', 'admin-central-dashboard.html', 'admin-pms.html', 'admin-notification-center.html',
+        'admin-automation-builder.html', 'admin-workflow-builder.html', 'admin-assignment-matrix.html', 'admin-alert-builder.html',
+        'admin-analytics-builder.html', 'admin-dashboard-builder.html', 'admin-policy-center.html', 'admin-asset-management.html',
+        'admin-exit-management.html', 'admin-attendance-monitor.html', 'admin-leave-management.html', 'admin-document-templates.html',
+        'admin-payroll-documents.html', 'bulk-trigger-dashboard.html', 'controls-acceptance-hub.html', 'admin-inactivity-monitor.html',
+        'admin-hr-console.html', 'admin-analysis.html', 'operational-dashboard.html', 'tvc-dashboard.html',
+        'admin-manager-change.html', 'admin-conversion-hub.html', 'admin-notifications.html', 'admin-message.html',
+        'admin-onboarding-config.html', 'admin-onboarding-upload.html', 'manager-dashboard.html', 'admin-settings.html'
     ];
 
     const COUNTRIES = {

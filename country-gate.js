@@ -25,7 +25,8 @@ export function applyCountry(value) {
 
     const page = currentPage();
     if (Country.isPageHidden(cfg.code, page)) {
-        window.location.replace(dashboardFor(page));
+        // US and Canada companies have their own home (the old dashboards are hidden for them, so they must not go there)
+        window.location.replace(cfg.code === 'IN' ? dashboardFor(page) : 'us-home.html');
         return;
     }
 

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const kylrxHROS = require('../services/kylrx-hr-os');
 const logger = require('../utils/logger');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
 
 router.use(verifyToken);
 
@@ -223,12 +223,23 @@ router.post('/generate-code', async (req, res) => {
  * POST /api/hr-os/convert-employee
  * Converts employee role & employment type with instant response and resilient persistence
  */
-router.post('/convert-employee', async (req, res) => {
+// Changes a person's role, type, department and pay: owner and HR only, and only for a person of the caller's own company
+// (before 2026-11-20 any signed-in user could rewrite any user record, including making themselves an admin).
+router.post('/convert-employee', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const { employeeId, targetType, targetRole, targetDept, targetSalary, effectiveDate, targetManager } = req.body;
 
         if (!employeeId || !targetType) {
             return res.status(400).json({ success: false, error: 'employeeId and targetType are required' });
+        }
+        {
+            const { rawCollection } = require('../config/firebase');
+            const target = await rawCollection('users').doc(String(employeeId)).get();
+            const callerOrg = (req.user && req.user.orgId) || req.tenantOrgId || null;
+            const found = typeof target.exists === 'function' ? target.exists() : target.exists;
+            if (!found || !callerOrg || target.data().orgId !== callerOrg) {
+                return res.status(404).json({ success: false, error: 'No such person in your company' });
+            }
         }
 
         const normalizedType = String(targetType).toLowerCase().trim();

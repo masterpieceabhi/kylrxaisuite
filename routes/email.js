@@ -18,7 +18,7 @@ try {
  * Trigger manual scheduler check.
  * POST /api/email/run-reminder-check
  */
-router.post('/run-reminder-check', async (req, res) => {
+router.post('/run-reminder-check', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const result = await runReminderJob();
         return res.json(result);
@@ -32,7 +32,8 @@ router.post('/run-reminder-check', async (req, res) => {
  * General endpoint to send emails.
  * POST /api/email/send
  */
-router.post('/send', async (req, res) => {
+// Free-form email from the platform address: owner and HR only (any signed-in user could send any email before 2026-11-20)
+router.post('/send', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const { to, subject, html, text } = req.body;
         if (!to || !subject || (!html && !text)) {
@@ -184,7 +185,7 @@ router.post('/trigger-bulk-reminders', async (req, res) => {
  * POST /api/email/test
  * Body: { to: "user@example.com" }
  */
-router.post('/test', async (req, res) => {
+router.post('/test', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const { to } = req.body;
         if (!to) {

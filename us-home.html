@@ -29,7 +29,6 @@ import { auth, onAuthStateChanged } from './firebase-config.js';
 const $ = (id) => document.getElementById(id);
 // Each company page with the permissions that open it (any one is enough), matching the server routes
 const PAGES = [
-  ['admin-dashboard.html', 'Owner dashboard', 'Every menu in one place', ['security.manage']],
   ['admin-us-people.html', 'People', 'Add people, profiles, tax and pay forms', ['people.read']],
   ['admin-us-org.html', 'Company structure', 'Locations, departments, pay schedules, holidays', ['people.read', 'org.settings']],
   ['admin-us-changes.html', 'Profile changes', 'Approve name, address and bank changes', ['people.read']],

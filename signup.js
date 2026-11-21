@@ -775,7 +775,7 @@ async function executeRegistrationAndOrganizationSetup() {
         // Step 6: Confirmation dialog & redirect directly to the main Super Admin Central Dashboard
         // replace() so the Back button can't return to the filled-in signup form
         window.customAlertCallback = () => {
-            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; the US menu lives on admin-dashboard.html
+            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; its home and menu are us-home.html
         };
 
         if (window.showAlert) {
@@ -787,7 +787,7 @@ async function executeRegistrationAndOrganizationSetup() {
         }
 
         setTimeout(() => {
-            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; the US menu lives on admin-dashboard.html
+            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; its home and menu are us-home.html
         }, 2200);
 
     } catch (err) {

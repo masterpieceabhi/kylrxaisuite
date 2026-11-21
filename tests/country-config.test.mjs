@@ -32,14 +32,16 @@ test('US uses USD, EIN and SSN, and hides every India-only page', () => {
         assert.equal(isPageHidden('US', page), true, page);
     }
     assert.equal(isPageHidden('US', '/app/admin-statutory-compliance.html?x=1#top'), true);
-    assert.equal(isPageHidden('US', 'admin-dashboard.html'), false);
     // India rupee payroll pages (PF, ESIC, PAN) are not shown to a US company; staging showed them in the menu
     assert.equal(isPageHidden('US', 'admin-payroll-upload.html'), true);
     assert.equal(isPageHidden('US', 'payroll-account-views.html'), true);
     assert.equal(isPageHidden('IN', 'admin-payroll-upload.html'), false);
-    // the pages adapted for the US with their India tabs hidden stay visible
-    assert.equal(isPageHidden('US', 'admin-payroll-documents.html'), false);
-    assert.equal(isPageHidden('US', 'admin-onboarding-upload.html'), false);
+    // the older India-era screens are hidden for US companies (audit of 2026-11-20); the US pages and home stay
+    for (const page of ['admin-dashboard.html', 'admin-payroll-documents.html', 'admin-onboarding-upload.html', 'admin-settings.html', 'manager-dashboard.html', 'admin-message.html']) {
+        assert.equal(isPageHidden('US', page), true, page);
+        assert.equal(isPageHidden('IN', page), false, page);
+    }
+    for (const page of ['us-home.html', 'admin-us-people.html', 'admin-us-assistant.html', 'punch.html', 'my-pay.html']) assert.equal(isPageHidden('US', page), false, page);
 });
 
 test('Canada uses CAD, BN and SIN and hides India-only pages', () => {

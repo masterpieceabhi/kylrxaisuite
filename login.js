@@ -46,7 +46,7 @@ async function getRedirectUrl(userData, role) {
     // United States companies have their own pages; the dashboards below are the India ones
     if (known && (await companyCountry()) === 'US') {
         if (userData?.orgId) localStorage.setItem('orgId', userData.orgId);
-        if (cleanRole === 'superadmin' || cleanRole === 'admin') { localStorage.setItem('orgConfigured', 'true'); return 'admin-dashboard.html'; }
+        if (cleanRole === 'superadmin' || cleanRole === 'admin') { localStorage.setItem('orgConfigured', 'true'); return 'us-home.html'; } // the India dashboard is hidden for US companies
         return cleanRole === 'employee' ? 'punch.html' : 'us-home.html';
     }
     if (cleanRole === 'superadmin' || cleanRole === 'admin') {
