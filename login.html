@@ -89,7 +89,7 @@
             <label for="password">PIN</label>
             <div class="input-wrapper">
               <i data-lucide="lock" class="icon-left"></i>
-              <input type="password" id="password" name="password" placeholder="Your 4 to 6 digit PIN" inputmode="numeric" autocomplete="current-password">
+              <input type="password" id="password" name="password" placeholder="Your 4 to 6 digit PIN" inputmode="numeric" autocomplete="off" maxlength="6" data-lpignore="true" data-1p-ignore="true">
               <button type="button" class="eye-btn" data-target="password">
                 <i data-lucide="eye"></i>
               </button>
@@ -315,7 +315,7 @@
     </div>
   </div>
 
-  <script type="module" src="login.js?v=3.4"></script>
+  <script type="module" src="login.js?v=3.5"></script>
   <script>if (window.lucide) { lucide.createIcons(); } else { console.error("Lucide failed to load"); }</script>
 </body>
 </html>

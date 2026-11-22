@@ -376,6 +376,16 @@ loginForm?.addEventListener('submit', async (e) => {
 
   // On a local demo server the demo buttons still fill in a password; everything else signs in with a PIN.
   const withPassword = IS_LOCAL_DEMO && signin.stage === 'pin' && password && !/^\d{4,6}$/.test(password);
+  // A PIN is 4 to 6 digits. Anything else in the box is almost always an old password the browser filled in by
+  // itself: sending it would quietly look like "no PIN" and ask for a code, so say so and clear the box instead.
+  if (!withPassword && signin.stage === 'pin' && password && !/^\d{4,6}$/.test(password)) {
+    passwordInput.value = String();
+    showError('Your PIN is 4 to 6 digits. Your browser may have filled in an old saved password: type your PIN in the box.');
+    passwordInput.focus();
+    if (btnText) btnText.textContent = signinLabel();
+    loginBtn.disabled = false;
+    return;
+  }
   let customToken = null;
   if (!withPassword) {
     try { customToken = await pinStep(email, password); }
