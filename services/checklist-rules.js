@@ -17,8 +17,8 @@ const TEMPLATES = {
         { key: 'w4', title: 'Fill in your tax form (W-4)', assignee: 'employee', offset: 0, required: true, auto: 'w4' },
         { key: 'i9_section1', title: 'Fill in your work eligibility form (I-9, Section 1)', assignee: 'employee', offset: 0, required: true, auto: 'i9_section1' },
         { key: 'direct_deposit', title: 'Add your bank account for direct deposit', assignee: 'employee', offset: 5, required: true, auto: 'direct_deposit' },
-        { key: 'handbook', title: 'Read the employee handbook', assignee: 'employee', offset: 3, required: true },
-        { key: 'emergency_contact', title: 'Give HR an emergency contact', assignee: 'employee', offset: 3, required: false },
+        { key: 'handbook', title: 'Read the employee handbook', assignee: 'employee', offset: 3, required: true, auto: 'handbook', link: 'my-policies.html' },
+        { key: 'emergency_contact', title: 'Give HR an emergency contact', assignee: 'employee', offset: 3, required: false, auto: 'emergency_contact', link: 'my-profile.html' },
         { key: 'i9_section2', title: 'Check the new hire\'s documents (I-9, Section 2)', assignee: 'hr', business: 3, required: true, auto: 'i9_section2', help: 'Due 3 business days after the first day' },
         { key: 'manager_told', title: 'Tell the new hire who their manager is', assignee: 'hr', offset: 0, required: true },
         { key: 'kiosk_pin', title: 'Give a time-clock PIN if they use the shared tablet', assignee: 'hr', offset: 0, required: false, auto: 'kiosk_pin' },
@@ -55,7 +55,7 @@ function addDays(iso, n) {
 }
 
 /** A built-in task tied to a form or a legal step (it completes itself from data, or is required) cannot be switched off */
-const canSwitchOff = (t) => !t.auto && !t.required;
+const canSwitchOff = (t) => !t.required && (!t.auto || Boolean(DATA_TASKS[t.key])); // an optional data task (emergency contact) can still be switched off
 
 /**
  * A company's changes to the built-in lists: { onboarding: { off: [keys], extra: [tasks] }, ... }.
@@ -116,7 +116,7 @@ function buildChecklist(kind, anchorIso, options = {}) {
     if (!TEMPLATES[kind]) throw new Error(`Unknown checklist kind: ${kind}`);
     if (!parseIsoDate(anchorIso)) throw new Error('anchor date must be YYYY-MM-DD');
     return templatesFor(kind, options.custom).map((t) => ({
-        id: t.key, title: t.title, assignee: t.assignee, required: t.required, auto: t.auto || null, help: t.help || null,
+        id: t.key, title: t.title, assignee: t.assignee, required: t.required, auto: t.auto || null, link: t.link || null, help: t.help || null,
         dueDate: t.business !== undefined ? addBusinessDays(anchorIso, t.business, options) : addDays(anchorIso, t.offset || 0),
         status: 'open', note: null, doneAt: null, doneBy: null, custom: false
     }));
@@ -143,14 +143,28 @@ function validateCustomTask(input, todayIso) {
  * Adds live state to the tasks: done (ticked, or completed by data), overdue and due soon.
  * facts = { w4, i9_section1, i9_section2, direct_deposit, kiosk_pin, login_disabled } booleans.
  */
-function evaluate(tasks, facts, todayIso) {
+/**
+ * Built-in tasks that complete themselves from data. Lists made before a task became data-driven still have
+ * auto: null stored, so the built-in id decides (custom tasks never do).
+ */
+const DATA_TASKS = { handbook: { auto: 'handbook', link: 'my-policies.html' }, emergency_contact: { auto: 'emergency_contact', link: 'my-profile.html' } };
+
+/**
+ * personId: whose list this is. For a task that completes from data, the person ticking it themselves does not
+ * count (they would be ticking "I read the handbook" without the system seeing an acknowledgement); HR or a
+ * manager ticking it still does, as an override.
+ */
+function evaluate(tasks, facts, todayIso, personId = null) {
     const soonLimit = addDays(todayIso, 2);
-    const rows = tasks.map((t) => {
+    const rows = tasks.map((t0) => {
+        const built = !t0.custom && DATA_TASKS[t0.id];
+        const t = built && !t0.auto ? { ...t0, auto: built.auto, link: built.link } : (built ? { ...t0, link: t0.link || built.link } : t0);
         const doneByData = Boolean(t.auto && facts && facts[t.auto]);
-        const done = t.status === 'done' || doneByData;
+        const selfTicked = Boolean(built && t.status === 'done' && personId && t.doneBy === personId);
+        const done = (t.status === 'done' && !selfTicked) || doneByData;
         const skipped = t.status === 'skipped';
         const open = !done && !skipped;
-        return { ...t, done, doneByData, skipped, overdue: open && t.dueDate < todayIso, dueSoon: open && t.dueDate >= todayIso && t.dueDate <= soonLimit };
+        return { ...t, link: t.link || null, done, doneByData, skipped, overdue: open && t.dueDate < todayIso, dueSoon: open && t.dueDate >= todayIso && t.dueDate <= soonLimit };
     });
     const required = rows.filter((r) => r.required && !r.skipped);
     const doneRequired = required.filter((r) => r.done).length;
@@ -173,6 +187,8 @@ function evaluate(tasks, facts, todayIso) {
 function canComplete(task, role, isSelf, managesPerson = false) {
     const r = String(role || '').toLowerCase().replace(/[\s_-]+/g, '');
     const hr = ['superadmin', 'admin', 'hradmin', 'hrms', 'hrpayroll'].includes(r);
+    // a data-driven built-in task (handbook, emergency contact) completes itself; the person cannot tick their own
+    if (isSelf === true && !task.custom && DATA_TASKS[task.id]) return false;
     if (hr) return true;
     if (task.assignee === 'employee') return isSelf === true;
     if (task.assignee === 'manager') return r === 'manager' && managesPerson === true;

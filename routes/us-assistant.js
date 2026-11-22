@@ -63,11 +63,12 @@ async function gatherFacts(orgId) {
         const rules = require('../services/checklist-rules');
         const store = require('../services/us-checklist-service');
         const lists = await rawCollection('checklists').where('orgId', '==', orgId).get();
+        const read = await store.handbookFacts(orgId).catch(() => () => false);
         const rows = [];
         for (const doc of lists.docs) {
             const c = doc.data();
             if (c.cancelled || !byId.has(c.userId)) continue;
-            const ev = rules.evaluate(c.tasks, store.factsFor(byId.get(c.userId)), day);
+            const ev = rules.evaluate(c.tasks, store.factsFor(byId.get(c.userId), { handbook: read(c.userId) }), day, c.userId);
             ev.tasks.filter((t) => !t.done && !t.skipped).forEach((t) => rows.push({ name: c.name, kind: c.kind, title: t.title, assignee: t.assignee, dueDate: t.dueDate, overdue: t.overdue, required: t.required }));
         }
         return rows.sort((a, b) => (b.overdue - a.overdue) || String(a.dueDate).localeCompare(String(b.dueDate)));

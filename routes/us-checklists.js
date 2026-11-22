@@ -47,8 +47,9 @@ async function checklistsFor(req, emp, create = false) {
             lists = [...lists, await store.createChecklist(req.orgId, emp, 'onboarding', start, orgOptions(req.org))];
         }
     }
-    const facts = store.factsFor(emp.data);
-    return lists.map((c) => ({ id: c.id, kind: c.kind, anchorDate: c.anchorDate, ...rules.evaluate(c.tasks, facts, today) }));
+    const read = await store.handbookFacts(req.orgId).catch(() => () => false);
+    const facts = store.factsFor(emp.data, { handbook: read(emp.id) });
+    return lists.map((c) => ({ id: c.id, kind: c.kind, anchorDate: c.anchorDate, ...rules.evaluate(c.tasks, facts, today, emp.id) }));
 }
 
 /** One person's lists. Employees see their own; staff see anyone's. */
@@ -127,11 +128,12 @@ router.get('/checklists/overview', READ, requireUsOrg, async (req, res) => {
     ]);
     const people = new Map(snaps.flatMap((s) => s.docs).filter((d) => d.data().orgId === req.orgId).map((d) => [d.id, d.data()]));
     const assignee = req.query.assignee && rules.ASSIGNEES.includes(req.query.assignee) ? req.query.assignee : null;
+    const read = await store.handbookFacts(req.orgId).catch(() => () => false);
     const rows = [];
     for (const doc of lists.docs) {
         const c = doc.data();
         if (c.cancelled || !people.has(c.userId)) continue;
-        const ev = rules.evaluate(c.tasks, store.factsFor(people.get(c.userId)), today);
+        const ev = rules.evaluate(c.tasks, store.factsFor(people.get(c.userId), { handbook: read(c.userId) }), today, c.userId);
         ev.tasks.filter((t) => !t.done && !t.skipped && (!assignee || t.assignee === assignee)).forEach((t) => rows.push({
             listId: doc.id, userId: c.userId, employeeId: c.employeeId, name: c.name, kind: c.kind, taskId: t.id, title: t.title,
             assignee: t.assignee, dueDate: t.dueDate, overdue: t.overdue, dueSoon: t.dueSoon, required: t.required, help: t.help

@@ -10,15 +10,38 @@ const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : sn
 const docIdFor = (userId, kind, anchor) => (kind === 'rehire' ? `${userId}_rehire_${anchor}` : `${userId}_${kind}`);
 
 /** What the system already knows about a person, used to complete tasks automatically */
-function factsFor(data) {
+function factsFor(data, extra = {}) {
     const forms = data.usForms || {};
+    const contacts = (data.usProfile && data.usProfile.emergencyContacts) || [];
     return {
+        emergency_contact: Array.isArray(contacts) && contacts.length > 0,
+        handbook: extra.handbook === true,
         w4: Boolean(forms.w4 && forms.w4.current),
         i9_section1: Boolean(forms.i9 && forms.i9.section1),
         i9_section2: Boolean(forms.i9 && forms.i9.section2),
         direct_deposit: Boolean(forms.directDeposit),
         kiosk_pin: Boolean(data.pinHash),
         login_disabled: /^terminated$/i.test(String(data.status || ''))
+    };
+}
+
+/**
+ * Who has read the handbook: the company's published policies that ask for an acknowledgement, each acknowledged
+ * in its current version. Returns a function userId -> true/false (false for everyone while nothing is published).
+ */
+async function handbookFacts(orgId) {
+    const P = require('./policy-rules');
+    const [pol, acks] = await Promise.all([
+        rawCollection('policies').where('orgId', '==', orgId).get(),
+        rawCollection('policy_acks').where('orgId', '==', orgId).get()
+    ]);
+    const asking = pol.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.status === 'published' && P.ackState(p, []).needed);
+    if (!asking.length) return () => false;
+    const byUser = new Map();
+    acks.docs.forEach((d) => { const a = d.data(); if (!byUser.has(a.userId)) byUser.set(a.userId, []); byUser.get(a.userId).push(a); });
+    return (userId) => {
+        const mine = byUser.get(userId) || [];
+        return asking.every((p) => P.ackState(p, mine.filter((a) => a.policyId === p.id).map((a) => a.version)).done);
     };
 }
 
@@ -54,4 +77,4 @@ async function listForUser(orgId, userId) {
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
 }
 
-module.exports = { exists, docIdFor, factsFor, createChecklist, listForUser, templateSettings };
+module.exports = { exists, docIdFor, factsFor, handbookFacts, createChecklist, listForUser, templateSettings };
