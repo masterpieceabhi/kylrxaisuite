@@ -133,6 +133,7 @@ async function move(req, res, action, patchFor) {
     const patch = patchFor();
     await s.ref.update(patch);
     audit(req.orgId, req, `survey_${action === 'open' ? 'opened' : 'closed'}`, s.id, { title: s.data.title });
+    if (action === 'open') require('../services/events').emit(req.orgId, 'survey.opened', { survey_id: s.id, title: s.data.title || '', opened_by: userId(req) });
     res.json({ success: true, survey: pub(s.id, { ...s.data, ...patch }, t) });
 }
 router.post('/surveys/:id/open', requireUsOrg, (req, res) => move(req, res, 'open', () => ({ status: 'open', openedAt: nowIso(), openedBy: userId(req) })));

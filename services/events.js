@@ -31,6 +31,10 @@ const CATALOG = {
     'payroll.run.completed': { description: 'A payroll was submitted to the payroll provider', payload: ['run_id', 'pay_date', 'period_start', 'period_end'] },
     'announcement.published': { description: 'A company announcement was published', payload: ['announcement_id', 'title', 'published_by'] },
     'policy.published': { description: 'A company policy was published or updated', payload: ['policy_id', 'title', 'version', 'require_ack', 'published_by'] },
+    'survey.opened': { description: 'A survey was opened for answers', payload: ['survey_id', 'title', 'opened_by'] },
+    'review.shared': { description: 'A written review was shared with the person', payload: ['review_id', 'person_id'] },
+    'review_cycle.opened': { description: 'A review round was opened', payload: ['cycle_id', 'name', 'person_ids'] },
+    'asset.assigned': { description: 'Company equipment was given to a person', payload: ['asset_id', 'asset_name', 'person_id', 'due_back'] },
     'connector.sync.failed': { description: 'A connector sync run ended with errors', payload: ['connection_id', 'connector', 'errors'] },
     'webhook.test': { description: 'Sent when an admin presses "Send test event"', payload: ['message'] }
 };

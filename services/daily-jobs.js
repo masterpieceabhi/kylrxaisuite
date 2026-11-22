@@ -6,6 +6,8 @@
  *   Backup     scripts/backup.js into BACKUP_DIR (a new dated folder), then backup folders older than BACKUP_KEEP_DAYS
  *              (default 35) are removed. Not set -> no backup is made here (use Google's managed backups: docs/BACKUP.md).
  *
+ *   Reminders  services/email-reminders.js: open checklist tasks, unread policies, unsigned documents (REMINDERS_EMAIL=off stops them).
+ *
  * It runs once per calendar day (UTC), at or after DAILY_JOBS_HOUR_UTC (default 8, about 2-3 am US Central). The day is
  * claimed in the database first, inside a transaction, so a restart does not run it twice and two copies of the server
  * do not both run it. What happened is kept in `platform_jobs/daily` and the last 60 runs in its `runs` list.
@@ -61,6 +63,8 @@ function summary(run) {
     const parts = [];
     if (r) parts.push(r.error ? `retention failed (${r.error})` : `${r.real ? 'deleted' : 'would delete'} ${r.real ? r.affected : r.eligible} expired ${(r.real ? r.affected : r.eligible) === 1 ? 'record' : 'records'}${r.failed ? `, ${r.failed} could not be handled` : ''}`);
     if (b) parts.push(b.skipped ? `no backup (${b.skipped})` : b.error ? `backup failed (${b.error})` : `backup of ${b.documents} documents made, ${b.pruned} old ${b.pruned === 1 ? 'backup' : 'backups'} removed`);
+    const m = run.reminders;
+    if (m) parts.push(m.skipped ? `no reminders (${m.skipped})` : m.error ? `reminders failed (${m.error})` : `${m.emails} reminder ${m.emails === 1 ? 'email' : 'emails'} sent${m.errors && m.errors.length ? `, ${m.errors.length} ${m.errors.length === 1 ? 'company' : 'companies'} failed` : ''}`);
     return parts.join('; ');
 }
 
@@ -100,6 +104,11 @@ function create(deps) {
                 for (const name of prune) { try { await deps.removeDir(path.join(s.backupDir, name)); pruned += 1; } catch (e) { deps.log('warn', `[DailyJobs] could not remove old backup ${name}: ${e.message}`); } }
                 run.backup = { documents: made.documents, collections: made.collections, folder: path.basename(made.dir), pruned, keepDays: s.keepDays };
             } catch (e) { run.backup = { error: String((e && e.message) || e).slice(0, 200) }; }
+        }
+
+        // reminder emails (services/email-reminders.js); their failure is reported but never blocks the rest
+        if (deps.reminders) {
+            try { const m = await deps.reminders(); run.reminders = { emails: m.emails || 0, companies: m.companies || 0, errors: (m.errors || []).slice(0, 10), ...(m.skipped ? { skipped: m.skipped } : {}) }; } catch (e) { run.reminders = { error: String((e && e.message) || e).slice(0, 200) }; }
         }
 
         run.finishedAt = new Date().toISOString();
@@ -147,6 +156,7 @@ function realDeps() {
             await ref.set({ last: run, runs }, { merge: true });
         },
         retention: ({ dryRun }) => require('./retention-jobs').runAllOrgs({ dryRun, actor: 'daily-job' }),
+        reminders: () => require('./email-reminders').runAll(),
         async backup({ outRoot, now }) {
             const B = require('../scripts/backup');
             const c = B.connect();

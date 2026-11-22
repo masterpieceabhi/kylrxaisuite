@@ -283,6 +283,7 @@ router.post('/review-cycles/:id/open', requireUsOrg, async (req, res) => {
     const patch = { status: 'open', openedAt: at, openedBy: me(req), memberCount: included.length };
     if (!(await guardedUpdate(res, c, patch, 'this review'))) return;
     audit(req.orgId, req, 'review_cycle_opened', c.id, { name: c.data.name, people: included.length });
+    require('../services/events').emit(req.orgId, 'review_cycle.opened', { cycle_id: c.id, name: c.data.name || '', person_ids: included.slice(0, 500).map((p) => p.id) });
     res.json({ success: true, cycle: pubCycle({ ...c.data, ...patch }, t, { included: included.length }) });
 });
 

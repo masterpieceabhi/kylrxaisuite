@@ -178,6 +178,7 @@ router.post('/assets/:id/assign', requireUsOrg, async (req, res) => {
         history: A.addHistory(a.data, A.historyEntry('assigned', { at, by: who(req), userId: emp.id, name, note: value.note, condition: value.condition })) };
     if (!(await guardedUpdate(res, a, patch))) return;
     audit(req.orgId, req, 'asset_assigned', a.id, { to: emp.id });
+    require('../services/events').emit(req.orgId, 'asset.assigned', { asset_id: a.id, asset_name: a.data.name || '', person_id: emp.id, due_back: value.dueBack || null });
     res.json({ success: true, item: pub({ id: a.id, ...a.data, ...patch }, t) });
 });
 

@@ -167,7 +167,7 @@ $('sendForm').addEventListener('submit', async (e) => {
   if (el.expiresInDays.value) body.expiresInDays = Number(el.expiresInDays.value);
   try {
     const r = await req('POST', '/esign/requests', body);
-    showLink(`Signing link for ${r.request.signerName} (${r.request.templateName})`, r.signUrl); await loadRequests();
+    showLink(`Signing link for ${r.request.signerName} (${r.request.templateName})${r.emailed ? `: emailed to ${r.emailedTo}. You can also copy it below.` : ': not emailed, so send it to them yourself.'}`, r.signUrl); await loadRequests();
   } catch (err) {
     if (err.missing && err.missing.length) { say(`Fill in: ${err.missing.map(words).join(', ')}.`, false); const first = document.querySelector(`[data-field="${err.missing[0]}"]`); if (first) first.focus(); } else say(err.message, false);
   }
@@ -210,11 +210,11 @@ document.addEventListener('click', async (e) => {
       $('viewHistory').innerHTML = r.history.map((h) => `<tr><td>${esc(when(h.at, true))}</td><td>${esc(words(h.event || h.type || ''))}</td><td class="hint">${esc(h.ip || '')}${h.reason ? ` · ${esc(h.reason)}` : ''}</td></tr>`).join('');
       $('viewHash').textContent = `Document fingerprint (SHA-256): ${r.request.documentHash}`; $('viewCard').scrollIntoView({ behavior: 'smooth' });
     } else if ((t = el('rresend'))) {
-      if (window.confirm('Make a new link? The old link stops working.')) { const r = await req('POST', `/esign/requests/${t.dataset.rresend}/resend`, {}); showLink(`New signing link for ${t.dataset.name}`, r.signUrl); await loadRequests(); await loadDue(); }
+      if (window.confirm('Make a new link? The old link stops working.')) { const r = await req('POST', `/esign/requests/${t.dataset.rresend}/resend`, {}); showLink(`New signing link for ${t.dataset.name}${r.emailed ? `, emailed to ${r.emailedTo}` : ''}`, r.signUrl); await loadRequests(); await loadDue(); }
     } else if ((t = el('rvoid'))) {
       const reason = window.prompt('Why are you cancelling this request? (optional)');
       if (reason !== null) { await req('POST', `/esign/requests/${t.dataset.rvoid}/void`, { reason }); say('Request cancelled. The link no longer works.'); await loadRequests(); await loadDue(); }
-    } else if ((t = el('rremind'))) { await req('POST', `/esign/requests/${t.dataset.rremind}/remind`, {}); say('Written down that you reminded this person. Nothing was sent to them: contact them yourself, or press "New link" and send them the new link.'); await loadRequests(); await loadDue(); } else if ((t = el('rcert'))) {
+    } else if ((t = el('rremind'))) { const r = await req('POST', `/esign/requests/${t.dataset.rremind}/remind`, {}); say(r.emailed ? `Reminder emailed to ${r.emailedTo} with a fresh link. The earlier link no longer works.` : 'Written down that you reminded this person. Nothing was sent to them: contact them yourself, or press "New link" and send them the new link.'); await loadRequests(); await loadDue(); } else if ((t = el('rcert'))) {
       const blob = await req('GET', `/esign/requests/${t.dataset.rcert}/certificate`, null, true); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `certificate-${t.dataset.rcert}.html`; document.body.appendChild(a); a.click(); a.remove();
     }
   } catch (err) { say(err.message, false); }

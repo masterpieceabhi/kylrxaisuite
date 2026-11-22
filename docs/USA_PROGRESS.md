@@ -77,8 +77,8 @@ Moved to Done since 2026-11-12: A07 (permissions on every US route), A10 (every 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
 | US-C01 | Done | Requisitions, pipeline, scorecards, interviews, hire; HR page `admin-us-hiring.html`; public careers and apply page `careers.html` (English and Spanish); tests | Sending the offer for e-signature from the page (waits on the e-sign pages) |
-| US-C02 | Done | Offers, e-sign templates and requests; HR page `admin-us-esign.html`; public signing page `sign.html` (English and Spanish); a signed offer letter marks the offer accepted; tests | The signing link is shown to HR to pass on; the system does not email it |
-| US-C03 | Partial | Onboarding, offboarding, rehire checklists; page `admin-us-checklists.html` with the open-task list and an editor (add your own tasks, switch off optional built-in ones; form and required tasks stay), tests | Email reminders |
+| US-C02 | Done | Offers, e-sign templates and requests; HR page `admin-us-esign.html`; public signing page `sign.html` (English and Spanish); a signed offer letter marks the offer accepted; tests | Since 2026-11-22 the signing link is also emailed to the signer (on send, new link and Remind; a reminder carries a fresh link), and open requests get up to 3 automatic reminders |
+| US-C03 | Partial | Onboarding, offboarding, rehire checklists; page `admin-us-checklists.html` with the open-task list and an editor (add your own tasks, switch off optional built-in ones; form and required tasks stay), tests | Since 2026-11-22: daily reminder emails for open required tasks (the day before, on the day, then every 3 days late) to the person, HR or the manager |
 | US-C04 | Done | Federal W-4 | State withholding forms |
 | US-C05 | Done | I-9 Sections 1 and 2 | |
 | US-C06 | Done | E-Verify case tracking, tests, page `admin-us-hiring-compliance.html` | Tracking only: cases are created on the E-Verify website by hand |
@@ -253,7 +253,7 @@ Done earlier:
 3. Done on 2026-11-12: `docs/DEPLOY.md`, the static-file guard, the production settings check and the CI workflow (L02, L09). Choosing a host and deploying is still open.
 4. Done on 2026-11-12: the Gusto setup and one payroll were run on the local mock through the page (F01).
 5. Done on 2026-11-12 (second round): review rounds and 360 feedback (I02), news and thanks (I04), exit interviews (I06), past-payroll import (F13), tags (B06), industry code and fiscal year (A02), local pay-schedule page (F02), time-off payout (E07), the audit chain in the main writer (A10), permissions in `us-hr.js` (A07), connector and SCIM tests (K05, K06, K07, K10), integration alerts (K12), status page and support screen (L08), backup and restore scripts (A09), notice drafts (H04), and on the mock Gusto: off-cycle payrolls, contractor payments, W-2 and 1099 lists, garnishments, benefit deductions, bank and state tax (F06, F07, F10, F11, G03, F03).
-6. Done 2026-11-18: email notices for hours, time off, announcements and policies (Resend on `onnhr.com` chosen). Still open: checklist reminders, signing links, and notices for surveys, equipment and review rounds.
+6. Done 2026-11-18: email notices for hours, time off, announcements and policies (Resend on `onnhr.com` chosen). Done 2026-11-22: signing links by email, daily reminders (checklist tasks, policies not yet confirmed, unsigned documents; `services/email-reminders.js`, `REMINDERS_EMAIL=off` stops them), and emails when a survey opens, a review is shared, a review round opens or equipment is given.
 7. Done 2026-11-19: nodemailer upgraded. 2026-11-18 to 2026-11-20: host chosen (Google Cloud), background jobs share a lock, staging set up. 2026-11-17: Gusto demo credentials obtained.
 
 Needs an outside account before it can move: Gusto's review of the application (production payroll), accounting vendor sandboxes (K08, K09), Stripe test keys (L07), a background-check vendor (C10), an SSO setup (L01).

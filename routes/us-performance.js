@@ -165,6 +165,7 @@ router.post('/performance/reviews/:id/share', requireUsOrg, async (req, res) => 
     const patch = { status: 'shared', sharedAt: nowIso(), sharedBy: req.user.id || null };
     await r.ref.update(patch);
     audit(req.orgId, req, 'performance_review_shared', r.data.userId, { reviewId: r.id });
+    require('../services/events').emit(req.orgId, 'review.shared', { review_id: r.id, person_id: r.data.userId });
     res.json({ success: true, review: pubReview({ id: r.id, ...r.data, ...patch }, r.rel) });
 });
 

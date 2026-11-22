@@ -480,87 +480,12 @@ loginForm?.addEventListener('submit', async (e) => {
     // the role comes from the person's record; an email that merely contains "manager" does not change it
     if (userData && isManagerAccount && !userData.role) userData.role = 'manager';
 
-    // Strategy 2: Direct Firestore query by email (handles temporary passwords & custom credentials)
+    // Only a real sign-in (Firebase Auth above) gives a session: no password is ever compared in the browser, and there
+    // are no built-in demo accounts. (Strategy 2, a browser-side compare against stored passwords, and Strategy 3,
+    // offline demo sessions, were removed.)
     if (!userData) {
-      try {
-        const q = query(collection(db, 'users'), where('email', 'in', [cleanEmail, email, 'john.doe@example.com']));
-        const querySnap = await getDocs(q);
-        if (!querySnap.empty) {
-          for (const d of querySnap.docs) {
-            const u = d.data();
-            const storedPw = u.password || u.tempPassword || u.temporary_password || u.temp_password;
-            if (storedPw && (storedPw === password || storedPw.trim() === password.trim())) {
-              userData = u;
-              finalUid = d.id;
-              break;
-            }
-          }
-        }
-      } catch (dbErr) {
-        console.warn("Firestore credentials query:", dbErr.message);
-      }
-    }
-
-    // Strategy 3 (offline demo sessions with built-in passwords) was removed: a session only exists after a real sign-in.
-    const validAuthorizedPasswords = [];
-    const passwordIsValidMasterOrDemo = validAuthorizedPasswords.includes(password.trim());
-
-    if (!userData) {
-      if (passwordIsValidMasterOrDemo) {
-        if (isSuperAdminAccount) {
-          userData = {
-            uid: 'superadmin_' + Date.now(),
-            name: 'Nandan',
-            email: email || 'superadmin@kylrx.ai',
-            role: 'SUPER_ADMIN',
-            department: 'Executive',
-            departmentId: 'executive'
-          };
-          finalUid = userData.uid;
-        } else if (isHrAccount) {
-          userData = {
-            uid: 'EMP_1789286607504',
-            name: 'Savitha',
-            email: email || 'Savitha.balraju@GMAIL.COM',
-            role: 'hrms',
-            department: 'General',
-            departmentId: 'hrms'
-          };
-          finalUid = userData.uid;
-        } else if (isManagerAccount) {
-          userData = {
-            uid: 'EMP_1789151730443',
-            name: 'John Doe',
-            email: email || 'john.doe@example.com',
-            role: 'manager',
-            department: 'Cybersecurity Manager',
-            departmentName: 'Cybersecurity Manager',
-            departmentCode: 'UNIT-CYB-802',
-            departmentId: 'Yksv1DMH9pIeRhNxQ8E3',
-            employeeId: 'UNIT-CYB-802-SMCU',
-            status: 'Active'
-          };
-          finalUid = userData.uid;
-        } else if (cleanEmail === 'marry@gmail.com') {
-          userData = {
-            uid: 'EMP_1789230184645',
-            name: 'Marry Doe',
-            email: email,
-            role: 'employee',
-            department: 'Engineering',
-            departmentName: 'Engineering & Operations',
-            departmentId: 'engineering',
-            employeeId: 'EMP-7729',
-            status: 'Active'
-          };
-          finalUid = userData.uid;
-        }
-      }
-
-      if (!userData) {
-        if (lastAuthError) throw lastAuthError;
-        throw new Error("Invalid credentials. Please verify your password or use 'Forgot Password'.");
-      }
+      if (lastAuthError) throw lastAuthError;
+      throw new Error("Invalid credentials. Please verify your password or use 'Forgot Password'.");
     }
 
     const role = (userData.role || (isManagerAccount ? 'manager' : 'employee')).toLowerCase();

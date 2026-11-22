@@ -10,6 +10,7 @@ const timeRules = require('../services/time-rules');
 const E = require('../services/esign-rules');
 const S = require('../services/esign-service');
 const store = require('../services/file-store');
+const N = require('../services/email-notices');
 
 router.use(verifyToken);
 
@@ -24,6 +25,16 @@ async function loadTemplate(req, res) {
     if (!exists(snap) || snap.data().orgId !== req.orgId) { res.status(404).json({ success: false, error: 'Template not found' }); return null; }
     return { ref: snap.ref, id: snap.id, data: snap.data() };
 }
+/** Emails the signing link to the signer's own address. True when it went out. */
+async function emailLink(req, doc, signUrl, reminder, org) {
+    if (!doc.signerEmail || !N.emailReady()) return false;
+    let o = org;
+    if (!o) { const s = await rawCollection('organizations').doc(req.orgId).get(); o = exists(s) ? s.data() : {}; }
+    const url = /^https?:/i.test(signUrl) ? signUrl : `${String(process.env.APP_URL || 'https://app.onnhr.com').replace(/\/+$/, '')}${signUrl}`;
+    const msg = N.signingEmail({ name: doc.signerName, email: doc.signerEmail, docName: doc.templateName, url, expiresAt: doc.expiresAt, company: N.companyName(o), reminder });
+    return (await N.sendNow(req.orgId, [msg], { org: o })) > 0;
+}
+
 async function loadRequest(req, res) {
     const snap = await rawCollection('sign_requests').doc(String(req.params.id)).get();
     if (!exists(snap) || snap.data().orgId !== req.orgId) { res.status(404).json({ success: false, error: 'Request not found' }); return null; }
@@ -140,7 +151,9 @@ router.post('/esign/requests', manage, requireUsOrg, async (req, res) => {
     if (signer.type === 'candidate') await rawCollection('candidate_events').add({ orgId: req.orgId, candidateId: signer.id, type: 'document_sent', at: now, by: req.user.id, data: { templateName: tpl.name, signRequestId: ref.id } });
     audit(req.orgId, req, 'esign_request_created', ref.id, { templateType: tpl.type, signerType: signer.type });
     if (signer.type === 'employee') require('../services/notices').notify(req.orgId, signer.id, 'document_to_sign', 'A document is waiting for your signature', `${tpl.name || 'A document'} is waiting for you to read and sign.`, { esignRequestId: ref.id });
-    res.status(201).json({ success: true, request: S.publicRequest(ref.id, doc, now), signUrl: S.signUrl(req, token), linkShownOnce: true });
+    const signUrl = S.signUrl(req, token);
+    const emailed = b.sendEmail === false ? false : await emailLink(req, doc, signUrl, false, orgSnap.data() || {});
+    res.status(201).json({ success: true, request: S.publicRequest(ref.id, doc, now), signUrl, linkShownOnce: true, emailed, emailedTo: emailed ? doc.signerEmail : null });
 });
 
 router.get('/esign/requests', requirePermission('compliance.view'), requireUsOrg, async (req, res) => {
@@ -173,7 +186,9 @@ router.post('/esign/requests/:id/resend', manage, requireUsOrg, async (req, res)
     const patch = { tokenHash: hash, status: 'pending', attempts: 0, sentAt: now, expiresAt: E.expiresAtFor(now, req.body && req.body.expiresInDays), history: [...(r.data.history || []), S.histEntry('resent', req.ip, { by: req.user.id })] };
     await r.ref.update(patch);
     audit(req.orgId, req, 'esign_request_resent', r.id);
-    res.json({ success: true, request: S.publicRequest(r.id, { ...r.data, ...patch }, now), signUrl: S.signUrl(req, token), linkShownOnce: true });
+    const signUrl = S.signUrl(req, token);
+    const emailed = await emailLink(req, { ...r.data, ...patch }, signUrl, false);
+    res.json({ success: true, request: S.publicRequest(r.id, { ...r.data, ...patch }, now), signUrl, linkShownOnce: true, emailed, emailedTo: emailed ? r.data.signerEmail : null });
 });
 
 router.post('/esign/requests/:id/void', manage, requireUsOrg, async (req, res) => {
@@ -189,9 +204,14 @@ router.post('/esign/requests/:id/remind', manage, requireUsOrg, async (req, res)
     const r = await loadRequest(req, res); if (!r) return;
     if (!E.OPEN_STATUSES.includes(E.effectiveStatus(r.data, S.nowIso()))) return res.status(409).json({ success: false, error: 'Only an open request can be reminded' });
     const now = S.nowIso();
-    await r.ref.update({ reminders: [...(r.data.reminders || []), { at: now, by: req.user.id }], history: [...(r.data.history || []), S.histEntry('reminder_logged', req.ip, { by: req.user.id })] });
+    // With email set up, the reminder carries a fresh link (only a hash of the old one is kept, so it cannot be re-sent)
+    const canEmail = N.emailReady() && Boolean(r.data.signerEmail);
+    const fresh = canEmail ? E.generateToken() : null;
+    await r.ref.update({ ...(fresh ? { tokenHash: fresh.hash } : {}), reminders: [...(r.data.reminders || []), { at: now, by: req.user.id }], history: [...(r.data.history || []), S.histEntry(fresh ? 'reminder_emailed' : 'reminder_logged', req.ip, { by: req.user.id })] });
     audit(req.orgId, req, 'esign_reminder_logged', r.id);
-    res.json({ success: true, note: 'Reminder recorded. Send the person their link (use Resend to get a fresh link).' });
+    const emailed = fresh ? await emailLink(req, r.data, S.signUrl(req, fresh.token), true) : false;
+    res.json({ success: true, emailed, emailedTo: emailed ? r.data.signerEmail : null,
+        note: emailed ? `A reminder with a fresh link was emailed to ${r.data.signerEmail}. The earlier link no longer works.` : 'Reminder recorded. Send the person their link (use Resend to get a fresh link).' });
 });
 
 router.get('/esign/requests/:id/certificate', requirePermission('compliance.view'), requireUsOrg, async (req, res) => {
