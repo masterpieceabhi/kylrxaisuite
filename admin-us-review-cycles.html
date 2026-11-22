@@ -261,5 +261,6 @@ onAuthStateChanged(auth, async (user) => {
   try { options = await req('GET', '/options'); $('note').textContent = `${options.noteHr} ${options.notePrivacy}`; await load(); } catch (err) { say(err.message, false); }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

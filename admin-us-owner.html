@@ -167,6 +167,7 @@ $('bCancel').addEventListener('click', async () => {
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
   document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('on', p.id === `tab-${b.dataset.tab}`));
+  if (history.replaceState) history.replaceState(null, '', `#${b.dataset.tab}`);
 }));
 document.addEventListener('click', async (e) => {
   const el = (k) => e.target.closest(`[data-${k}]`);
@@ -194,8 +195,11 @@ onAuthStateChanged(auth, async (user) => {
   const step =async (fn, tab) => { try { await fn(); } catch (err) { if (err.status === 403 && tab) { document.querySelector(`[data-tab=${tab}]`).hidden = true; $(`tab-${tab}`).innerHTML = ''; } else say(err.message, false); } };
   await step(async () => { const a = (await req('GET', '/audit/actions')).data; $('lAction').innerHTML = '<option value="">Any action</option>' + a.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join(''); await loadLog(false); }, 'log');
   await step(loadRoles, 'roles'); await step(loadBilling, 'bill');
+  // a link like admin-us-owner.html#roles opens that tab (the Security page links here)
+  const wanted = document.querySelector(`[data-tab="${CSS.escape(location.hash.slice(1))}"]`); if (location.hash && wanted && !wanted.hidden) wanted.click();
   const first = [...document.querySelectorAll('[data-tab]')].find((b) => !b.hidden); if (first && document.querySelector('[data-tab].on').hidden) first.click();
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

@@ -477,13 +477,8 @@ loginForm?.addEventListener('submit', async (e) => {
       }
     }
 
-    if (userData && isManagerAccount) {
-      userData.role = 'manager';
-      if (!userData.name) userData.name = 'John Doe';
-      if (!userData.departmentName) userData.departmentName = 'Cybersecurity Manager';
-      if (!userData.departmentCode) userData.departmentCode = 'UNIT-CYB-802';
-      if (!userData.departmentId) userData.departmentId = 'Yksv1DMH9pIeRhNxQ8E3';
-    }
+    // the role comes from the person's record; an email that merely contains "manager" does not change it
+    if (userData && isManagerAccount && !userData.role) userData.role = 'manager';
 
     // Strategy 2: Direct Firestore query by email (handles temporary passwords & custom credentials)
     if (!userData) {

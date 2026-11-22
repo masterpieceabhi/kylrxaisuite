@@ -89,7 +89,7 @@ function render() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-t]').forEach((n) => { n.textContent = tr(n.dataset.t); });
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
-  document.title = `${tr('title')} | Kylrx AI`;
+  document.title = `${tr('title')} | Onn HR`;
   const info = $('info'); const form = $('form');
   if (!data) { info.hidden = false; info.innerHTML = `<p class="hint">${esc(tr('loading'))}</p>`; form.hidden = true; return; }
   if (data.status !== 'open') { info.hidden = false; form.hidden = true; info.innerHTML = `<p>${esc(tr(data.status === 'closed' ? 'closed' : 'notLeaving', { d: day(data.lastDay) }))}</p>`; return; }
@@ -121,5 +121,6 @@ onAuthStateChanged(auth, async (user) => {
   catch (e) { $('info').hidden = true; say(e.status === 409 ? tr('onlyUs') : e.message, false); }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

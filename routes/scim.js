@@ -57,7 +57,7 @@ const wrap = (fn) => (req, res) => Promise.resolve(fn(req, res)).catch((e) => { 
 /* ----------------------------- discovery (public) ----------------------------- */
 
 router.get('/ServiceProviderConfig', (req, res) => res.json({
-    schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'], documentationUri: `${req.protocol}://${req.get('host')}/developer.html`,
+    schemas: ['urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig'], documentationUri: `${req.protocol}://${req.get('host')}/api/v1/openapi.json`,
     patch: { supported: true }, bulk: { supported: false, maxOperations: 0, maxPayloadSize: 0 }, filter: { supported: true, maxResults: 200 },
     changePassword: { supported: false }, sort: { supported: false }, etag: { supported: false },
     authenticationSchemes: [{ type: 'oauthbearertoken', name: 'Bearer token', description: 'One long-lived token per company, created in Integrations > SCIM', primary: true }]

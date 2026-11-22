@@ -887,5 +887,6 @@ onAuthStateChanged(auth, async (user) => {
   try { await loadStatus(); if (status.integration !== 'app') await loadSetup(false); } catch (e) { say(e.status === 409 ? 'Payroll through Gusto is for US companies.' : e.message, false); }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

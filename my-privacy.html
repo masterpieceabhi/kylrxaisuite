@@ -102,5 +102,6 @@ onAuthStateChanged(auth, async (user) => {
   try { types = await req('GET', '/types'); await load(); } catch (_) { say(tr('fail'), false); }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

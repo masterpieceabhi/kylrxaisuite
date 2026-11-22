@@ -400,7 +400,7 @@
                 <label for="name">Full Name *</label>
                 <div class="input-wrapper">
                   <i data-lucide="user" class="icon-left"></i>
-                  <input type="text" id="name" name="fullName" placeholder="John Doe" required autocomplete="name">
+                  <input type="text" id="name" name="fullName" placeholder="Your full name" required autocomplete="name">
                 </div>
               </div>
 
@@ -488,7 +488,7 @@
                 <label for="legalName">1. Legal Name *</label>
                 <div class="input-wrapper">
                   <i data-lucide="file-badge" class="icon-left"></i>
-                  <input type="text" id="legalName" name="Legal_Name" placeholder="e.g. Kylrx Technologies Pvt. Ltd." required>
+                  <input type="text" id="legalName" name="Legal_Name" placeholder="e.g. Acme Services LLC" required>
                 </div>
                 <span class="field-hint">Exact name registered with MCA / Registrar</span>
               </div>
@@ -534,7 +534,7 @@
                 <label for="website">5. Website</label>
                 <div class="input-wrapper">
                   <i data-lucide="globe" class="icon-left"></i>
-                  <input type="url" id="website" name="Website" placeholder="https://kylrx.ai">
+                  <input type="url" id="website" name="Website" placeholder="https://yourcompany.com">
                 </div>
               </div>
 
@@ -553,7 +553,7 @@
               <div style="display: flex; gap: 10px;">
                 <div class="input-wrapper" style="flex: 1;">
                   <i data-lucide="image" class="icon-left"></i>
-                  <input type="text" id="logoUrl" name="Logo_URL" placeholder="https://kylrx.ai/logo.jpg or upload below">
+                  <input type="text" id="logoUrl" name="Logo_URL" placeholder="https://yourcompany.com/logo.png or upload below">
                 </div>
                 <label class="btn-secondary" style="margin: 0; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
                   <i data-lucide="upload" style="width: 16px; height: 16px;"></i> Browse File
@@ -882,7 +882,7 @@
     document.getElementById('showPrivacy').onclick = () => openModal('privacyModal');
   </script>
 
-  <script type="module" src="signup.js"></script>
+  <script type="module" src="signup.js?v=2"></script>
   <script>if (window.lucide) { lucide.createIcons(); }</script>
 </body>
 </html>

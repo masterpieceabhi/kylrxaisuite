@@ -31,8 +31,8 @@ a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding
 import { auth, onAuthStateChanged } from './firebase-config.js';
 const $ = (id) => document.getElementById(id);
 const T = {
-  en: { title: 'My pay', back: 'Back to the clock', none: 'No pay stubs yet. They show here after your first payday.', net: 'You received', gross: 'Total earned before taxes', period: 'Work from {a} to {b}', paid: 'Paid on {d}', fail: 'Could not load your pay. Try again.', loading: 'Loading...', formsTitle: 'My tax forms', formsHelp: 'Your W-2 for each year, once it is ready.', formsNone: 'No tax forms yet. Your W-2 shows here in January after the year ends.', w2: 'W-2 for {y}', w2NoYear: 'W-2', download: 'Download', notReady: 'Not ready yet', dlFail: 'Could not download the form. Try again.' },
-  es: { title: 'Mi pago', back: 'Volver al reloj', none: 'Todavía no hay recibos de pago. Aparecen aquí después de su primer día de pago.', net: 'Usted recibió', gross: 'Total ganado antes de impuestos', period: 'Trabajo del {a} al {b}', paid: 'Pagado el {d}', fail: 'No se pudo cargar su pago. Intente de nuevo.', loading: 'Cargando...', formsTitle: 'Mis formularios de impuestos', formsHelp: 'Su W-2 de cada año, cuando esté listo.', formsNone: 'Todavía no hay formularios. Su W-2 aparece aquí en enero, después de terminar el año.', w2: 'W-2 de {y}', w2NoYear: 'W-2', download: 'Descargar', notReady: 'Aún no está listo', dlFail: 'No se pudo descargar el formulario. Intente de nuevo.' }
+  en: { title: 'My pay', back: 'Back to the clock', none: 'No pay stubs yet. They show here after your first payday.', net: 'You received', gross: 'Total earned before taxes', period: 'Work from {a} to {b}', paid: 'Paid on {d}', fail: 'Could not load your pay. Try again.', loading: 'Loading...', formsTitle: 'My tax forms', formsHelp: 'Your W-2 for each year, once it is ready.', formsNone: 'No tax forms yet. Your W-2 shows here in January after the year ends.', w2: 'W-2 for {y}', w2NoYear: 'W-2', download: 'Download', notReady: 'Not ready yet', dlFail: 'Could not download the form. Try again.', inGusto: 'Your company runs payroll in Gusto. Your pay stubs and W-2 forms are in your Gusto account: sign in to Gusto with your work email to see them.', openGusto: 'Open Gusto' },
+  es: { title: 'Mi pago', back: 'Volver al reloj', none: 'Todavía no hay recibos de pago. Aparecen aquí después de su primer día de pago.', net: 'Usted recibió', gross: 'Total ganado antes de impuestos', period: 'Trabajo del {a} al {b}', paid: 'Pagado el {d}', fail: 'No se pudo cargar su pago. Intente de nuevo.', loading: 'Cargando...', formsTitle: 'Mis formularios de impuestos', formsHelp: 'Su W-2 de cada año, cuando esté listo.', formsNone: 'Todavía no hay formularios. Su W-2 aparece aquí en enero, después de terminar el año.', w2: 'W-2 de {y}', w2NoYear: 'W-2', download: 'Descargar', notReady: 'Aún no está listo', dlFail: 'No se pudo descargar el formulario. Intente de nuevo.', inGusto: 'Su empresa procesa la nómina en Gusto. Sus recibos de pago y formularios W-2 están en su cuenta de Gusto: inicie sesión en Gusto con su correo del trabajo para verlos.', openGusto: 'Abrir Gusto' }
 };
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
@@ -41,7 +41,7 @@ const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x]
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const day = (d) => (d ? new Date(`${d}T12:00:00`).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'long' }) : '');
-let stubs = null; let failed = false; let forms = null; let formFailed = false;
+let stubs = null; let failed = false; let forms = null; let formFailed = false; let inGusto = false;
 
 function paint() {
   document.documentElement.lang = lang;
@@ -54,6 +54,7 @@ function paint() {
   if (forms !== null) {
     $('forms').innerHTML = (formFailed ? `<div class="card" style="margin-bottom:12px;color:#b91c1c" role="alert">${esc(tr('dlFail'))}</div>` : '') + (forms.length ? forms.map((f) => `<div class="card form"><b>${esc(f.year ? tr('w2', { y: f.year }) : tr('w2NoYear'))}</b>${f.draft ? `<span class="date">${esc(tr('notReady'))}</span>` : `<button type="button" data-form="${esc(f.id)}">${esc(tr('download'))}</button>`}</div>`).join('') : `<div class="card empty">${esc(tr('formsNone'))}</div>`);
   }
+  if (inGusto) { $('list').innerHTML = `<div class="card empty">${esc(tr('inGusto'))}<br><br><a href="https://app.gusto.com/login" target="_blank" rel="noopener">${esc(tr('openGusto'))}</a></div>`; return; }
   if (stubs === null) { $('list').innerHTML = failed ? '' : `<div class="empty">${esc(tr('loading'))}</div>`; return; }
   $('list').innerHTML = stubs.length ? stubs.map((s) => {
     const p = s.pay_period || {};
@@ -80,6 +81,8 @@ onAuthStateChanged(auth, async (user) => {
   try {
     const res = await fetch('/api/us/gusto/my/pay-stubs', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
     const json = await res.json().catch(() => ({}));
+    // the company runs payroll in its own Gusto account (app integration): stubs and W-2s live there, not here
+    if (res.status === 409 && json.code === 'app_integration') { inGusto = true; paint(); return; }
     if (!res.ok) throw new Error(json.error || 'failed');
     stubs = (json.data || []).slice().sort((a, b) => String(b.check_date).localeCompare(String(a.check_date)));
   } catch (_) { failed = true; }
@@ -93,5 +96,6 @@ onAuthStateChanged(auth, async (user) => {
   paint();
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

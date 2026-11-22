@@ -45,7 +45,7 @@ footer{padding:14px;text-align:center}footer a{color:var(--muted);font-size:15px
 #big{width:min(86vw,360px);aspect-ratio:auto;border-radius:20px;padding:18px 16px;font-size:clamp(24px,7vw,32px)}
 </style>
 </head>
-<body>
+<body data-no-onn-footer>
 <div id="sheet" role="dialog" aria-modal="true"></div>
 <header><b id="title">Clock in / out</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
 <main>
@@ -462,5 +462,6 @@ onAuthStateChanged(auth, async (user) => {
   new MutationObserver(lean).observe(big, { attributes: true, attributeFilter: ['class'] }); lean();
 })();
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

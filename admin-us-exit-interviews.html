@@ -163,5 +163,6 @@ document.addEventListener('submit', async (e) => {
 $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) show(b.dataset.t); });
 onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } show(tab); });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

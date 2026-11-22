@@ -72,7 +72,8 @@ const PAGES = [
 const MINE = [
   ['punch.html', 'Clock in and out', 'Start and end your day'], ['timesheet.html', 'My hours', 'Check and send your week'], ['my-schedule.html', 'My schedule', 'Shifts, swaps, availability'],
   ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-goals.html', 'My goals', 'Goals and reviews'], ['my-surveys.html', 'Surveys', 'Short questions from the company'], ['my-assets.html', 'My equipment', 'Company items you have'], ['my-policies.html', 'Company policies', 'Read the rules and confirm you read them'], ['my-news.html', 'Company news', 'Announcements and thanks'], ['my-training.html', 'My trainings', 'Trainings to take and ones you finished'], ['set-password.html', 'Change password', 'Pick a new password'], ['my-reviews.html', 'My reviews', 'Your review and feedback for coworkers'], ['my-exit-interview.html', 'Exit interview', 'If you are leaving the company'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
-  ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data']
+  ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data'],
+  ['leave-cases.html', 'Leave of absence', 'Family, medical and other longer leave'], ['report-injury.html', 'Report an injury', 'Tell HR about a work injury'], ['self-id.html', 'Self-identification', 'Optional: gender, race, veteran and disability'], ['tips.html', 'My tips', 'Report the tips you received']
 ];
 const tile = ([href, name, text]) => { const a = document.createElement('a'); a.className = 'tile'; a.href = href; const b = document.createElement('b'); b.textContent = name; const s = document.createElement('span'); s.textContent = text; a.append(b, s); return a; };
 
@@ -101,5 +102,6 @@ onAuthStateChanged(auth, async (user) => {
   } catch (_) { $('msg').textContent = 'Could not load your menu. Your own pages below still work.'; $('msg').style.display = 'block'; }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

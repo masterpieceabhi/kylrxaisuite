@@ -24,7 +24,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px
 </style>
 </head>
 <body>
-<header><h1>Security</h1><div><a href="admin-us-roles.html">Roles</a> &nbsp;|&nbsp; <a href="admin-us-audit.html">Audit log</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
+<header><h1>Security</h1><div><a href="admin-us-owner.html#roles">Roles</a> &nbsp;|&nbsp; <a href="admin-us-owner.html#log">Activity log</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
 <main>
   <div id="msg" role="status"></div>
 
@@ -95,5 +95,6 @@ $('grant').addEventListener('submit', async (e) => {
 $('grants').addEventListener('click', async (e) => { const b = e.target.closest('[data-rev]'); if (!b) return; try { await api('DELETE', `/support/grants/${b.dataset.rev}`); say('Support access turned off.'); await load(); } catch (err) { say(err.message, false); } });
 onAuthStateChanged(auth, async (user) => { if (!user) { window.location.replace('login.html'); return; } try { await load(); } catch (err) { say(err.message, false); } });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

@@ -322,5 +322,6 @@ onAuthStateChanged(auth, async (user) => {
   } catch (e) { say(e.status === 409 ? 'Integrations are for US companies.' : e.status === 403 ? 'You do not have access to integrations.' : e.message, false); }
 });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

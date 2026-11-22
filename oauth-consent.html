@@ -68,7 +68,7 @@ onAuthStateChanged(auth, async (user) => {
     if (r.status === 403) return bad('Only the owner of the company account can connect apps. Ask your owner to open this link.');
     if (r.status !== 200) return bad(TEXT[r.json.error] || r.json.error_description || r.json.error || 'The request could not be checked.');
     const d = r.json; const desc = d.scope_descriptions || {};
-    $('appName').textContent = d.app.name; document.title = `Connect ${d.app.name} | Kylrx AI`;
+    $('appName').textContent = d.app.name; document.title = `Connect ${d.app.name} | Onn HR`;
     $('appBy').textContent = [d.app.description, d.app.website].filter(Boolean).join(' · ');
     $('scopes').replaceChildren(...d.scopes.map((s) => { const li = document.createElement('li'); const b = document.createElement('b'); b.textContent = (Array.isArray(desc) ? (desc.find((x) => x.scope === s) || {}).description : desc[s]) || words(s); const sp = document.createElement('span'); sp.textContent = s; li.append(b, sp); return li; }));
     try { $('dest').textContent = new URL(params.redirect_uri).origin; } catch (_) { $('dest').textContent = params.redirect_uri; }

@@ -29,7 +29,7 @@ pre{margin:12px 0 0;padding:10px;background:#f8fafc;border:1px solid var(--line)
 </style>
 </head>
 <body>
-<header><h1>Support access</h1><div><a href="status.html">Status page</a> &nbsp;|&nbsp; <a href="admin-dashboard.html">Back to dashboard</a></div></header>
+<header><h1>Support access</h1><div><a href="status.html">Status page</a> &nbsp;|&nbsp; <a href="admin-us-owner.html">Owner settings</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
 <main>
   <div id="msg" role="status"></div>
 
@@ -112,5 +112,6 @@ $('state').addEventListener('change', () => load().catch((e) => say(e.message, f
 $('reload').addEventListener('click', () => load().catch((e) => say(e.message, false)));
 onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } load().catch((e) => say(e.message, false)); });
 </script>
+<script type="module" src="us-nav.js?v=1"></script>
 </body>
 </html>

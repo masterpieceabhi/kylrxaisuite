@@ -361,6 +361,15 @@ function applyCountry() {
     stateInput.placeholder = us ? 'e.g. TX' : 'e.g. Karnataka'; stateInput.maxLength = us ? 2 : 60; cityInput.placeholder = us ? 'e.g. Dallas' : 'e.g. Bengaluru'; pinCodeInput.placeholder = us ? 'e.g. 75201' : 'e.g. 560103';
     timeZoneSelect.value = us ? 'America/Chicago' : 'Asia/Kolkata'; currencySelect.value = us ? 'USD' : 'INR'; fyStartSelect.value = us ? '01-01' : '04-01';
     [panInput, tanInput, cinInput, gstinInput].forEach((el) => { const g = el.closest('.form-group'); if (g) g.style.display = us ? 'none' : ''; if (el !== cinInput) el.required = !us; if (us) el.value = ''; });
+    officialPhoneInput.placeholder = us ? 'e.g. (214) 555-0100' : 'e.g. +91 80 4123 4567';
+    // the kinds of company differ: US entity types (as on the company profile) or the Indian ones
+    const kinds = us
+        ? [['LLC', 'LLC'], ['C corporation', 'C corporation'], ['S corporation', 'S corporation'], ['Partnership', 'Partnership'], ['Sole proprietorship', 'Sole proprietorship'], ['Nonprofit', 'Nonprofit'], ['Other', 'Other']]
+        : [['Private Limited', 'Private Limited'], ['Public Limited', 'Public Limited'], ['LLP', 'Limited Liability Partnership (LLP)'], ['Partnership', 'Partnership'], ['Sole Proprietorship', 'Sole Proprietorship'], ['Other', 'Other']];
+    if (orgTypeSelect && orgTypeSelect.dataset.kinds !== (us ? 'us' : 'in')) {
+        orgTypeSelect.replaceChildren(...kinds.map(([v, label]) => new Option(label, v)));
+        orgTypeSelect.dataset.kinds = us ? 'us' : 'in';
+    }
     const note = document.getElementById('usStatNote'); if (note) note.style.display = us ? 'block' : 'none';
     const desc = document.getElementById('statDescIn'); if (desc) desc.style.display = us ? 'none' : '';
 }

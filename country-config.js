@@ -13,6 +13,8 @@
     'use strict';
 
     const INDIA_ONLY_PAGES = [
+        'hrms-dashboard.html',
+        'employee-dashboard.html',
         'admin-statutory-compliance.html',
         'statutory-compliance.html',
         'admin-bank-approvals.html',
