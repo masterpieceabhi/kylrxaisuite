@@ -247,6 +247,28 @@ if (!IS_LOCAL_DEMO) {
 })();
 // ═════════════════════════════════════════════════════════════════════════════
 
+// The email last used to sign in on this device, so a returning person only types their PIN. Kept in a cookie for
+// the sign-in page (sign-out elsewhere clears local storage); "Not you?" forgets it on a shared computer.
+const LAST_EMAIL = 'onnhr_email';
+function rememberEmail(value) {
+    const secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = value
+        ? `${LAST_EMAIL}=${encodeURIComponent(value)}; Max-Age=${365 * 86400}; Path=/; SameSite=Lax${secure}`
+        : `${LAST_EMAIL}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+}
+function rememberedEmail() {
+    const m = new RegExp('(?:^|;\\s*)' + LAST_EMAIL + '=([^;]*)').exec(document.cookie || '');
+    try { return m ? decodeURIComponent(m[1]) : ''; } catch (_) { return ''; }
+}
+(function prefillRememberedEmail() {
+    const last = rememberedEmail();
+    const notYou = document.getElementById('notYouLink');
+    if (!last || !emailInput || emailInput.value || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(last)) return;
+    emailInput.value = last;
+    if (notYou) notYou.hidden = false;
+    setTimeout(() => passwordInput?.focus(), 0);
+    notYou?.addEventListener('click', () => { rememberEmail(''); emailInput.value = ''; notYou.hidden = true; emailInput.readOnly = false; emailInput.focus(); });
+})();
 // Pre-fill credentials if redirecting from signup page
 try {
     const signupEmail = sessionStorage.getItem('signup_email');
@@ -541,6 +563,7 @@ loginForm?.addEventListener('submit', async (e) => {
 
     console.log('✅ Login successful for:', email, 'Role:', role);
 
+    try { rememberEmail(String(email || '').trim().toLowerCase()); } catch (_) { /* a blocked cookie only means the email is typed next time */ }
     localStorage.setItem('hr_logged_in', 'true');
     localStorage.setItem('hr_user_id', finalUid);
     if (token) localStorage.setItem('hr_access_token', token);
