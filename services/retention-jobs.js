@@ -13,6 +13,8 @@ const { rawCollection } = require('../config/firebase');
 const logger = require('../utils/logger');
 const V = require('./vault-rules');
 const store = require('./file-store');
+const forms = require('./us-forms');
+const { hireDateOf } = require('./us-people-loader');
 
 const exists = (snap) => (typeof snap.exists === 'function' ? snap.exists() : snap.exists);
 const registry = new Map();
@@ -35,10 +37,25 @@ register({
         if (!orgId) return result();
         const snap = await rawCollection('vault_documents').where('orgId', '==', orgId).get();
         const out = result();
+        const people = new Map(); // userId -> person data or null, read once per run
+        const personOf = async (userId) => {
+            if (!people.has(userId)) {
+                const p = await rawCollection('users').doc(String(userId)).get().catch(() => null);
+                people.set(userId, p && p.exists && p.data().orgId === orgId ? p.data() : null);
+            }
+            return people.get(userId);
+        };
         for (const d of snap.docs) {
-            const doc = d.data(); if (doc.deleted) continue;
+            let doc = d.data(); if (doc.deleted) continue;
             out.scanned += 1;
-            if (!doc.retainUntil) continue; // no retention date = never auto-deleted
+            if (doc.scope === 'employee') {
+                // employee papers count from the person's last day, never from the upload date while they still work here
+                if (!doc.userId) continue;
+                const person = await personOf(doc.userId);
+                const r = V.employeeRetention(doc, person, todayIso, person ? hireDateOf(person) : null, forms.retainUntil);
+                if (r.keep) continue;
+                doc = { ...doc, retainUntil: r.retainUntil };
+            } else if (!doc.retainUntil) continue; // no retention date = never auto-deleted
             if (!V.deletionCheck(doc, todayIso).ok) continue;
             out.eligible += 1;
             if (out.sample.length < 50) out.sample.push({ id: d.id, title: doc.title, category: doc.category, retainUntil: doc.retainUntil });

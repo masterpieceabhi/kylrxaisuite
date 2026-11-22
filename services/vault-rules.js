@@ -116,8 +116,54 @@ function deletionCheck(doc, todayIso) {
     return { ok: true };
 }
 
+/**
+ * How long an employee's documents are kept AFTER their last day, by category and work state. Federal floors: EEOC
+ * personnel records 1 year after termination, FLSA payroll 3 years, IRS employment tax 4 years, FMLA 3 years; the
+ * longest common wage-claim window (California, 4 years) sets the default. States with longer payroll rules
+ * (New York and New Jersey, 6 years) get their own number. SUGGESTIONS: confirm with an employment lawyer.
+ */
+const YEARS_AFTER_LEAVING = {
+    default: 4,
+    byCategoryState: { payroll_record: { NY: 6, NJ: 6 } }
+};
+
+function yearsAfterLeaving(category, state) {
+    const c = categoryOf(category);
+    if (!c || c.scope !== 'employee' || (c.retentionYears === null && category !== 'i9_document')) return null;
+    const st = String(state || '').trim().toUpperCase();
+    const byState = YEARS_AFTER_LEAVING.byCategoryState[category] || {};
+    return byState[st] || YEARS_AFTER_LEAVING.default;
+}
+
+/** The person's last day once it has passed, else null (still working, leaving later, or no record) */
+function leftOn(person, todayIso) {
+    const t = person && person.usProfile && person.usProfile.termination;
+    const last = t && t.lastDay ? String(t.lastDay).slice(0, 10) : null;
+    return last && parseIsoDate(last) && last <= todayIso ? last : null;
+}
+
+/**
+ * The keep-until date the daily retention run uses for an employee document. Never deleted while the person still
+ * works there or when the person cannot be found. After they leave: an I-9 copy is kept until the later of 3 years
+ * after hire and 1 year after the last day; every other category until the later of its upload-based date and
+ * YEARS_AFTER_LEAVING after the last day. Returns { keep: true, reason } or { keep: false, retainUntil }.
+ */
+function employeeRetention(doc, person, todayIso, hireIso, i9RetainUntil) {
+    if (!person) return { keep: true, reason: 'person not found' };
+    const last = leftOn(person, todayIso);
+    if (!last) return { keep: true, reason: 'still employed' };
+    if (doc.category === 'i9_document') {
+        const until = i9RetainUntil(hireIso, last);
+        return until ? { keep: false, retainUntil: until } : { keep: true, reason: 'no hire date' };
+    }
+    const years = yearsAfterLeaving(doc.category, person.usProfile && person.usProfile.workState);
+    if (!years) return { keep: true, reason: 'kept without end date' };
+    const after = addYears(last, years);
+    return { keep: false, retainUntil: doc.retainUntil && doc.retainUntil > after ? doc.retainUntil : after };
+}
+
 function daysUntil(iso, todayIso) {
     return Math.round((parseIsoDate(iso) - parseIsoDate(todayIso)) / 86400000);
 }
 
-module.exports = { MAX_BYTES, CATEGORIES, categoryOf, ALLOWED_TYPES, sniffType, safeFileName, validateUpload, retainUntil, canView, deletionCheck, daysUntil };
+module.exports = { MAX_BYTES, CATEGORIES, categoryOf, ALLOWED_TYPES, sniffType, safeFileName, validateUpload, retainUntil, canView, deletionCheck, daysUntil, YEARS_AFTER_LEAVING, yearsAfterLeaving, employeeRetention };
