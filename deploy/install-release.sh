@@ -3,7 +3,8 @@
 #   sudo bash install-release.sh onnhr-abc1234.tar.gz <sha256>
 # It checks the file, unpacks it next to the running version, installs the libraries, runs the settings check,
 # then switches /srv/onnhr/app to the new version and restarts. If anything fails before the switch, the running
-# version is untouched. The previous version is kept so you can switch back (see the last lines it prints).
+# version is untouched. The previous version is kept so you can switch back (see the last lines it prints); older
+# versions, and older uploaded release files next to this one, are removed after a successful start.
 set -euo pipefail
 if [ "$(id -u)" -ne 0 ]; then echo "Run this with sudo." >&2; exit 1; fi
 file="${1:?the release file}"; want="${2:?the SHA-256 printed by make-release.sh}"
@@ -32,6 +33,19 @@ sleep 5
 if systemctl is-active --quiet onnhr; then
   echo "Running $name."
   [ -n "$previous" ] && [ "$previous" != "$dest" ] && echo "To go back: sudo ln -sfn '$previous' /srv/onnhr/app && sudo systemctl restart onnhr"
+  # Keep only this version and the one before it (to go back); older versions and older uploaded files are removed.
+  for old in /srv/onnhr/releases/onnhr-*; do
+    [ -d "$old" ] || continue
+    [ "$(readlink -f "$old")" = "$(readlink -f "$dest")" ] && continue
+    [ -n "$previous" ] && [ "$(readlink -f "$old")" = "$previous" ] && continue
+    rm -rf "$old" && echo "Removed old version $(basename "$old")."
+  done
+  updir="$(cd "$(dirname "$file")" && pwd)"
+  for oldfile in "$updir"/onnhr-*.tar.gz; do
+    [ -f "$oldfile" ] || continue
+    [ "$(basename "$oldfile")" = "$(basename "$file")" ] && continue
+    rm -f "$oldfile" && echo "Removed old upload $(basename "$oldfile")."
+  done
 else
   echo "The app did not start. See: sudo journalctl -u onnhr -n 80" >&2
   [ -n "$previous" ] && [ -d "$previous" ] && { ln -sfn "$previous" /srv/onnhr/app; systemctl restart onnhr; echo "Switched back to the previous version." >&2; }
