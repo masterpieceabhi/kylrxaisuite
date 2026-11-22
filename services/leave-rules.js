@@ -222,18 +222,45 @@ function requestDates(startDate, endDate, options = {}) {
 }
 
 /**
+ * A person's own full day: scheduled weekly hours over the days worked (5 when unknown), rounded to the
+ * quarter hour. Falls back to 8 when the weekly hours are missing or not usable.
+ */
+function hoursPerDayFor(weeklyHours, workdays = 5) {
+    const w = Number(weeklyHours); const d = Number(workdays) >= 1 && Number(workdays) <= 7 ? Number(workdays) : 5;
+    if (!(w > 0)) return 8;
+    const h = Math.round((w / d) * 4) / 4;
+    return h > 0 && h <= 24 ? h : 8;
+}
+
+/** Snaps hours to a policy's increment (nearest step, never below one step) */
+function toIncrement(hours, inc = 0.25) {
+    const step = Number(inc) > 0 ? Number(inc) : 0.25;
+    return round2(Math.max(step, Math.round(hours / step) * step));
+}
+
+/** The page's "how long each day" choices: full day, half day, and 2 hours only when smaller than half */
+function dayOptions(hoursPerDay, inc = 0.25) {
+    const step = Number(inc) > 0 ? Number(inc) : 0.25;
+    const full = toIncrement(Number(hoursPerDay) > 0 ? Number(hoursPerDay) : 8, step);
+    const half = toIncrement(full / 2, step);
+    const two = 2 < half && Math.abs(2 / step - Math.round(2 / step)) < 1e-9 ? 2 : null;
+    return { full, half, two };
+}
+
+/**
  * Checks a time-off request. balance is the simulate() result for the request's policy.
+ * defaultHoursPerDay is the person's own full day, used when the request does not say (8 when not given).
  * Returns { errors, value } with value.dates and value.hours when valid.
  */
-function validateRequest(policy, input, balance, todayIso, overlapDates = [], holidays = null) {
+function validateRequest(policy, input, balance, todayIso, overlapDates = [], holidays = null, defaultHoursPerDay = 8) {
     const errors = [];
     const b = input || {};
     const dates = requestDates(b.startDate, b.endDate, { includeWeekends: b.includeWeekends === true, skipHolidays: policy.skipHolidays !== false, holidays });
     if (!dates) return { errors: ['startDate and endDate must be real dates (YYYY-MM-DD), end not before start, at most a year'], value: null };
     if (dates.length === 0) return { errors: ['those dates have no working days (weekends and holidays are skipped)'], value: null };
 
-    const perDay = b.hoursPerDay === undefined || b.hoursPerDay === '' ? 8 : Number(b.hoursPerDay);
     const inc = policy.minimumIncrementHours || 0.25;
+    const perDay = b.hoursPerDay === undefined || b.hoursPerDay === '' ? toIncrement(Number(defaultHoursPerDay) > 0 ? Number(defaultHoursPerDay) : 8, inc) : Number(b.hoursPerDay);
     if (!(perDay > 0 && perDay <= 24)) errors.push('hoursPerDay must be between 0 and 24');
     else if (Math.abs(perDay / inc - Math.round(perDay / inc)) > 1e-9) errors.push(`hours must be in steps of ${inc}`);
 
@@ -250,4 +277,4 @@ function validateRequest(policy, input, balance, todayIso, overlapDates = [], ho
     return { errors, value: errors.length ? null : { dates, hoursPerDay: perDay, hours: total } };
 }
 
-module.exports = { METHODS, TYPES, PRESETS, validatePolicy, appliesTo, simulate, requestDates, validateRequest, addDays };
+module.exports = { METHODS, TYPES, PRESETS, validatePolicy, appliesTo, simulate, requestDates, validateRequest, hoursPerDayFor, toIncrement, dayOptions, addDays };

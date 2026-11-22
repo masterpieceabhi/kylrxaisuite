@@ -209,6 +209,12 @@ async function buildEnrollment({ orgId, person, body, window, effectiveDate, tod
     const raw = Array.isArray(body.elections) ? body.elections : [];
     if (!raw.length) return { errors: ['elections must list at least one plan'] };
     const seen = new Set();
+    // Family members saved on this person's earlier elections, by id (newest first), so a re-chosen one keeps its stored SSN
+    const savedDeps = new Map();
+    if (raw.some((r) => r && Array.isArray(r.dependents) && r.dependents.some((d) => d && d.existingDependentId))) {
+        const mine = (await loadAll('benefit_enrollments', orgId)).filter((e) => e.userId === person.id).sort((a, b) => String(b.effectiveDate).localeCompare(String(a.effectiveDate)));
+        for (const e of mine) for (const el of e.elections || []) for (const d of el.dependents || []) if (d.id && !savedDeps.has(d.id)) savedDeps.set(d.id, d);
+    }
     for (const r of raw) {
         const plan = plans.find((p) => p.id === r.planId && p.active !== false);
         if (!plan) { errors.push(`plan ${r.planId} was not found`); continue; }
@@ -221,10 +227,23 @@ async function buildEnrollment({ orgId, person, body, window, effectiveDate, tod
             const el = B.eligibility(plan, { ...person, weeklyHours: hours }, effectiveDate);
             if (!el.eligible) { errors.push(`${plan.name}: ${el.reasons.join('; ')}`); continue; }
         }
-        // Encrypt dependent SSNs; the plain value never leaves this function
+        // A re-chosen saved family member must be this person's own and the same person (date of birth)
+        const depErrors = [];
+        (v.value.dependents || []).forEach((d, i) => {
+            if (!d.existingDependentId) return;
+            const old = savedDeps.get(d.existingDependentId);
+            if (!old || old.dateOfBirth !== d.dateOfBirth || old.relationship !== d.relationship) depErrors.push(`${plan.name}: dependent ${i + 1} does not match a family member on your earlier elections`);
+        });
+        if (depErrors.length) { errors.push(...depErrors); continue; }
+        // Encrypt dependent SSNs; the plain value never leaves this function. A saved family member keeps its id
+        // and its stored encrypted SSN (the key context includes the id, so the reveal route still decrypts it).
         if (v.value.dependents) {
             v.value.dependents = v.value.dependents.map((d) => {
-                const { ssnPlain, ...rest } = d;
+                const { ssnPlain, existingDependentId, ...rest } = d;
+                if (existingDependentId) {
+                    const old = savedDeps.get(existingDependentId);
+                    return { ...rest, id: old.id, ...(old.ssnEncrypted ? { ssnEncrypted: old.ssnEncrypted, ssnLast4: old.ssnLast4 } : {}) };
+                }
                 const id = crypto.randomBytes(6).toString('hex');
                 return { ...rest, id, ...(ssnPlain ? { ssnEncrypted: encryptField(ssnPlain, `${orgId}:${person.id}:dep:${id}`), ssnLast4: ssnPlain.slice(-4) } : {}) };
             });

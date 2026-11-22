@@ -52,8 +52,8 @@ a.link{color:var(--blue);font-weight:600;cursor:pointer;text-decoration:none}
       <h2 id="jobTitle">New job opening</h2>
       <form id="jobForm"><div class="grid">
         <label>Job title<input name="title" required maxlength="120"></label>
-        <label>Department<input name="department" required maxlength="120"></label>
-        <label>Location (shown to applicants)<input name="location" required maxlength="120" placeholder="Dallas, TX"></label>
+        <label>Department<select id="departmentPick" hidden></select><input name="department" required maxlength="120"></label>
+        <label>Location (shown to applicants)<select id="locationPick" hidden></select><input name="location" required maxlength="120" placeholder="Dallas, TX"></label>
         <label>Work state (2 letters)<input name="state" maxlength="2" placeholder="TX"></label>
         <label>Type<select name="employmentType" id="jobType"></select></label>
         <label>How many people<input name="headcount" type="number" min="1" max="500" value="1"></label>
@@ -177,6 +177,20 @@ const when = (iso, time) => (iso ? new Date(iso).toLocaleString('en-US', time ? 
 const STAGE_TAG = { applied: 'grey', screen: 'blueTag', interview: 'blueTag', assessment: 'blueTag', offer: 'warnTag', hired: 'good', rejected: 'badTag', withdrawn: 'grey' };
 const STATUS_TAG = { draft: 'grey', open: 'good', on_hold: 'warnTag', filled: 'blueTag', closed: 'grey' };
 let options = null; let jobs = []; let staff = []; let jobEdit = null; let cand = null; let canManage = true;
+let orgLocations = []; let companyStates = [];
+const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// A new offer starts from the job opening: pay (middle of the range, or the one end given), unit, and a start date not in the past
+function offerDefaults(job, todayIso) {
+  const out = {};
+  if (!job) return out;
+  const num = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+  const min = num(job.payMin); const max = num(job.payMax);
+  const pay = min !== null && max !== null ? Math.round(((min + max) / 2) * 100) / 100 : (min !== null ? min : max);
+  if (pay !== null && pay > 0) out.payRate = pay;
+  if (job.payUnit === 'hour' || job.payUnit === 'year') out.payUnit = job.payUnit;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(job.targetStartDate || '') && job.targetStartDate >= todayIso) out.startDate = job.targetStartDate;
+  return out;
+}
 
 async function req(method, path, body, raw) {
   const token = await auth.currentUser.getIdToken();
@@ -202,7 +216,43 @@ async function loadJobs() {
   const o = '<option value="">All jobs</option>' + jobs.map((r) => `<option value="${esc(r.id)}">${esc(r.title)}</option>`).join('');
   const keep = $('fJob').value; $('fJob').innerHTML = o; $('fJob').value = keep; $('nJob').innerHTML = o;
 }
-function resetJobForm() { jobEdit = null; $('jobForm').reset(); $('jobForm').elements.competencies.value = options.defaultCompetencies.join('\n'); $('jobTitle').textContent = 'New job opening'; $('jobCancel').hidden = true; }
+// Department and location come from the company's org setup; the job keeps storing the name, and "Other" lets you type one
+const OTHER = '__other';
+function showTyped(name, on) { const input = $('jobForm').elements[name]; input.hidden = !on; input.required = on; }
+function syncPick(name) {
+  const sel = $(`${name}Pick`); const v = $('jobForm').elements[name].value;
+  if (sel.hidden) return;
+  sel.value = v && [...sel.options].some((o) => o.value === v && o.value !== OTHER) ? v : (v ? OTHER : '');
+  showTyped(name, sel.value === OTHER);
+}
+function setupPick(name, rows, label) {
+  if (!rows.length) return; // nothing set up yet: keep typing
+  const sel = $(`${name}Pick`);
+  sel.innerHTML = `<option value="">Choose</option>${rows.map((r) => `<option value="${esc(r.name)}">${esc(label(r))}</option>`).join('')}<option value="${OTHER}">Other / type it</option>`;
+  sel.hidden = false; sel.required = true;
+  sel.addEventListener('change', () => {
+    const f = $('jobForm').elements;
+    if (sel.value === OTHER) { f[name].value = ''; showTyped(name, true); f[name].focus(); return; }
+    f[name].value = sel.value; showTyped(name, false);
+    if (name === 'location') { const l = orgLocations.find((x) => x.name === sel.value); const st = l && (l.state || (l.address && l.address.state)); if (st) f.state.value = st; }
+  });
+  syncPick(name);
+}
+async function loadJobPickers() {
+  const quiet = (p) => req('GET', p).catch(() => null); // no permission (403) or not set up: the typed fields stay
+  const [deps, locs, company] = await Promise.all([quiet('/departments'), quiet('/locations'), quiet('/company/profile')]);
+  const live = (r) => (r && Array.isArray(r.data) ? r.data.filter((x) => x && x.name && x.active !== false) : []);
+  orgLocations = live(locs);
+  setupPick('department', live(deps), (d) => d.name);
+  setupPick('location', orgLocations, (l) => { const where = [l.city || (l.address && l.address.city), l.state || (l.address && l.address.state)].filter(Boolean).join(', '); return where && where !== l.name ? `${l.name} (${where})` : l.name; });
+  const profile = company ? (company.profile || company.suggested) : null;
+  companyStates = profile && Array.isArray(profile.workStates) ? profile.workStates.filter(Boolean) : [];
+}
+function resetJobForm() {
+  jobEdit = null; $('jobForm').reset(); const f = $('jobForm').elements; f.competencies.value = options.defaultCompetencies.join('\n'); $('jobTitle').textContent = 'New job opening'; $('jobCancel').hidden = true;
+  syncPick('department'); syncPick('location');
+  if (companyStates.length === 1) f.state.value = companyStates[0];
+}
 $('jobCancel').addEventListener('click', resetJobForm);
 $('jobForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const el = e.target.elements;
@@ -233,8 +283,9 @@ async function openCandidate(id) {
   $('cScores').innerHTML = cand.scorecards.map((s) => `<tr><td><b>${esc(s.byName)}</b><br><span class="hint">${esc(s.round)} · ${esc(when(s.at))}</span></td><td>${s.ratings.map((r) => `${esc(r.competency)}: ${esc(r.rating)}`).join('<br>')}</td><td><span class="tag ${s.recommendation.includes('yes') ? 'good' : 'badTag'}">${esc(words(s.recommendation))}</span> ${esc(s.average)}<br>${esc(s.notes || '')}</td></tr>`).join('') || '<tr><td class="hint">No scorecards yet.</td></tr>';
   $('scoreFields').innerHTML = cand.competencies.map((c, i) => `<label>${esc(c)}<select data-comp="${i}"><option value="">Rate 1 to 5</option>${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join('')}</select></label>`).join('');
   const o = cand.offer; const f = $('offerForm').elements;
-  $('cOffer').textContent = o ? `Offer: ${o.jobTitle}, ${money(o.payRate)} per ${o.payUnit}, starting ${o.startDate}. Status: ${words(cand.offerStatus || 'drafted')}.` : 'No offer yet.';
-  f.jobTitle.value = o ? o.jobTitle : cand.requisitionTitle; f.payRate.value = o ? o.payRate : ''; f.payUnit.value = o ? o.payUnit : 'hour'; f.startDate.value = o ? o.startDate : ''; f.notes.value = o ? o.notes || '' : '';
+  const dflt = o ? {} : offerDefaults(jobs.find((j) => j.id === cand.requisitionId), localToday()); // an existing offer is never overwritten
+  $('cOffer').textContent = o ? `Offer: ${o.jobTitle}, ${money(o.payRate)} per ${o.payUnit}, starting ${o.startDate}. Status: ${words(cand.offerStatus || 'drafted')}.` : `No offer yet.${Object.keys(dflt).length ? ' Filled in from the job opening; change anything before saving.' : ''}`;
+  f.jobTitle.value = o ? o.jobTitle : cand.requisitionTitle; f.payRate.value = o ? o.payRate : (dflt.payRate ?? ''); f.payUnit.value = o ? o.payUnit : (dflt.payUnit || 'hour'); f.startDate.value = o ? o.startDate : (dflt.startDate || ''); f.notes.value = o ? o.notes || '' : '';
   $('offerCard').hidden = !canManage; $('hireOut').innerHTML = ''; $('hireOffline').checked = false; $('cErase').parentElement.hidden = !canManage || Boolean(cand.personId);
   $('cHistory').innerHTML = cand.stageHistory.map((h) => `<tr><td>${esc(words(h.stage))}</td><td>${esc(when(h.enteredAt, true))}</td><td>${esc(h.note || '')}</td></tr>`).join('');
 }
@@ -304,6 +355,7 @@ document.addEventListener('click', async (e) => {
       const r = jobs.find((x) => x.id === t.dataset.jobedit); const f = $('jobForm').elements; jobEdit = r.id;
       ['title', 'department', 'location', 'employmentType', 'headcount', 'payUnit', 'description'].forEach((k) => { f[k].value = r[k] ?? ''; });
       f.state.value = r.state || ''; f.payMin.value = r.payMin ?? ''; f.payMax.value = r.payMax ?? ''; f.hiringManagerId.value = r.hiringManagerId || ''; f.targetStartDate.value = r.targetStartDate || ''; f.competencies.value = r.competencies.join('\n');
+      syncPick('department'); syncPick('location');
       const ids = new Set((r.approvals || []).map((a) => a.userId)); [...f.approverIds.options].forEach((o) => { o.selected = ids.has(o.value); });
       $('jobTitle').textContent = `Edit ${r.title}`; $('jobCancel').hidden = false; $('jobFormCard').scrollIntoView({ behavior: 'smooth' });
     } else if ((t = el('jobstatus'))) { await req('POST', `/hiring/requisitions/${t.dataset.jobstatus}/status`, { status: t.dataset.to }); say(t.dataset.to === 'open' ? 'Open. It is now listed on the careers page.' : 'Status changed.'); await loadJobs(); } else if ((t = el('jobapprove'))) {
@@ -331,6 +383,7 @@ onAuthStateChanged(auth, async (user) => {
       const o = staff.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
       $('jobManager').innerHTML = `<option value="">Nobody yet</option>${o}`; $('jobApprovers').innerHTML = o;
     });
+    await loadJobPickers();
     resetJobForm();
   }
   await step(loadJobs); await step(loadCandidates); await step(loadNumbers);

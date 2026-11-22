@@ -215,7 +215,8 @@ router.get('/i9', I9_VIEW, requireUsOrg, async (req, res) => {
     res.json({
         success: true, today, note: i9Rules.ADVISOR_NOTE, window,
         canManage: can(req.user, 'compliance.manage'), canReveal: can(req.user, 'pii.reveal'), canStoreCopies: can(req.user, 'compliance.manage') && can(req.user, 'vault.confidential'),
-        me: req.user.id || null, summary: i9Rules.summarize(rows), expiring: i9Rules.upcomingExpiries(rows, window), count: rows.length, data: rows
+        me: req.user.id || null, myJobTitle: i9Rules.signerTitleOf(req.user) || null, // starts "Your job title" when signing Section 2 or Supplement B
+        summary: i9Rules.summarize(rows), expiring: i9Rules.upcomingExpiries(rows, window), count: rows.length, data: rows
     });
 });
 
@@ -238,6 +239,7 @@ router.get('/employees/:id/i9', I9_VIEW, requireUsOrg, async (req, res) => {
         success: true, note: i9Rules.ADVISOR_NOTE,
         person: i9Rules.listRow(emp, firstDayOf(emp), todayIn(orgTimeZone(req.org)), orgOptions(req.org)),
         isSelf: isSelf(req.user, emp), section1: publicSection1(i9.section1), section2: i9Rules.publicSection2(i9.section2),
+        section2Prefill: i9Rules.section2Prefill(i9.section1), // e.g. the work permit's end date the person gave in Section 1
         copies: seeCopies ? copies.map(publicCopy) : [], copyCount: copies.length, copiesHidden: !seeCopies && copies.length > 0
     });
 });

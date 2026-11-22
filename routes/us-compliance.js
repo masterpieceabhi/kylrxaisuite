@@ -161,10 +161,17 @@ router.get('/eeo/options', requireUsOrg, (req, res) => {
     res.json({ success: true, sex: eeo.SEX, races: eeo.RACES, hispanic: eeo.HISPANIC, veteran: eeo.VETERAN, disability: eeo.DISABILITY, jobCategories: eeo.JOB_CATEGORIES });
 });
 
-/** Whether the signed-in person has answered. Never returns the answers themselves. */
+/**
+ * The signed-in person's own answers, so the form opens with them and "answer again" changes them instead of starting
+ * blank. Only ever the caller's own record (the document is keyed by their own id, and its stored owner must match);
+ * nobody else's answers are returned by this or any other route (HR sees totals only).
+ */
+const ownSelfId = (data, orgId, userId) => (data && data.orgId === orgId && data.userId === userId && data.record ? data.record : null);
 router.get('/eeo/me', requireUsOrg, async (req, res) => {
     const snap = await rawCollection('eeo_selfid').doc(`${req.orgId}_${req.user.id}`).get();
-    res.json({ success: true, answered: exists(snap), answeredAt: exists(snap) ? snap.data().updatedAt : null });
+    const answers = exists(snap) ? ownSelfId(snap.data(), req.orgId, req.user.id) : null;
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, answered: exists(snap), answeredAt: exists(snap) ? snap.data().updatedAt : null, answers });
 });
 
 router.put('/eeo/me', requireUsOrg, async (req, res) => {
@@ -219,13 +226,26 @@ router.post('/osha/report', requireUsOrg, async (req, res) => {
     res.status(201).json({ success: true, id: ref.id, message: 'Thank you. HR has been notified. You will not be treated differently for reporting this.' });
 });
 
+/** The name of one of this company's open work locations, or null */
+async function workLocationName(orgId, locationId) {
+    if (!locationId || typeof locationId !== 'string') return null;
+    const snap = await rawCollection('locations').doc(locationId).get();
+    if (!exists(snap)) return null;
+    const l = snap.data() || {};
+    return l.orgId === orgId && l.active !== false && l.name ? String(l.name) : null;
+}
+
 router.get('/osha/incidents', requireUsOrg, async (req, res) => {
     const snap = await rawCollection('osha_incidents').where('orgId', '==', req.orgId).get();
     const staff = can(req.user, 'compliance.view'); // everyone else sees only what they reported themselves
     let rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     if (!staff) rows = rows.filter((r) => r.userId === req.user.id).map((r) => ({ id: r.id, dateOfIncident: r.dateOfIncident, description: r.description, location: r.location, status: r.status, reportedAt: r.reportedAt }));
     rows.sort((a, b) => String(b.reportedAt).localeCompare(String(a.reportedAt)));
-    res.json({ success: true, count: rows.length, data: rows.slice(0, 300) });
+    // the reporting page starts "where it happened" from the caller's own work location (they can change it)
+    let locId = req.user.usProfile && req.user.usProfile.workLocationId;
+    if (!locId) { const emp = await findEmployee(req.orgId, req.user.id); locId = emp && emp.data.usProfile && emp.data.usProfile.workLocationId; }
+    const myLocation = await workLocationName(req.orgId, locId);
+    res.json({ success: true, count: rows.length, data: rows.slice(0, 300), myLocation });
 });
 
 router.put('/osha/incidents/:id/classify', SAFETY, requireUsOrg, async (req, res) => {
@@ -239,6 +259,13 @@ router.put('/osha/incidents/:id/classify', SAFETY, requireUsOrg, async (req, res
     res.json({ success: true });
 });
 
+/** What happened, with the part of the body the person reported, for the description column of the 300 log */
+function describeInjury(i) {
+    const what = String((i && i.description) || '').trim(); const part = String((i && i.bodyPart) || '').trim();
+    if (!part) return what;
+    return what ? `${what} (part of body: ${part})` : `Part of body: ${part}`;
+}
+
 async function incidentsForYear(orgId, year) {
     const snap = await rawCollection('osha_incidents').where('orgId', '==', orgId).get();
     return snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((i) => i.status === 'classified' && String(i.dateOfIncident).startsWith(String(year)));
@@ -246,7 +273,8 @@ async function incidentsForYear(orgId, year) {
 
 router.get('/osha/log', VIEW, requireUsOrg, async (req, res) => {
     const year = yearOf(req.query.year, Number((await todayFor(req.orgId)).slice(0, 4)));
-    const rows = osha.logRows(await incidentsForYear(req.orgId, year), year);
+    // OSHA 300 column F asks for the injury and the part of the body affected: the body part the person reported goes with it
+    const rows = osha.logRows((await incidentsForYear(req.orgId, year)).map((i) => ({ ...i, description: describeInjury(i) })), year);
     if (req.query.format === 'csv') {
         return csv(res, `osha-300-log-${year}`, [['caseNumber', 'Case no.'], ['employeeName', 'Employee'], ['jobTitle', 'Job title'], ['dateOfIncident', 'Date of injury'], ['location', 'Where it happened'], ['description', 'Description'], ['classification', 'Classification'], ['daysAway', 'Days away'], ['daysRestricted', 'Days restricted'], ['injuryTypeLabel', 'Type']], rows);
     }
@@ -265,3 +293,4 @@ router.get('/osha/summary', VIEW, requireUsOrg, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.helpers = { ownSelfId, describeInjury };

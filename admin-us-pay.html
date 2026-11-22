@@ -69,6 +69,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
         <label>Note<input name="note" maxlength="500"></label>
       </div>
       <p class="hint">Fill in only what changes. A future date is saved now and takes effect on that day. History that is already in effect is never edited: add a correction instead.</p>
+      <p class="hint" id="pStartHint"></p>
       <div class="row"><button type="submit">Save change</button></div></form>
     </section>
   </div>
@@ -188,8 +189,30 @@ async function loadQueue() {
   $('schedRows').innerHTML = q.scheduled.map((r) => `<tr><td><b>${esc(r.name)}</b></td><td>${changeText(r)}</td><td>${esc(day(r.effectiveDate))}</td><td><button class="no" data-ccancel="${esc(r.id)}">Withdraw</button></td></tr>`).join('') || '<tr><td colspan="4" class="hint">No future-dated changes.</td></tr>';
   try { $('thr').value = (await req('GET', '/people-data/settings')).settings.compApprovalPercent; } catch (_) { /* read-only roles */ }
 }
+// "Starts on" offers the first day of the person's next pay period, so a change does not split a paycheck. Today when
+// the person has no pay schedule or the schedule cannot be read. A date typed by hand is never replaced.
+let scheduleOf = {}; // person id -> pay schedule id
+const plusDay = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+function nextPeriodStart(preview, today) {
+  const ok = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || ''));
+  const c = preview && preview.containing;
+  if (c && ok(c.end) && c.end >= today) return plusDay(c.end);
+  return ((preview && preview.next) || []).map((p) => p && p.start).filter((d) => ok(d) && d > today).sort()[0] || null;
+}
+async function loadScheduleOf() {
+  try { scheduleOf = Object.fromEntries((await req('GET', '/pay-schedules/members')).data.filter((m) => m.scheduleId).map((m) => [m.id, m.scheduleId])); } catch (_) { scheduleOf = {}; }
+}
+async function suggestStart() {
+  const el = $('pForm').elements.effectiveDate; const today = localToday(); const sid = scheduleOf[$('pUser').value];
+  let start = null;
+  if (sid) { try { start = nextPeriodStart(await req('GET', `/pay-schedules/${encodeURIComponent(sid)}/preview?from=${today}&date=${today}&n=2`), today); } catch (_) { start = null; } }
+  if (!el.dataset.typed) el.value = start || today;
+  $('pStartHint').textContent = start ? `Starts on is set to the first day of their next pay period, ${day(start)}. Change it if the change starts sooner.` : '';
+}
+$('pForm').elements.effectiveDate.addEventListener('input', (e) => { e.target.dataset.typed = '1'; });
 async function loadHistory() {
   const id = $('pUser').value; if (!id) return;
+  suggestStart();
   const r = await req('GET', `/employees/${id}/comp-history`); const c = r.current;
   $('pNow').innerHTML = c ? `<b>Now:</b> ${esc(c.jobTitle || 'no title')}${c.payRate ? `, ${money(c.payRate)} ${c.payType === 'hourly' ? 'an hour' : 'a year'}` : ''}${c.payFrequency ? `, paid every ${esc(FREQ[c.payFrequency])}` : ''}${r.canSeePay ? '' : ' <span class="hint">(your role does not show pay)</span>'}` : '<span class="hint">No job and pay history yet. Add a Hire record to start it.</span>';
   const ST = { approved: 'good', pending_approval: 'warnTag', rejected: 'badTag', cancelled: 'grey' };
@@ -202,7 +225,7 @@ $('pForm').addEventListener('submit', async (e) => {
   ['departmentId', 'workLocationId', 'managerId'].forEach((k) => { if (f[k].value === '-') body[k] = null; else if (f[k].value) body[k] = f[k].value; });
   ['payType', 'payRate', 'payFrequency'].forEach((k) => { if (f[k].value) body[k] = f[k].value; });
   try {
-    const r = await req('POST', `/employees/${$('pUser').value}/comp-history`, body); e.target.reset(); f.effectiveDate.value = localToday();
+    const r = await req('POST', `/employees/${$('pUser').value}/comp-history`, body); e.target.reset(); delete f.effectiveDate.dataset.typed; f.effectiveDate.value = localToday();
     say(r.needsApproval ? `Saved. It is above the ${r.approvalThresholdPercent}% limit, so another person has to approve it.` : r.scheduled ? 'Saved. It takes effect on its start date.' : 'Saved and in effect.'); await loadHistory(); await loadQueue();
   } catch (err) { say(err.message, false); }
 });
@@ -310,7 +333,7 @@ onAuthStateChanged(auth, async (user) => {
   });
   await step(async () => { depts = (await req('GET', '/departments')).data; $('pDept').innerHTML = `<option value="">No change</option><option value="-">None</option>${depts.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}</option>`).join('')}`; });
   await step(async () => { locs = (await req('GET', '/locations')).data; $('pLoc').innerHTML = `<option value="">No change</option><option value="-">None</option>${locs.map((l) => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}`; });
-  await step(loadQueue); await step(loadHistory); await step(loadBank); await step(loadContractors);
+  await loadScheduleOf(); await step(loadQueue); await step(loadHistory); await step(loadBank); await step(loadContractors);
   if (seesPay) await step(loadSummary); else document.querySelector('[data-tab=tax]').hidden = true;
   $('taxNote').textContent = 'Confirm the reporting threshold and the backup withholding rate with a US tax advisor.';
 });

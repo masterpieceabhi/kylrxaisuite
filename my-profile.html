@@ -37,7 +37,6 @@ form[hidden]{display:none}
     <form id="basicForm">
       <label><span data-t="preferred"></span><input name="preferredName" maxlength="60" autocomplete="nickname"></label>
       <label><span data-t="phone"></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 555-1234"></label>
-      <label><span data-t="marital"></span><select name="maritalStatus" id="marital"></select></label>
       <button class="go" type="submit" data-t="save"></button>
     </form>
   </section>
@@ -113,27 +112,24 @@ import { auth, onAuthStateChanged } from './firebase-config.js';
 const $ = (id) => document.getElementById(id);
 const T = {
   en: {
-    title: 'My details', back: 'Back to the clock', basics: 'Name, phone and status', preferred: 'Name you like to be called', phone: 'Phone', marital: 'Marital status', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
+    title: 'My details', back: 'Back to the clock', basics: 'Name and phone', preferred: 'Name you like to be called', phone: 'Phone', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
     contacts: 'Emergency contacts', contactsHint: 'Who we call if something happens to you at work.', addContact: 'Add a contact', cName: 'Full name', cRel: 'How you know them (wife, brother, friend)', cEmail: 'Email (optional)', cPrimary: 'Call this person first', noContacts: 'No emergency contacts yet.', first1: 'call first', edit: 'Edit', remove: 'Remove', removeAsk: 'Remove this contact?',
     guarded: 'Legal name, address and bank', guardedHint: 'HR checks these changes before they are saved, because they affect your pay and tax forms.', legal: 'Legal name', address: 'Home address', bank: 'Bank account for pay', askChange: 'Ask to change', none: 'Not on file',
     first: 'First name', middle: 'Middle name (optional)', last: 'Last name', street: 'Street address', unit: 'Apartment or unit (optional)', city: 'City', state: 'State (2 letters)', zip: 'ZIP code', reason: 'Why is this changing?', send: 'Send to HR',
     bankHint: 'Never send bank details by text or email. Enter them only here.', bankName: 'Bank name', routing: 'Routing number (9 digits)', account: 'Account number', account2: 'Account number again', acctType: 'Account type', checking: 'Checking', savings: 'Savings', authorize: 'I allow my employer to deposit my pay into this account.', mismatch: 'The two account numbers are not the same.',
     sent: 'Sent to HR. You will see the answer below.', applied: 'Saved. This change did not need a review.', extra: 'More about you', requests: 'My change requests', noReq: 'No requests yet.', cancelReq: 'Cancel request', cancelled: 'Request cancelled.',
-    f_legalName: 'Legal name', f_homeAddress: 'Home address', f_bankDetails: 'Bank account', s_pending: 'Waiting for HR', s_approved: 'Approved', s_rejected: 'Not approved', s_cancelled: 'Cancelled', hrNote: 'HR said:', fail: 'Could not load your details. Try again.', yes: 'Yes', no: 'No', choose: 'Choose',
-    m_: 'Choose', m_single: 'Single', m_married: 'Married', m_married_separate: 'Married, filing separately', m_head_of_household: 'Head of household', m_divorced: 'Divorced', m_widowed: 'Widowed', m_domestic_partner: 'Domestic partner', m_prefer_not_to_say: 'Prefer not to say'
+    f_legalName: 'Legal name', f_homeAddress: 'Home address', f_bankDetails: 'Bank account', s_pending: 'Waiting for HR', s_approved: 'Approved', s_rejected: 'Not approved', s_cancelled: 'Cancelled', hrNote: 'HR said:', fail: 'Could not load your details. Try again.', yes: 'Yes', no: 'No', choose: 'Choose'
   },
   es: {
-    title: 'Mis datos', back: 'Volver al reloj', basics: 'Nombre, teléfono y estado', preferred: 'Nombre que prefiere usar', phone: 'Teléfono', marital: 'Estado civil', save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado.',
+    title: 'Mis datos', back: 'Volver al reloj', basics: 'Nombre y teléfono', preferred: 'Nombre que prefiere usar', phone: 'Teléfono', save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado.',
     contacts: 'Contactos de emergencia', contactsHint: 'A quién llamamos si le pasa algo en el trabajo.', addContact: 'Agregar un contacto', cName: 'Nombre completo', cRel: 'Relación (esposa, hermano, amigo)', cEmail: 'Correo electrónico (opcional)', cPrimary: 'Llamar primero a esta persona', noContacts: 'Todavía no hay contactos de emergencia.', first1: 'llamar primero', edit: 'Editar', remove: 'Quitar', removeAsk: '¿Quitar este contacto?',
     guarded: 'Nombre legal, dirección y banco', guardedHint: 'Recursos Humanos revisa estos cambios antes de guardarlos, porque afectan su pago y sus formularios de impuestos.', legal: 'Nombre legal', address: 'Dirección de casa', bank: 'Cuenta de banco para su pago', askChange: 'Pedir un cambio', none: 'No registrado',
     first: 'Nombre', middle: 'Segundo nombre (opcional)', last: 'Apellido', street: 'Calle y número', unit: 'Apartamento o unidad (opcional)', city: 'Ciudad', state: 'Estado (2 letras)', zip: 'Código postal', reason: '¿Por qué cambia esto?', send: 'Enviar a Recursos Humanos',
     bankHint: 'Nunca envíe datos de banco por mensaje de texto o correo. Escríbalos solo aquí.', bankName: 'Nombre del banco', routing: 'Número de ruta (9 dígitos)', account: 'Número de cuenta', account2: 'Número de cuenta otra vez', acctType: 'Tipo de cuenta', checking: 'Cheques', savings: 'Ahorros', authorize: 'Autorizo a mi empleador a depositar mi pago en esta cuenta.', mismatch: 'Los dos números de cuenta no son iguales.',
     sent: 'Enviado a Recursos Humanos. Verá la respuesta abajo.', applied: 'Guardado. Este cambio no necesitó revisión.', extra: 'Más sobre usted', requests: 'Mis solicitudes de cambio', noReq: 'Todavía no hay solicitudes.', cancelReq: 'Cancelar solicitud', cancelled: 'Solicitud cancelada.',
-    f_legalName: 'Nombre legal', f_homeAddress: 'Dirección de casa', f_bankDetails: 'Cuenta de banco', s_pending: 'Esperando a Recursos Humanos', s_approved: 'Aprobado', s_rejected: 'No aprobado', s_cancelled: 'Cancelado', hrNote: 'Recursos Humanos dijo:', fail: 'No se pudieron cargar sus datos. Intente de nuevo.', yes: 'Sí', no: 'No', choose: 'Elegir',
-    m_: 'Elegir', m_single: 'Soltero/a', m_married: 'Casado/a', m_married_separate: 'Casado/a, declara por separado', m_head_of_household: 'Cabeza de familia', m_divorced: 'Divorciado/a', m_widowed: 'Viudo/a', m_domestic_partner: 'Pareja doméstica', m_prefer_not_to_say: 'Prefiero no decir'
+    f_legalName: 'Nombre legal', f_homeAddress: 'Dirección de casa', f_bankDetails: 'Cuenta de banco', s_pending: 'Esperando a Recursos Humanos', s_approved: 'Aprobado', s_rejected: 'No aprobado', s_cancelled: 'Cancelado', hrNote: 'Recursos Humanos dijo:', fail: 'No se pudieron cargar sus datos. Intente de nuevo.', yes: 'Sí', no: 'No', choose: 'Elegir'
   }
 };
-const MARITAL = ['', 'single', 'married', 'married_separate', 'head_of_household', 'divorced', 'widowed', 'domestic_partner', 'prefer_not_to_say'];
 let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
 try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
 if (!T[lang]) lang = 'en';
@@ -162,8 +158,6 @@ function paintStatic() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
-  const cur = $('marital').value;
-  $('marital').innerHTML = MARITAL.map((m) => `<option value="${m}">${esc(tr(`m_${m}`))}</option>`).join(''); $('marital').value = cur;
 }
 function paint() {
   paintStatic(); if (!data) return;
@@ -187,13 +181,13 @@ function paint() {
     return `<label><span>${esc(f.label)}</span>${input}${help}</label>`;
   }).join('');
 }
-function fillBasics() { const p = data.profile; const f = $('basicForm').elements; f.preferredName.value = p.preferredName; f.phone.value = p.phone; f.maritalStatus.value = p.maritalStatus; }
+function fillBasics() { const p = data.profile; const f = $('basicForm').elements; f.preferredName.value = p.preferredName; f.phone.value = p.phone; }
 async function load() { data = await req('GET', '/me/profile'); paint(); }
 const closeForms = () => ['legalForm', 'addressForm', 'bankForm'].forEach((id) => { $(id).hidden = true; $(id).reset(); });
 
 $('basicForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target);
-  try { await req('PUT', '/me/profile', { preferredName: f.get('preferredName'), phone: f.get('phone'), maritalStatus: f.get('maritalStatus') }); await load(); fillBasics(); say(tr('saved')); } catch (err) { say(err.message, false); }
+  try { await req('PUT', '/me/profile', { preferredName: f.get('preferredName'), phone: f.get('phone') }); await load(); fillBasics(); say(tr('saved')); } catch (err) { say(err.message, false); }
 });
 $('contactAdd').addEventListener('click', () => { contactEdit = null; $('contactForm').reset(); $('contactForm').hidden = false; $('contactForm').elements.name.focus(); });
 $('contactCancel').addEventListener('click', () => { $('contactForm').hidden = true; });

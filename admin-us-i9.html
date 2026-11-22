@@ -111,7 +111,7 @@ function docFields(p, key, withAuthority) {
   return `<div class="grid">
     ${key ? '' : `<label>List <select id="${p}List">${opts.supplementLists.map((l) => `<option value="${l}">List ${l}</option>`).join('')}</select></label>`}
     <label>Document <select id="${p}Type">${typeOptions(key || opts.supplementLists[0])}</select></label>
-    <label>Document title <input id="${p}Title" maxlength="120"></label>
+    <label>Document title (optional: filled in from the document) <input id="${p}Title" maxlength="120"></label>
     ${withAuthority ? `<label>Issued by <input id="${p}Auth" maxlength="120" placeholder="For example: U.S. Department of State"></label>` : ''}
     <label>Document number <input id="${p}Number" maxlength="60" autocomplete="off"></label>
     <label>Expires on (leave empty if it does not expire) <input id="${p}Exp" type="date"></label>
@@ -124,7 +124,7 @@ const signFields = (p) => `<div class="grid">
     <label>Date you checked the documents <input id="${p}On" type="date" value="${esc(list.today)}" max="${esc(list.today)}"></label>
     <label>How you checked them <select id="${p}Method">${opts.methods.map((m) => `<option value="${m}">${esc(METHOD[m] || m)}</option>`).join('')}</select></label>
     <label>Your full name <input id="${p}Name" maxlength="120" value="${esc(auth.currentUser.displayName || '')}"></label>
-    <label>Your job title <input id="${p}Title2" maxlength="120"></label>
+    <label>Your job title <input id="${p}Title2" maxlength="120" value="${esc(list.myJobTitle || '')}"></label>
   </div>
   <label class="check" style="margin-top:12px"><input type="checkbox" id="${p}Cert"> <span>I looked at the document or documents myself. They appear to be genuine and to belong to this person.</span></label>`;
 const revealBtn = (which, supplementId) => (list.canReveal ? ` <button class="small ghost" data-reveal="${esc(which)}" data-sup="${esc(supplementId || '')}">Show full number</button>` : '');
@@ -187,7 +187,14 @@ function paintDetail() {
   for (const [p2, key] of [['a', 'A'], ['b', 'B'], ['c', 'C']]) if ($(`${p2}Type`)) syncTitle(p2);
   if ($('fb')) { syncSupplementList(); syncKind(); }
 }
-const syncTitle = (p) => { const sel = $(`${p}Type`); $(`${p}Title`).value = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : ''; };
+// The title, and in Section 2 the expiry, follow the chosen document until someone types their own value
+const autoFill = (el, value) => { if (!el) return; if (!el.value.trim() || el.dataset.auto === el.value) { el.value = value || ''; el.dataset.auto = el.value; } };
+const syncTitle = (p) => {
+  const sel = $(`${p}Type`);
+  autoFill($(`${p}Title`), sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '');
+  // a work permit ends on the date the person gave in Section 1; not for Supplement B, where the new card has a later date
+  if (p !== 'bd') autoFill($(`${p}Exp`), (((current && current.section2Prefill) || {}).expiresOn || {})[sel.value] || '');
+};
 function syncSupplementList() { $('bdType').innerHTML = typeOptions($('bdList').value); syncTitle('bd'); }
 function syncKind() {
   const k = $('bKind').value;

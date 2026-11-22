@@ -313,6 +313,35 @@ router.post('/hiring/candidates/:id/erase', manage, requireUsOrg, async (req, re
 
 /* ----------------------------------------- hire -> employee ----------------------------------------- */
 
+/** Offer pay units ('hour' / 'year', see H.PAY_UNITS) to the profile's payType (services/us-validation.js PAY_TYPES) */
+const PAY_TYPE_BY_UNIT = { hour: 'hourly', hourly: 'hourly', year: 'salary', salary: 'salary', annual: 'salary' };
+const payTypeForUnit = (unit) => PAY_TYPE_BY_UNIT[String(unit || '').trim().toLowerCase()] || null;
+/** Job opening types that mean the same thing on the profile; contract and intern have no profile match and are left for HR */
+const PROFILE_EMPLOYMENT_TYPES = require('../services/us-validation').EMPLOYMENT_TYPES;
+const profileEmploymentType = (t) => (PROFILE_EMPLOYMENT_TYPES.includes(t) ? t : null);
+/**
+ * What the accepted offer and the job opening already say about the new hire, for the person's usProfile.
+ * Never replaces a value the profile already has. managerId is the org chart's field (routes/us-org.js).
+ */
+function hireProfileExtras(current, offer, job) {
+    const cur = current || {};
+    const has = (k) => cur[k] !== undefined && cur[k] !== null && cur[k] !== '';
+    const out = {};
+    if (offer) {
+        const payType = payTypeForUnit(offer.payUnit);
+        const rate = Number(offer.payRate);
+        if (!has('payType') && payType) out.payType = payType;
+        // a rate only means something with its unit: skip it when the profile is already paid the other way
+        if (!has('payRate') && Number.isFinite(rate) && rate > 0 && payType && (!has('payType') || cur.payType === payType)) out.payRate = Math.round(rate * 100) / 100;
+    }
+    if (job) {
+        const type = profileEmploymentType(job.employmentType);
+        if (!has('employmentType') && type) out.employmentType = type;
+        if (!has('managerId') && job.hiringManagerId) out.managerId = String(job.hiringManagerId);
+    }
+    return out;
+}
+
 router.post('/hiring/candidates/:id/hire', manage, requireUsOrg, requirePermission('people.write'), async (req, res) => {
     const c = await loadCandidate(req, res, req.params.id); if (!c) return;
     const d = c.data;
@@ -340,6 +369,11 @@ router.post('/hiring/candidates/:id/hire', manage, requireUsOrg, requirePermissi
     // new-hire reporting and the I-9 clock read usProfile.startDate / workState
     const profilePatch = { startDate: validated.value.startDate };
     if (job.state) profilePatch.workState = job.state;
+    // pay, employment type and manager are already known from the offer and the job opening
+    const saved = await rawCollection('users').doc(person.uid).get();
+    const extras = hireProfileExtras((exists(saved) && saved.data().usProfile) || {}, d.offer, job);
+    if (extras.managerId && (extras.managerId === person.uid || !(await userInOrg(req.orgId, extras.managerId)))) delete extras.managerId;
+    Object.assign(profilePatch, extras);
     await rawCollection('users').doc(person.uid).set({ usProfile: profilePatch }, { merge: true });
     await c.ref.update({ stage: 'hired', stageHistory: H.addStageHistory(d.stageHistory, 'hired', at, req.user.id, 'Converted to employee'), personId: person.uid, employeeId, hiredAt: at, updatedAt: at });
     await event(req.orgId, c.id, 'hired', req.user.id, { personId: person.uid, employeeId });
@@ -352,7 +386,7 @@ router.post('/hiring/candidates/:id/hire', manage, requireUsOrg, requirePermissi
         if (filled >= job.headcount && job.status === 'open') patch.status = 'filled';
         await rq.ref.update(patch);
     }
-    audit(req.orgId, req, 'candidate_hired', c.id, { personId: person.uid, employeeId });
+    audit(req.orgId, req, 'candidate_hired', c.id, { personId: person.uid, employeeId, profileFields: Object.keys(profilePatch) });
     res.status(201).json({ success: true, employee: person, note: 'Share the temporary password with the new hire securely. It is shown only once.' });
 });
 
@@ -376,5 +410,5 @@ router.get('/hiring/eeo-summary', requirePermission('eeo.report'), requireUsOrg,
 
 router.use(require('./us-hiring-compliance'));
 
-router.helpers = { loadSettings, today };
+router.helpers = { loadSettings, today, hireProfileExtras, payTypeForUnit, profileEmploymentType };
 module.exports = router;

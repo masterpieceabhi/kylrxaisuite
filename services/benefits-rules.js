@@ -264,8 +264,23 @@ function validateDependent(d, i, today) {
         if (digits.length !== 9 || /^(000|666)/.test(digits) || /^(\d)\1{8}$/.test(digits)) errors.push(`${p}: ssn must be 9 digits`);
         else value.ssnPlain = digits;
     }
+    // A family member saved on an earlier election: the route copies that record's stored SSN (the page only has the masked value)
+    if (d && d.existingDependentId !== undefined && d.existingDependentId !== null && d.existingDependentId !== '') {
+        if (!/^[a-f0-9]{12}$/.test(String(d.existingDependentId))) errors.push(`${p}: existingDependentId is not valid`);
+        else if (!value.ssnPlain) value.existingDependentId = String(d.existingDependentId);
+    }
     value.student = d && d.student === true;
     return { errors, value };
+}
+
+/**
+ * The coverage tier that the chosen dependents call for (the same rule validateElection checks):
+ * no one -> employee_only, a spouse or partner -> employee_spouse, children -> employee_children, both -> family.
+ */
+function tierForDependents(dependents) {
+    const list = Array.isArray(dependents) ? dependents : [];
+    const spouse = list.some((d) => d && d.relationship !== 'child'); const kids = list.some((d) => d && d.relationship === 'child');
+    return spouse && kids ? 'family' : spouse ? 'employee_spouse' : kids ? 'employee_children' : 'employee_only';
 }
 
 function needsSpouse(tier) { return tier === 'employee_spouse' || tier === 'family'; }
@@ -534,7 +549,7 @@ function cobraAlerts(rec, cfg, todayIso) {
 module.exports = {
     PLAN_TYPES, HEALTH_TYPES, FLAT_TYPES, TIERS, EMPLOYMENT_TYPES, PERIODS_PER_YEAR, RELATIONSHIPS, ENROLLMENT_STATUSES, DEFAULT_SETTINGS, DEFAULT_LIFE_EVENTS, DEFAULT_LIMITS, DEFAULT_COBRA, FEED_HEADER, ACA_HEADER, COBRA_ACTIONS,
     validatePlan, validateMatch, matchPercent, validateLimits, limitFor, eligibility, validateLifeEvents, validateOpenEnrollment, lifeEventDates, openWindows, validateLifeEventRequest,
-    validateDependent, validateElection, estimateGrossPerPeriod, deductionLine, activeOn, payrollFeed, toCsv,
+    validateDependent, tierForDependents, validateElection, estimateGrossPerPeriod, deductionLine, activeOn, payrollFeed, toCsv,
     validateAcaSettings, acaAverage, monthHours, validateOffer, acaMonthlyRows, enrolledMonthsOf,
     validateCobraSettings, validateCobraEvent, cobraDeadlines, applyCobraAction, cobraAlerts, addDays, addMonths
 };

@@ -129,7 +129,8 @@ async function balancesResponse(req, res, targetId) {
         rows.push({ policy: publicPolicy(p), ...(r.error ? { error: r.error } : { balance: r.balance }) });
     }
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, userId: emp.id, name: emp.data.name || null, asOf: todayIn(info.tz), data: rows });
+    // The person's own full day (scheduled weekly hours over 5 days), so the page does not assume 8
+    res.json({ success: true, userId: emp.id, name: emp.data.name || null, asOf: todayIn(info.tz), hoursPerDay: L.hoursPerDayFor(profile.scheduledWeeklyHours), data: rows });
 }
 
 router.get('/leave/balances', requireUsOrg, (req, res) => balancesResponse(req, res, req.user.id));
@@ -162,7 +163,7 @@ router.post('/leave/requests', requireUsOrg, async (req, res) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(b0.startDate || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(b0.endDate || '')) && b0.endDate >= b0.startDate && b0.endDate.slice(0, 4) - b0.startDate.slice(0, 4) <= 1) {
         try { companyHolidays = await require('../services/company-holidays').holidaySetForRange(req.orgId, b0.startDate, b0.endDate, { locationId: (emp.data.usProfile && emp.data.usProfile.workLocationId) || undefined }); } catch (_) { companyHolidays = null; /* falls back to federal holidays */ }
     }
-    const { errors, value } = L.validateRequest(policy, req.body, bal.balance, bal.asOf, mine.flatMap((r) => r.dates), companyHolidays);
+    const { errors, value } = L.validateRequest(policy, req.body, bal.balance, bal.asOf, mine.flatMap((r) => r.dates), companyHolidays, L.hoursPerDayFor((emp.data.usProfile || {}).scheduledWeeklyHours));
     if (errors.length) return res.status(400).json({ success: false, errors });
 
     const doc = {

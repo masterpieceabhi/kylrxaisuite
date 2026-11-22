@@ -179,8 +179,24 @@ function validateCopyMeta(input) {
     return { errors, value: errors.length ? null : { part, list: b.list, supplementId: part === 'supplement' ? text(b.supplementId, 64) : null, title: text(b.title, 120) || null } };
 }
 
+/* ---------------------------------- what the forms can start from ---------------------------------- */
+
+/** The signer's own job title for "Your job title" on Section 2 and Supplement B (the people screens keep it in usProfile; older records at the top) */
+const signerTitleOf = (user) => text((user && ((user.usProfile && user.usProfile.jobTitle) || user.jobTitle)) || '', 120);
+
+/**
+ * Section 2 starts each document's expiry from what Section 1 already says: the person stated the date their
+ * permission to work ends, which is the end date on their Employment Authorization Document. Section 2 only: a
+ * reverification (Supplement B) is a new card with a later date, so nothing is offered there. HR can change it.
+ */
+function section2Prefill(section1) {
+    const s1 = section1 || {};
+    const ends = s1.citizenshipStatus === 'alien_authorized_to_work' && forms.parseIsoDate(s1.workAuthorizationExpires) ? s1.workAuthorizationExpires : null;
+    return { expiresOn: ends ? { employment_authorization_document: ends } : {} };
+}
+
 module.exports = {
-    ADVISOR_NOTE, TITLES, titleOf, documentLists, SUPPLEMENT_KINDS, SUPPLEMENT_LISTS, METHODS, MAX_SUPPLEMENTS, tailOf, maskNumber,
+    ADVISOR_NOTE, signerTitleOf, section2Prefill, TITLES, titleOf, documentLists, SUPPLEMENT_KINDS, SUPPLEMENT_LISTS, METHODS, MAX_SUPPLEMENTS, tailOf, maskNumber,
     publicDocument, publicSupplement, publicSection2, validateSupplementB, listRow, upcomingExpiries, summarize, findNumber,
     COPY_CATEGORY, COPY_CATEGORY_LABEL, COPY_PARTS, validateCopyMeta, daysBetween
 };

@@ -34,7 +34,7 @@ button.go{width:100%;padding:18px;border:0;border-radius:14px;background:var(--b
       <label class="f"><span id="lType"></span><select name="policyId" id="policy"></select></label>
       <label class="f"><span id="lFrom"></span><input type="date" name="startDate" required></label>
       <label class="f"><span id="lTo"></span><input type="date" name="endDate" required></label>
-      <label class="f"><span id="lLen"></span><select name="hoursPerDay"><option value="8" id="oFull"></option><option value="4" id="oHalf"></option><option value="2" id="oTwo"></option></select></label>
+      <label class="f"><span id="lLen"></span><select name="hoursPerDay" id="len"></select></label>
       <label class="f"><span id="lNote"></span><input type="text" name="reason" maxlength="200"></label>
       <button class="go" type="submit" id="send"></button>
     </form>
@@ -47,10 +47,10 @@ button.go{width:100%;padding:18px;border:0;border-radius:14px;background:var(--b
 import { auth, onAuthStateChanged } from './firebase-config.js';
 
 const T = {
-  en: { title: 'Time off', hBal: 'My time off', hReq: 'Ask for time off', hMine: 'My requests', lType: 'What kind?', lFrom: 'First day off', lTo: 'Last day off', lLen: 'How long each day?', oFull: 'Full day (8 hours)', oHalf: 'Half day (4 hours)', oTwo: '2 hours',
+  en: { title: 'Time off', hBal: 'My time off', hReq: 'Ask for time off', hMine: 'My requests', lType: 'What kind?', lFrom: 'First day off', lTo: 'Last day off', lLen: 'How long each day?', oFull: 'Full day ({h} hours)', oHalf: 'Half day ({h} hours)', oTwo: '2 hours',
     lNote: 'Note for your manager (optional)', send: 'Send request', hours: 'hours', avail: 'you can use', usable: 'You can use this from {d}', none: 'No requests yet.', cancel: 'Cancel',
     pending: 'Waiting', approved: 'Approved', denied: 'Not approved', cancelled: 'Cancelled', sent: 'Request sent. Your manager will answer soon.', cancelled_ok: 'Request cancelled.', back: 'Back', fail: 'Could not reach the server.', noPolicy: 'No time off is set up yet. Ask HR.', noStart: 'Your start date is missing. Ask HR.', sick: 'Sick', pto: 'Vacation' },
-  es: { title: 'Tiempo libre', hBal: 'Mi tiempo libre', hReq: 'Pedir tiempo libre', hMine: 'Mis solicitudes', lType: '¿De qué tipo?', lFrom: 'Primer día libre', lTo: 'Último día libre', lLen: '¿Cuánto cada día?', oFull: 'Día completo (8 horas)', oHalf: 'Medio día (4 horas)', oTwo: '2 horas',
+  es: { title: 'Tiempo libre', hBal: 'Mi tiempo libre', hReq: 'Pedir tiempo libre', hMine: 'Mis solicitudes', lType: '¿De qué tipo?', lFrom: 'Primer día libre', lTo: 'Último día libre', lLen: '¿Cuánto cada día?', oFull: 'Día completo ({h} horas)', oHalf: 'Medio día ({h} horas)', oTwo: '2 horas',
     lNote: 'Nota para su supervisor (opcional)', send: 'Enviar solicitud', hours: 'horas', avail: 'puede usar', usable: 'Puede usarlo desde {d}', none: 'Aún no hay solicitudes.', cancel: 'Cancelar',
     pending: 'En espera', approved: 'Aprobado', denied: 'No aprobado', cancelled: 'Cancelado', sent: 'Solicitud enviada. Su supervisor responderá pronto.', cancelled_ok: 'Solicitud cancelada.', back: 'Volver', fail: 'No se pudo conectar.', noPolicy: 'Aún no hay tiempo libre configurado. Pregunte a Recursos Humanos.', noStart: 'Falta su fecha de inicio. Pregunte a Recursos Humanos.', sick: 'Enfermedad', pto: 'Vacaciones' }
 };
@@ -59,6 +59,24 @@ try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
 const $ = (id) => document.getElementById(id);
 const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
 let balances = [], requests = [];
+let hoursPerDay = 8; // the person's own full day, from the server (scheduled weekly hours over 5 days)
+
+/** Same as dayOptions() in services/leave-rules.js: full day, half day, and 2 hours only when smaller than half */
+const toIncrement = (h, step) => Math.round(Math.max(step, Math.round(h / step) * step) * 100) / 100;
+function dayOptions(perDay, inc) {
+  const step = Number(inc) > 0 ? Number(inc) : 0.25;
+  const full = toIncrement(Number(perDay) > 0 ? Number(perDay) : 8, step);
+  const half = toIncrement(full / 2, step);
+  const two = 2 < half && Math.abs(2 / step - Math.round(2 / step)) < 1e-9 ? 2 : null;
+  return { full, half, two };
+}
+function paintLen() {
+  const row = balances.find((r) => r.policy.id === $('policy').value);
+  const o = dayOptions(hoursPerDay, row && row.policy.minimumIncrementHours);
+  const keep = $('len').selectedIndex;
+  $('len').innerHTML = `<option value="${o.full}">${tr('oFull', { h: o.full })}</option><option value="${o.half}">${tr('oHalf', { h: o.half })}</option>${o.two ? `<option value="2">${tr('oTwo')}</option>` : ''}`;
+  $('len').selectedIndex = keep >= 0 && keep < $('len').options.length ? keep : 0;
+}
 
 function show(kind, text) { const m = $('msg'); m.textContent = text; m.className = kind; window.scrollTo({ top: 0, behavior: 'smooth' }); }
 async function api(method, path, body) {
@@ -72,7 +90,7 @@ async function api(method, path, body) {
 function paint() {
   document.documentElement.lang = lang; document.title = tr('title'); $('title').textContent = tr('title');
   document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
-  ['hBal', 'hReq', 'hMine', 'lType', 'lFrom', 'lTo', 'lLen', 'lNote', 'oFull', 'oHalf', 'oTwo'].forEach((k) => { $(k).textContent = tr(k); });
+  ['hBal', 'hReq', 'hMine', 'lType', 'lFrom', 'lTo', 'lLen', 'lNote'].forEach((k) => { $(k).textContent = tr(k); });
   $('send').textContent = tr('send'); $('back').textContent = tr('back');
   const typeName = (p) => p.name;
   $('bals').innerHTML = balances.length ? balances.map((r) => r.balance
@@ -81,22 +99,25 @@ function paint() {
   const sel = $('policy').value;
   $('policy').innerHTML = balances.filter((r) => r.balance).map((r) => `<option value="${r.policy.id}">${typeName(r.policy)}</option>`).join('');
   if (sel) $('policy').value = sel;
+  paintLen();
   $('mine').innerHTML = requests.length ? requests.map((r) => `<div class="row"><div><b>${r.startDate === r.endDate ? r.startDate : `${r.startDate} → ${r.endDate}`}</b><p class="s">${r.hours} ${tr('hours')} · ${r.policyName}</p></div><div><span class="chip ${r.status}">${tr(r.status)}</span>${['pending', 'approved'].includes(r.status) ? ` <button class="cancel" data-id="${r.id}">${tr('cancel')}</button>` : ''}</div></div>`).join('') : `<p class="s">${tr('none')}</p>`;
 }
 
 async function load() {
-  balances = (await api('GET', '/balances')).data;
+  const b = await api('GET', '/balances');
+  balances = b.data; hoursPerDay = Number(b.hoursPerDay) > 0 ? Number(b.hoursPerDay) : 8;
   requests = (await api('GET', '/requests?scope=mine')).data;
   paint();
 }
 
 // most requests are one day: the last day follows the first until the person changes it
 $('form').startDate.addEventListener('change', () => { const f = $('form'); if (!f.endDate.value || f.endDate.value < f.startDate.value) f.endDate.value = f.startDate.value; });
+$('policy').addEventListener('change', paintLen);
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target;
   try {
     await api('POST', '/requests', { policyId: f.policyId.value, startDate: f.startDate.value, endDate: f.endDate.value, hoursPerDay: f.hoursPerDay.value, reason: f.reason.value });
-    f.reset(); show('ok', tr('sent')); await load();
+    f.reset(); paintLen(); show('ok', tr('sent')); await load();
   } catch (err) { show('err', err.message); }
 });
 $('mine').addEventListener('click', async (e) => {

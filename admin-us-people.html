@@ -251,6 +251,18 @@ async function loadCompliance() {
   $('compRows').innerHTML = r.data.map((e) => `<tr><td>${e.employeeId}</td><td>${e.name || ''}</td><td>${e.firstDay || '-'}</td><td><span class="tag ${e.w4 === 'complete' ? 'ok' : 'no'}">${e.w4 === 'complete' ? 'Done' : 'Missing'}</span></td><td><span class="tag ${e.i9State === 'complete' ? 'ok' : 'no'}">${e.i9State.replace('_', ' ')}</span></td><td>${e.i9Section2Due || '-'}</td><td>${e.flags.map((f) => FLAG_TEXT[f] || f).join(', ') || '-'}</td></tr>`).join('');
 }
 
+// Department: a list of the company's departments when it has some, so the name matches the org chart exactly.
+// The add API saves the department by name. No list (no departments yet, or no access): the box stays free text.
+async function loadDepartmentPick() {
+  let rows = [];
+  try { rows = ((await api('GET', '/departments')).data || []).filter((d) => d && d.name && d.active !== false); } catch (_) { return; }
+  if (!rows.length) return;
+  const box = $('addForm').elements.department; if (!box || box.tagName === 'SELECT') return;
+  const sel = document.createElement('select'); sel.name = 'department';
+  sel.innerHTML = `<option value="">None</option>${rows.map((d) => `<option value="${escHtml(d.name)}">${escHtml(d.name)}</option>`).join('')}`;
+  box.replaceWith(sel);
+}
+
 $('addForm').addEventListener('submit', async (ev) => {
   ev.preventDefault(); const v = formObj(ev.target);
   try {
@@ -333,7 +345,7 @@ onAuthStateChanged(auth, async (user) => {
     const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${token}` } })).json();
     if (!org.success || org.country.code !== 'US') { $('blocked').style.display = 'block'; return; }
     ['companyCard', 'peopleCard', 'todoCard', 'complianceCard', 'addCard', 'bulkCard'].forEach((id) => { $(id).style.display = 'block'; });
-    await loadCompany(); await loadTagFilter(); await loadPeople(); await loadCompliance(); await loadTodo();
+    await loadCompany(); await loadDepartmentPick(); await loadTagFilter(); await loadPeople(); await loadCompliance(); await loadTodo();
   } catch (e) { say(e.message, false); }
 });
 </script>

@@ -186,7 +186,23 @@ async function loadLocations() {
   const open = locations.filter((l) => l.active !== false);
   $('holLocs').innerHTML = open.map((l) => `<label class="chk"><input type="checkbox" data-holloc="${esc(l.id)}"> ${esc(l.name)}</label>`).join('') || '<span class="hint">No locations yet</span>';
 }
-function resetLocForm() { locEdit = null; $('locForm').reset(); $('tzPick').value = 'America/Chicago'; $('locTitle').textContent = 'Add a location'; $('locCancel').hidden = true; }
+// The company's own time zone starts the picker (not a fixed one); the first location also starts from the company address
+let companyTz = 'America/Chicago'; let companyAddress = null;
+const knownTz = (tz) => (TIME_ZONES.some(([v]) => v === tz) ? tz : null);
+function resetLocForm() { locEdit = null; $('locForm').reset(); $('tzPick').value = companyTz; $('locTitle').textContent = 'Add a location'; $('locCancel').hidden = true; fillFirstLocation(); }
+/** Only while the company has no locations at all: the first one is almost always the business address */
+function fillFirstLocation() {
+  if (locEdit || locations.length || !companyAddress) return;
+  const f = $('locForm').elements; const a = companyAddress;
+  for (const k of ['line1', 'line2', 'city', 'state', 'zip']) if (a[k] && !f[k].value.trim()) f[k].value = a[k];
+  if (!f.name.value.trim()) f.name.value = 'Headquarters';
+}
+async function loadCompanyDefaults() {
+  try { const me = await req('GET', '/me'); companyTz = knownTz(me.company && me.company.timeZone) || companyTz; } catch (_) { /* keep the default */ }
+  try { const c = await req('GET', '/company/profile'); const p = c.profile || c.suggested; companyAddress = (p && p.businessAddress) || null; } catch (_) { /* no access to the company profile */ }
+  if (!locEdit) $('tzPick').value = companyTz;
+  fillFirstLocation();
+}
 $('locForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target);
   const body = { name: f.get('name'), address: { line1: f.get('line1'), line2: f.get('line2'), city: f.get('city'), state: f.get('state'), zip: f.get('zip') }, county: f.get('county'), timeZone: f.get('timeZone'), lat: f.get('lat'), lng: f.get('lng'), radiusMeters: f.get('radiusMeters'), isHeadquarters: f.get('isHeadquarters') === 'on' };
@@ -370,7 +386,7 @@ onAuthStateChanged(auth, async (user) => {
   $('holYear').value = new Date().getFullYear(); showFreqFields();
   // Each part loads on its own so one missing permission does not blank the page
   const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
-  await step(loadLocations); await step(async () => { departments = (await req('GET', '/departments')).data; });
+  await step(loadLocations); await loadCompanyDefaults(); await step(async () => { departments = (await req('GET', '/departments')).data; });
   await step(loadPeople); await step(loadDepartments); await step(loadSchedules); await step(loadHolidays);
 });
 </script>
