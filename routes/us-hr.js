@@ -131,8 +131,30 @@ function publicProfile(emp) {
 }
 
 /** Company profile (EIN, entity type, work states) */
+/**
+ * What the company typed at sign-up, in the shape of this form, so the first save is a check instead of typing it
+ * all again. Only offered while the profile has never been saved; nothing is stored until the owner saves.
+ */
+function fromSignup(org) {
+    const o = org || {};
+    const str = (v) => (typeof v === 'string' ? v.trim() : '');
+    const kinds = { llc: 'llc', 'c corporation': 'c_corp', 'c corp': 'c_corp', 's corporation': 's_corp', 's corp': 's_corp', partnership: 'partnership', 'sole proprietorship': 'sole_proprietorship', nonprofit: 'nonprofit' };
+    const state = str(o.state).toUpperCase();
+    const twoLetters = /^[A-Z]{2}$/.test(state) ? state : '';
+    const zip = /^\d{5}(-\d{4})?$/.test(str(o.pinCode)) ? str(o.pinCode) : '';
+    const month = Number(String(o.financialYearStart || '').slice(0, 2));
+    return {
+        legalName: str(o.legalName || o.Legal_Name),
+        entityType: kinds[str(o.organizationType || o.Organization_Type).toLowerCase()] || '',
+        businessAddress: { line1: str(o.registeredAddress), city: str(o.city), state: twoLetters, zip },
+        workStates: twoLetters ? [twoLetters] : [],
+        fiscalYearStartMonth: month >= 1 && month <= 12 ? month : 1
+    };
+}
+
 router.get('/company/profile', COMPANY_READ, requireUsOrg, (req, res) => {
-    res.json({ success: true, orgId: req.orgId, profile: req.org.usProfile || null });
+    const profile = req.org.usProfile || null;
+    res.json({ success: true, orgId: req.orgId, profile, suggested: profile ? null : fromSignup(req.org) });
 });
 
 router.put('/company/profile', COMPANY_WRITE, requireUsOrg, async (req, res) => {
@@ -254,3 +276,4 @@ router.post('/employees/:id/taxpayer-id/reveal', PII_REVEAL, requireUsOrg, async
 router.helpers = { requireUsOrg, findEmployee, audit, exists, orgIdOf, PEOPLE_COLLECTIONS, canSeeProfile };
 
 module.exports = router;
+module.exports.fromSignup = fromSignup; // for tests

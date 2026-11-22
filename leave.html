@@ -90,6 +90,8 @@ async function load() {
   paint();
 }
 
+// most requests are one day: the last day follows the first until the person changes it
+$('form').startDate.addEventListener('change', () => { const f = $('form'); if (!f.endDate.value || f.endDate.value < f.startDate.value) f.endDate.value = f.startDate.value; });
 $('form').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target;
   try {

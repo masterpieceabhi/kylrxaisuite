@@ -58,6 +58,10 @@ function paint() {
   $('mine').innerHTML = mine.length ? mine.map((i) => `<div class="row"><b>${i.dateOfIncident}</b> · ${i.location}<p class="s" style="margin:4px 0 0">${tr('status_' + i.status)}</p></div>`).join('') : `<p class="s">${tr('none')}</p>`;
 }
 async function load() { mine = (await api('GET', '/incidents')).data; paint(); }
+// most reports are made the same day: start from today, and a date in the future cannot be chosen
+const injuryToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+$('f').dateOfIncident.max = injuryToday(); if (!$('f').dateOfIncident.value) $('f').dateOfIncident.value = injuryToday();
+$('f').addEventListener('reset', () => setTimeout(() => { $('f').dateOfIncident.value = injuryToday(); }, 0));
 $('f').addEventListener('submit', async (e) => { e.preventDefault(); const f = e.target; try { await api('POST', '/report', { dateOfIncident: f.dateOfIncident.value, location: f.location.value, description: f.description.value, bodyPart: f.bodyPart.value, receivedMedicalTreatment: f.receivedMedicalTreatment.checked, missedWork: f.missedWork.checked }); f.reset(); show('ok', tr('ok')); await load(); } catch (err) { show('err', err.message); } });
 $('back').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'punch.html'; };
 document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }; });

@@ -134,7 +134,10 @@ function openFix(mode, p) {
   $('fixT').textContent = tr('fixT');
   $('fixP').textContent = mode === 'change' ? tr('fixPunch', { p: `${tr(p.type)} ${hhmm12(p.time)}` }) : tr('fixAdd');
   $('fTypeL').style.display = mode === 'add' ? 'grid' : 'none';
-  f.localDate.value = p ? p.date : weekStart; f.localDate.min = weekStart; f.localDate.max = week.weekEnd || addDays(weekStart, 6);
+  // a missing punch is most often from today: start there when today is in this week, otherwise the week's first day
+  const d0 = new Date(); const todayIso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`;
+  const weekLast = week.weekEnd || addDays(weekStart, 6);
+  f.localDate.value = p ? p.date : (todayIso >= weekStart && todayIso <= weekLast ? todayIso : weekStart); f.localDate.min = weekStart; f.localDate.max = weekLast;
   if (p) f.localTime.value = p.time;
   $('fixCard').style.display = 'block'; $('fixCard').scrollIntoView({ behavior: 'smooth' });
 }

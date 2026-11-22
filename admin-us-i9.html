@@ -216,6 +216,17 @@ async function refresh(text, failed) {
   say(failed.length ? `${text} But a copy could not be stored: ${failed.join('; ')}` : text, failed.length === 0);
 }
 
+// "Issued by" follows from the document for most of them; it stays editable and is never overwritten once typed
+const ISSUER = { us_passport: 'U.S. Department of State', us_passport_card: 'U.S. Department of State', permanent_resident_card: 'USCIS', employment_authorization_document: 'USCIS', employment_authorization_dhs: 'U.S. Department of Homeland Security', social_security_card_unrestricted: 'Social Security Administration', us_coast_guard_merchant_mariner_card: 'U.S. Coast Guard', military_id_card: 'U.S. Department of Defense' };
+$('detail').addEventListener('change', (e) => {
+  const sel = e.target.closest('select[id$="Type"]');
+  if (sel) { const auth = $(sel.id.replace(/Type$/, 'Auth')); if (auth && !auth.value.trim() && ISSUER[sel.value]) auth.value = ISSUER[sel.value]; }
+}, true);
+// the first document in the list is chosen without a change: fill its issuer when the box is reached
+$('detail').addEventListener('focusin', (e) => {
+  const box = e.target.closest('input[id$="Auth"]');
+  if (box && !box.value.trim()) { const sel = $(box.id.replace(/Auth$/, 'Type')); if (sel && ISSUER[sel.value]) box.value = ISSUER[sel.value]; }
+});
 $('detail').addEventListener('change', (e) => {
   const t = e.target;
   if (t.name === 'choice') { const a = t.value === 'A'; $('boxA').hidden = !a; $('boxB').hidden = a; $('boxC').hidden = a; }
