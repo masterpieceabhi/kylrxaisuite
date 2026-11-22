@@ -13,7 +13,8 @@ main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:22px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 a.tile{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--ink)}a.tile:hover,a.tile:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px #dbeafe}
 a.tile b{display:block;font-size:15px}a.tile span{color:var(--muted);font-size:13px}
-a.tile[hidden],main section[hidden]{display:none}.find{display:grid;gap:4px;max-width:420px}.find input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+a.tile[hidden],main section[hidden]{display:none}
+.setup{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}.setup ol{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:8px}.setup li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}.setup li.done{opacity:.6}.setup li b{display:block}.setup li span{color:var(--muted);font-size:13px}.setup li a{white-space:nowrap;background:var(--blue);color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:600}.setup .ok{color:#166534;font-weight:700;white-space:nowrap}.find{display:grid;gap:4px;max-width:420px}.find input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
 #workSec{display:grid;gap:22px}#workSec h2,#recentSec h2,#mineSec h2{margin:0 0 10px;font-size:16px}
 button{padding:8px 14px;border:0;border-radius:8px;background:#e2e8f0;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
 #msg{display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px}
@@ -24,6 +25,7 @@ button{padding:8px 14px;border:0;border-radius:8px;background:#e2e8f0;color:var(
 <main>
   <div id="msg" role="alert"></div>
   <label class="find"><span class="hint">Find a page</span><input id="find" type="search" placeholder="For example: time off, I-9, payroll" autocomplete="off"></label>
+  <section id="setupSec" class="setup" hidden><h2 id="setupTitle">Getting started</h2><p class="hint" id="setupHint"></p><ol id="setupList"></ol></section>
   <section id="recentSec" hidden><h2>Recently used</h2><div class="cards" id="recent"></div></section>
   <div id="workSec" hidden></div>
   <section id="mineSec"><h2>My own</h2><div class="cards" id="mine"></div></section>
@@ -122,6 +124,21 @@ onAuthStateChanged(auth, async (user) => {
     const has = new Set(me.permissions || []);
     const open = PAGES.filter((p) => p[3].some((x) => has.has(x)));
     $('workSec').hidden = open.length === 0; showWork(open);
+    // Getting started: for the owner and HR, the few one-time steps, each ticked off from the company's own data
+    if (['org.settings', 'people.write', 'security.manage'].some((x) => has.has(x))) {
+      fetch('/api/us/setup/status', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } }).then((r) => r.json()).then((s) => {
+        if (!s.success || s.done >= s.required) return; // all set: the card stays away
+        $('setupTitle').textContent = `Getting started: ${s.done} of ${s.required} done`;
+        $('setupHint').textContent = 'Do these once. Each one ticks itself off when it is done.';
+        $('setupList').replaceChildren(...s.steps.map((st) => {
+          const li = document.createElement('li'); if (st.done) li.className = 'done';
+          const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = st.title + (st.optional ? ' (optional)' : ''); const sp = document.createElement('span'); sp.textContent = st.why; d.append(b, sp);
+          let act; if (st.done) { act = document.createElement('span'); act.className = 'ok'; act.textContent = '✓ Done'; } else { act = document.createElement('a'); act.href = st.href; act.textContent = 'Set up'; }
+          li.append(d, act); return li;
+        }));
+        $('setupSec').hidden = false;
+      }).catch(() => { /* the rest of Home still works */ });
+    }
     // people who run the company see their work first; everyone else sees their own pages first
     if (open.length) $('workSec').after($('mineSec'));
     try {

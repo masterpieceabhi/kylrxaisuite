@@ -46,6 +46,12 @@ if systemctl is-active --quiet onnhr; then
     [ "$(basename "$oldfile")" = "$(basename "$file")" ] && continue
     rm -f "$oldfile" && echo "Removed old upload $(basename "$oldfile")."
   done
+  # This script updates itself from the version just installed, so the next install uses the newest steps.
+  self="$(readlink -f "$0" 2>/dev/null || true)"
+  fresh="$dest/deploy/install-release.sh"
+  if [ -n "$self" ] && [ -f "$self" ] && [ -f "$fresh" ] && ! cmp -s "$fresh" "$self"; then
+    cp "$fresh" "$self" && { [ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER" "$self" || true; } && echo "The install script was updated to the newest version."
+  fi
 else
   echo "The app did not start. See: sudo journalctl -u onnhr -n 80" >&2
   [ -n "$previous" ] && [ -d "$previous" ] && { ln -sfn "$previous" /srv/onnhr/app; systemctl restart onnhr; echo "Switched back to the previous version." >&2; }

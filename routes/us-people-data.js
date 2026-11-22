@@ -15,5 +15,6 @@ router.use(require('./us-people-self'));
 router.use(require('./us-comp'));
 router.use(require('./us-contractors'));
 router.use(require('./us-tags'));
+router.use(require('./us-setup')); // Getting started checklist on Home
 
 module.exports = router;
