@@ -158,6 +158,6 @@ onAuthStateChanged(auth, async (user) => {
   try { options = await req('GET', '/options'); $('note').textContent = options.note; $('cols').textContent = options.columns.map((c) => c.label).join(', '); await loadBatches(); } catch (err) { say(err.message, false); }
 });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

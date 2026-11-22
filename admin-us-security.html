@@ -95,6 +95,6 @@ $('grant').addEventListener('submit', async (e) => {
 $('grants').addEventListener('click', async (e) => { const b = e.target.closest('[data-rev]'); if (!b) return; try { await api('DELETE', `/support/grants/${b.dataset.rev}`); say('Support access turned off.'); await load(); } catch (err) { say(err.message, false); } });
 onAuthStateChanged(auth, async (user) => { if (!user) { window.location.replace('login.html'); return; } try { await load(); } catch (err) { say(err.message, false); } });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

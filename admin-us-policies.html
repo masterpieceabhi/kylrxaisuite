@@ -164,6 +164,6 @@ onAuthStateChanged(auth, async (user) => {
   try { options = await req('GET', '/options'); $('note').textContent = options.note; $('eCategory').innerHTML = options.categories.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join(''); $('editForm').elements.body.maxLength = options.bodyMax; await load(); } catch (err) { say(err.message, false); }
 });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

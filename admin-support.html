@@ -112,6 +112,6 @@ $('state').addEventListener('change', () => load().catch((e) => say(e.message, f
 $('reload').addEventListener('click', () => load().catch((e) => say(e.message, false)));
 onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } load().catch((e) => say(e.message, false)); });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

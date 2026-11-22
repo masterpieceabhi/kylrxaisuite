@@ -13,6 +13,8 @@ main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:22px}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
 a.tile{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--ink)}a.tile:hover,a.tile:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px #dbeafe}
 a.tile b{display:block;font-size:15px}a.tile span{color:var(--muted);font-size:13px}
+a.tile[hidden],main section[hidden]{display:none}.find{display:grid;gap:4px;max-width:420px}.find input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+#workSec{display:grid;gap:22px}#workSec h2,#recentSec h2,#mineSec h2{margin:0 0 10px;font-size:16px}
 button{padding:8px 14px;border:0;border-radius:8px;background:#e2e8f0;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
 #msg{display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px}
 </style>
@@ -21,8 +23,10 @@ button{padding:8px 14px;border:0;border-radius:8px;background:#e2e8f0;color:var(
 <header><div><h1 id="hello">Home</h1><span class="hint" id="role"></span></div><button id="out">Sign out</button></header>
 <main>
   <div id="msg" role="alert"></div>
-  <section id="workSec" hidden><h2>Company work</h2><div class="cards" id="work"></div></section>
-  <section><h2>My own</h2><div class="cards" id="mine"></div></section>
+  <label class="find"><span class="hint">Find a page</span><input id="find" type="search" placeholder="For example: time off, I-9, payroll" autocomplete="off"></label>
+  <section id="recentSec" hidden><h2>Recently used</h2><div class="cards" id="recent"></div></section>
+  <div id="workSec" hidden></div>
+  <section id="mineSec"><h2>My own</h2><div class="cards" id="mine"></div></section>
 </main>
 <script type="module">
 import { auth, onAuthStateChanged } from './firebase-config.js';
@@ -75,12 +79,41 @@ const MINE = [
   ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data'],
   ['leave-cases.html', 'Leave of absence', 'Family, medical and other longer leave'], ['report-injury.html', 'Report an injury', 'Tell HR about a work injury'], ['self-id.html', 'Self-identification', 'Optional: gender, race, veteran and disability'], ['tips.html', 'My tips', 'Report the tips you received']
 ];
+// Sections of the company pages, so a person scans a few short lists instead of one long one
+const GROUPS = [
+  ['Every day', ['admin-us-people.html', 'admin-us-time.html', 'admin-us-leave.html', 'admin-us-checklists.html', 'admin-us-assistant.html', 'admin-us-team-import.html']],
+  ['Time and pay', ['admin-us-schedule.html', 'admin-us-payroll.html', 'admin-us-pay.html', 'admin-us-pay-schedule.html', 'admin-us-wages.html', 'admin-us-benefits.html', 'admin-us-clock.html', 'admin-us-payroll-import.html']],
+  ['Hiring and new hires', ['admin-us-hiring.html', 'admin-us-hiring-compliance.html', 'admin-us-esign.html', 'admin-us-i9.html']],
+  ['People and culture', ['admin-us-org.html', 'admin-us-changes.html', 'admin-us-performance.html', 'admin-us-review-cycles.html', 'admin-us-recognition.html', 'admin-us-surveys.html', 'admin-us-policies.html', 'admin-us-training.html', 'admin-us-assets.html', 'admin-us-offboarding.html', 'admin-us-exit-interviews.html']],
+  ['Compliance and reports', ['admin-us-reports.html', 'admin-us-report-builder.html', 'admin-us-compliance.html', 'admin-us-calendar.html', 'admin-us-i9-report.html', 'admin-us-leave-cases.html', 'admin-us-privacy.html']],
+  ['Settings', ['admin-us-integrations.html', 'admin-us-owner.html', 'admin-us-security.html']]
+];
+function section(title, tiles) { const s = document.createElement('section'); const h = document.createElement('h2'); h.textContent = title; const d = document.createElement('div'); d.className = 'cards'; d.append(...tiles); s.append(h, d); return s; }
+function showWork(open) {
+  const placed = new Set(); const parts = [];
+  GROUPS.forEach(([name, hrefs]) => { const tiles = open.filter((p) => hrefs.includes(p[0])); tiles.forEach((p) => placed.add(p[0])); if (tiles.length) parts.push(section(name, tiles.map(tile))); });
+  const rest = open.filter((p) => !placed.has(p[0])); if (rest.length) parts.push(section('More', rest.map(tile)));
+  $('workSec').replaceChildren(...parts);
+}
+function showRecent(uid) {
+  let list = []; try { list = JSON.parse(localStorage.getItem(`onn_recent:${uid}`) || '[]'); } catch (_) { list = []; }
+  const known = new Map([...PAGES, ...MINE].map((p) => [p[0], p]));
+  const tiles = list.filter((x) => x && known.has(x.href)).slice(0, 6).map((x) => tile([x.href, known.get(x.href)[1], known.get(x.href)[2]]));
+  $('recentSec').hidden = !tiles.length; $('recent').replaceChildren(...tiles);
+}
+// typing in "Find a page" narrows every list to the matching tiles
+$('find').addEventListener('input', () => {
+  const q = $('find').value.trim().toLowerCase();
+  document.querySelectorAll('a.tile').forEach((a) => { a.hidden = Boolean(q) && !a.textContent.toLowerCase().includes(q); });
+  document.querySelectorAll('main section').forEach((sec) => { const tiles = sec.querySelectorAll('a.tile'); if (tiles.length) sec.hidden = ![...tiles].some((a) => !a.hidden) || (sec.id === 'recentSec' && !tiles.length); });
+});
 const tile = ([href, name, text]) => { const a = document.createElement('a'); a.className = 'tile'; a.href = href; const b = document.createElement('b'); b.textContent = name; const s = document.createElement('span'); s.textContent = text; a.append(b, s); return a; };
 
 $('out').addEventListener('click', async () => { try { await auth.signOut(); } catch (_) { /* go to login either way */ } window.location.replace('login.html'); });
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
   $('mine').replaceChildren(...MINE.map(tile));
+  showRecent(user.uid);
   try {
     const res = await fetch('/api/us/me/permissions', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
     const me = await res.json();
@@ -88,7 +121,9 @@ onAuthStateChanged(auth, async (user) => {
     $('hello').textContent = user.displayName ? `Hello, ${user.displayName.split(' ')[0]}` : 'Home'; $('role').textContent = me.roleLabel || '';
     const has = new Set(me.permissions || []);
     const open = PAGES.filter((p) => p[3].some((x) => has.has(x)));
-    $('workSec').hidden = open.length === 0; $('work').replaceChildren(...open.map(tile));
+    $('workSec').hidden = open.length === 0; showWork(open);
+    // people who run the company see their work first; everyone else sees their own pages first
+    if (open.length) $('workSec').after($('mineSec'));
     try {
       const w = await (await fetch('/api/us/approvals/waiting', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json();
       if (w.success && w.canApprove && w.total > 0) {
@@ -102,6 +137,6 @@ onAuthStateChanged(auth, async (user) => {
   } catch (_) { $('msg').textContent = 'Could not load your menu. Your own pages below still work.'; $('msg').style.display = 'block'; }
 });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

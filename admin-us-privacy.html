@@ -181,6 +181,6 @@ onAuthStateChanged(auth, async (user) => {
   await step(async () => { const token = await auth.currentUser.getIdToken(); const r = await (await fetch('/api/us/employees', { headers: { Authorization: `Bearer ${token}` } })).json(); $('nUser').innerHTML = (r.data || []).map((p) => `<option value="${esc(p.id)}">${esc(p.name)} ${esc(p.employeeId || '')}</option>`).join(''); });
 });
 </script>
-<script type="module" src="us-nav.js?v=1"></script>
+<script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>
