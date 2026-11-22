@@ -146,7 +146,7 @@ async function req(method, path, body, raw) {
   const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
   if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Request failed (${res.status})`); } return res.blob(); }
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`);
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`); e.status = res.status; throw e; }
   return json;
 }
 const candName = (id) => (candidates.find((c) => c.id === id) || {}).name || 'Candidate';
@@ -292,8 +292,9 @@ document.addEventListener('click', async (e) => {
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.replace('login.html'); return; }
-  const step = async (fn) => { try { await fn(); } catch (err) { say(err.message, false); } };
-  await step(loadBackground); await step(loadEverify); await step(loadPending); await step(loadAgencies); await step(loadSubmitted);
+  // a part this role may not open (an auditor and background checks) is left out instead of showing an error
+  const step = async (fn, section) => { try { await fn(); } catch (err) { if (err.status === 403 && section) section.hidden = true; else say(err.message, false); } };
+  await step(loadBackground, $('bgRows').closest('section')); await step(loadEverify); await step(loadPending); await step(loadAgencies); await step(loadSubmitted);
 });
 </script>
 <script type="module" src="us-nav.js?v=1"></script>
