@@ -23,8 +23,8 @@ const activeStatus = (u) => ['active', 'terminating'].includes(String(u.status |
 router.get(`${base}/my-requirements`, requireUsOrg, async (req, res) => {
     const c = await io.pendingFor(req.orgId, req.user.id);
     res.set('Cache-Control', 'no-store');
-    if (!c || !c.policy) return res.json({ success: true, policy: false, required: false, pending: [], selfie: 'off', geofence: 'off' });
-    res.json({ success: true, policy: true, required: c.required, pending: c.pending, selfie: c.selfie, geofence: c.geofence, methodsInUse: c.req.inUse });
+    if (!c || !c.policy) return res.json({ success: true, policy: false, required: false, pending: [], offered: [], selfie: 'off', geofence: 'off' });
+    res.json({ success: true, policy: true, required: c.required, pending: c.pending, offered: c.offered || [], selfie: c.selfie, geofence: c.geofence, methodsInUse: c.req.inUse });
 });
 
 router.get(`${base}/my-consents`, requireUsOrg, async (req, res) => {
