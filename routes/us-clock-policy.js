@@ -197,7 +197,8 @@ router.get(`${base}/consents/status`, requireAnyPermission('time.manage_rules', 
 });
 
 router.get(`${base}/biometric`, requirePermission('time.manage_rules'), requireUsOrg, (req, res) => {
-    res.json({ success: true, implemented: false, adapterAvailable: bio.isAvailable(), note: 'Biometric clocking is not implemented. Only a vendor-device adapter interface exists.', contract: bio.CONTRACT });
+    // Face clock-in runs on the employee's phone (punch.html); the server only receives pass/fail. The vendor-device adapter is unused.
+    res.json({ success: true, implemented: true, mode: 'on_device', adapterAvailable: bio.isAvailable(), note: 'Face check runs on the employee\'s phone. Templates never leave the phone and are not stored by the server.', contract: bio.CONTRACT });
 });
 
 /* ------------------------------ photos ------------------------------ */

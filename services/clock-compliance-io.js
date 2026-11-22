@@ -191,7 +191,7 @@ function exceptionDoc(orgId, userId, punchId, ev, extra) {
  * Runs before a punch is written. Returns null when the company has no clock policy (the plain one-tap
  * path), otherwise { block, code, evaluation, pending, punchExtras, photo, ... }.
  */
-async function beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz, loadPunches }) {
+async function beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz, loadPunches, faceCheck }) {
     const policies = await loadPolicies(orgId);
     if (!policies.length) return null;
     const ctx = await userContext(orgId, userId);
@@ -235,7 +235,7 @@ async function beforePunch({ orgId, userId, type, source, deviceId, location, ph
     } catch (_) { /* schedule module is optional */ }
 
     const ev = R.evaluatePunch({
-        policy, rules: rows, workState: ctx.workState, city: ctx.city, type, source, hasPhoto: parsed.ok, location, statuses, sites,
+        policy, rules: rows, workState: ctx.workState, city: ctx.city, type, source, hasPhoto: parsed.ok, location, statuses, sites, faceCheck: R.parseFaceCheck(faceCheck),
         deviceHash, deviceDoc, userDeviceHashes: Array.from(new Set(punches.map((p) => p.deviceHash).filter(Boolean))),
         prev: last, recent: punches, shifts, nowIso: at, tz, userId, ip
     });
@@ -257,7 +257,7 @@ async function beforePunch({ orgId, userId, type, source, deviceId, location, ph
         deviceHash: deviceHash || null, ...(source !== 'kiosk' && deviceHash ? { deviceId: null } : {}),
         distanceMeters: ev.distanceMeters, nearestSiteId: ev.nearest ? ev.nearest.id : null,
         geofence: ev.nearest ? (ev.nearest.inside ? 'inside' : 'outside') : null,
-        complianceFlags: ev.reasons.map((r) => r.code), photoId, policyId: policy.id, network: ev.network
+        complianceFlags: ev.reasons.map((r) => r.code), photoId, policyId: policy.id, network: ev.network, faceCheck: ev.faceCheck || null
     };
     result.exceptionExtras = outsideNetwork;
     if (!ev.storeLocation) result.dropLocation = true;

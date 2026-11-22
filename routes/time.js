@@ -159,7 +159,7 @@ const cleanClientKey = (k) => (typeof k === 'string' && /^[A-Za-z0-9_-]{8,64}$/.
  * clientAt: only for a punch made without a connection and sent later. The punch is recorded at that time, marked
  *   "sent late" with the time the server received it, and listed for the manager to look at.
  */
-async function recordPunch({ orgId, userId, userData, employeeId, type, source, deviceId, location, note, addedBy, photo, consents, ip, clientKey, clientAt }) {
+async function recordPunch({ orgId, userId, userData, employeeId, type, source, deviceId, location, note, addedBy, photo, consents, ip, clientKey, clientAt, faceCheck }) {
     const info = await personInfo(orgId, userId, userData);
     const nowIso = new Date().toISOString();
     const status = async () => buildStatus(await punchesSince(orgId, userId, daysAgoIso(8)), info, nowIso);
@@ -187,7 +187,7 @@ async function recordPunch({ orgId, userId, userData, employeeId, type, source, 
     let comp = null;
     if (!late) {
         try {
-            comp = await clockIo.beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz: info.tz, loadPunches: () => punchesSince(orgId, userId, daysAgoIso(8)) });
+            comp = await clockIo.beforePunch({ orgId, userId, type, source, deviceId, location, photo, consents, ip, tz: info.tz, faceCheck, loadPunches: () => punchesSince(orgId, userId, daysAgoIso(8)) });
         } catch (e) { logger.error(`Clock compliance check failed: ${e.message}`); }
         if (comp && comp.block) {
             return { ok: false, code: comp.code, status: await status(), compliance: complianceView(comp) };
@@ -378,7 +378,7 @@ router.post('/punch', requireOrg, async (req, res) => {
     const result = await recordPunch({
         orgId: req.orgId, userId: req.user.id, userData: req.user, employeeId: req.user.employeeId, type: String(b.action || ''),
         source: 'web', deviceId: b.deviceId ? String(b.deviceId).slice(0, 60) : null,
-        location: b.location, note: b.note, photo: b.photo, ip: req.ip, clientKey: b.clientKey, clientAt: b.clientAt
+        location: b.location, note: b.note, photo: b.photo, ip: req.ip, clientKey: b.clientKey, clientAt: b.clientAt, faceCheck: b.faceCheck
     });
     if (!result.ok) return res.status(409).json({ success: false, code: result.code, error: ERROR_TEXT[result.code], status: result.status, compliance: result.compliance });
     if (result.late) audit(req.orgId, req, 'time_punch_sent_late', req.user.id, { type: String(b.action || ''), punchAt: result.late.punchAt, receivedAt: result.late.receivedAt, punchId: result.punchId });

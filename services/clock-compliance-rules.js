@@ -264,6 +264,8 @@ const MSG = {
     location_required: ['Location is required to clock in here. Please allow location and try again.', 'Se requiere la ubicación para registrar aquí. Permita la ubicación e intente de nuevo.'],
     method_declined: ['Check method declined; your supervisor will review.', 'Método rechazado; su supervisor lo revisará.'],
     biometric_unavailable: ['Biometric check is not available; used the normal clock instead.', 'La verificación biométrica no está disponible; se usó el reloj normal.'],
+    face_check_missing: ['Face check was not done for this punch (no face set up on this phone, or the camera was not used). Your supervisor will review.', 'No se hizo la verificación facial en este registro (no hay rostro configurado en este teléfono, o no se usó la cámara). Su supervisor lo revisará.'],
+    face_not_matched: ['The face check did not match. Your supervisor will review.', 'La verificación facial no coincidió. Su supervisor lo revisará.'],
     no_location: ['No location was received.', 'No se recibió la ubicación.'],
     shared_device: ['This phone was used by other workers recently.', 'Este teléfono lo usaron otros trabajadores hace poco.'],
     new_device: ['New device for this worker.', 'Dispositivo nuevo para este trabajador.'],
@@ -313,7 +315,12 @@ function evaluatePunch(ctx) {
     for (const m of req.inUse) {
         if (disabled.has(m) && enforce && blocking[m]) out.reasons.push(reason('method_declined', 'flag', { method: m }));
     }
-    if (req.inUse.includes('biometric') && !disabled.has('biometric')) out.reasons.push(reason('biometric_unavailable', 'flag'));
+    if (req.inUse.includes('biometric') && !disabled.has('biometric') && enforce) {
+        // The face check runs on the employee's phone (punch.html). Only its outcome arrives here; no face or template does.
+        if (ctx.faceCheck && ctx.faceCheck.matched && ctx.faceCheck.liveness) out.faceCheck = 'matched';
+        else if (ctx.faceCheck) { out.faceCheck = 'not_matched'; out.reasons.push(reason('face_not_matched', 'flag')); }
+        else { out.faceCheck = 'none'; out.reasons.push(reason('face_check_missing', 'flag')); }
+    }
 
     // photo
     const selfieOn = req.inUse.includes('selfie_photo') && !disabled.has('selfie_photo') && enforce;
@@ -356,6 +363,12 @@ function evaluatePunch(ctx) {
     return finish();
 }
 
+/** The phone's face check: only the outcome travels, never a face, a photo or a template. Anything else is ignored. */
+function parseFaceCheck(input) {
+    if (!input || typeof input !== 'object') return null;
+    return { matched: input.matched === true, liveness: input.liveness === true };
+}
+
 /* ------------------------------ photo upload validation ------------------------------ */
 
 const MAX_PHOTO_BYTES = 300 * 1024;
@@ -374,5 +387,5 @@ function parsePhoto(input) {
 module.exports = {
     METHODS, SELFIE_MODES, GEO_MODES, NETWORK_MODES, CONSENT_TYPES, DEFAULT_JURISDICTIONS, DEFAULT_NOTICES, DEFAULT_ANOMALY, MAX_PHOTO_BYTES,
     textHashOf, validatePolicy, resolvePolicy, methodsInUse, ruleApplies, requirements, consentStatus, biometricGuard,
-    haversineMeters, nearestSite, impossibleTravel, repeatedTimes, outsideSchedule, sharedDevice, evaluatePunch, parsePhoto, MSG
+    haversineMeters, nearestSite, impossibleTravel, repeatedTimes, outsideSchedule, sharedDevice, evaluatePunch, parsePhoto, parseFaceCheck, MSG
 };
