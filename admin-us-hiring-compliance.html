@@ -129,6 +129,7 @@ a.link{color:var(--blue);font-weight:600;text-decoration:none}
 
 <script type="module">
 import { auth, onAuthStateChanged } from './firebase-config.js';
+import { askEin } from './us-ein.js?v=1';
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
@@ -144,9 +145,9 @@ let candidates = []; let bgCandidate = null; let evUser = null; let pendingRows 
 async function req(method, path, body, raw) {
   const token = await auth.currentUser.getIdToken();
   const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
-  if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `Request failed (${res.status})`); } return res.blob(); }
+  if (raw) { if (!res.ok) { const j = await res.json().catch(() => ({})); const e = new Error(j.error || `Request failed (${res.status})`); e.status = res.status; e.code = j.code; throw e; } return res.blob(); }
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : json.message) || `Request failed (${res.status})`); e.status = res.status; e.code = json.code; throw e; }
   return json;
 }
 const candName = (id) => (candidates.find((c) => c.id === id) || {}).name || 'Candidate';
@@ -249,7 +250,14 @@ $('nhCsv').addEventListener('click', async () => {
   try {
     const { ids, state } = chosen();
     if (!window.confirm(`Download a file with the full Social Security numbers of ${ids.length} ${ids.length === 1 ? 'person' : 'people'}?`)) return;
-    const blob = await req('GET', `/hiring/newhire/export.csv?state=${state}&userIds=${ids.map(encodeURIComponent).join(',')}`, null, true);
+    const path = `/hiring/newhire/export.csv?state=${state}&userIds=${ids.map(encodeURIComponent).join(',')}`;
+    let blob;
+    try { blob = await req('GET', path, null, true); } catch (err) {
+      // no EIN yet (and none at Gusto): ask for it here, then make the file
+      if (err.code !== 'ein_needed') throw err;
+      if (!(await askEin({ message: err.message, save: (ein) => req('PUT', '/company/ein', { ein }) }))) { say('The file was not made: every state asks for your EIN.', false); return; }
+      blob = await req('GET', path, null, true);
+    }
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `new-hires-${state}.csv`; document.body.appendChild(a); a.click(); a.remove();
   } catch (err) { say(err.message, false); }
 });

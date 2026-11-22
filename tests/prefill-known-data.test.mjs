@@ -29,7 +29,7 @@ test('India-style or unknown sign-up values are left blank instead of guessed', 
 
 test('the pages fill in what is known', () => {
     const read = (f) => fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
-    assert.match(read('admin-us-people.html'), /const profile = saved \|\| suggested;/);
+    assert.match(read('admin-us-people.html'), /const profile = \{ \.\.\.\(suggested \|\| \{\}\), \.\.\.Object\.fromEntries/);
     assert.match(read('admin-us-people.html'), /companyStates\.length === 1/);
     assert.match(read('leave.html'), /f\.endDate\.value = f\.startDate\.value/);
     assert.match(read('admin-us-i9.html'), /const ISSUER = \{/);

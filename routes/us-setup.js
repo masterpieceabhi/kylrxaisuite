@@ -16,6 +16,8 @@ const byOrg = async (name, orgId) => {
     try { return (await rawCollection(name).where('orgId', '==', orgId).get()).docs.map((d) => ({ id: d.id, ...d.data() })); } catch (_) { return []; }
 };
 
+const lastTry = new Map(); // orgId -> when Gusto was last asked for the company details (see the route below)
+
 /** The steps, in the order they are best done; pure so it can be tested with plain data */
 function setupSteps(d) {
     const org = d.org || {};
@@ -44,8 +46,17 @@ router.get('/setup/status', requireAnyPermission('org.settings', 'people.write',
         rawCollection('gusto_connections').doc(String(orgId)).get().catch(() => null)
     ]);
     const gusto = gustoSnap && exists(gustoSnap) ? gustoSnap.data() : null;
+    let org = req.org;
+    // Connected to Gusto but no EIN here yet (for example connected before this was built): copy it from Gusto,
+    // at most once an hour per company, so the owner never has to type it
+    const us = (org && org.usProfile) || {};
+    if (!us.ein && gusto && gusto.status === 'connected' && gusto.companyUuid && Date.now() - (lastTry.get(orgId) || 0) > 3600000) {
+        lastTry.set(orgId, Date.now());
+        const r = await require('../services/company-ein').fillFromGusto(orgId, { deps: { org } });
+        if (r.filled.length) { const s = await rawCollection('organizations').doc(String(orgId)).get(); if (exists(s)) org = s.data(); }
+    }
     res.set('Cache-Control', 'no-store');
-    res.json({ success: true, ...setupSteps({ org: req.org, users, locations, paySchedules, leavePolicies, policies, benefitPlans, gusto }) });
+    res.json({ success: true, ...setupSteps({ org, users, locations, paySchedules, leavePolicies, policies, benefitPlans, gusto }) });
 });
 
 module.exports = router;

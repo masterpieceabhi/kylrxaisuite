@@ -530,7 +530,7 @@ $('appConnect').addEventListener('click', guard(async () => {
   if (!g) return;
   const WHY = { declined: 'The connection was not approved in Gusto.', state_expired: 'That took too long. Please connect again.', bad_state: 'That connection request was not recognised. Please connect again.', bad_code: 'Gusto did not finish the connection. Please connect again.', no_company: 'Gusto did not say which company approved. Use an administrator of this company and try again.', auth_failed: 'Gusto did not accept this application\'s details. Tell the person who runs this server.', not_configured: 'Gusto is not set up on this server yet.' };
   window.history.replaceState(null, '', window.location.pathname);
-  window.addEventListener('load', () => setTimeout(() => say(g === 'connected' ? 'Connected to Gusto.' : (WHY[p.get('why')] || 'The connection to Gusto did not finish. Please try again.'), g === 'connected'), 600));
+  window.addEventListener('load', () => setTimeout(() => say(g === 'connected' ? `Connected to Gusto.${p.get('einMismatch') ? ' The EIN in Gusto differs from the one in Company details: please check which is right.' : p.get('filled') ? ' Your EIN and company details were copied from Gusto: check them in Company details.' : ''}` : (WHY[p.get('why')] || 'The connection to Gusto did not finish. Please try again.'), g === 'connected'), 600));
 })();
 
 $('connectForm').addEventListener('submit', async (ev) => {

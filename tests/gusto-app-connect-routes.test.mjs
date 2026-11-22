@@ -124,7 +124,8 @@ test('the whole round trip through the routes connects the company', async () =>
     const start = await call('owner', 'POST', '/oauth/start');
     const end = await approveAndReturn(start.body.url);
     assert.equal(end.status, 303);
-    assert.equal(end.to, '/admin-us-payroll.html?gusto=connected');
+    // the company's legal name at Gusto filled the empty company details (services/company-ein.js)
+    assert.equal(end.to, '/admin-us-payroll.html?gusto=connected&filled=legalName');
     assert.equal(end.cache, 'no-store');
 
     const status = await call('owner', 'GET', '/status');
@@ -183,7 +184,7 @@ test('disconnecting forgets the tokens, and the company can connect again', asyn
     assert.equal(await store.getCompanyTokens(ORG), null);
     assert.equal((await call('owner', 'GET', '/status')).body.connection.connected, false);
     const end = await approveAndReturn((await call('owner', 'POST', '/oauth/start')).body.url);
-    assert.equal(end.to, '/admin-us-payroll.html?gusto=connected');
+    assert.equal(end.to, '/admin-us-payroll.html?gusto=connected', 'connecting again changes nothing already filled');
 });
 
 test('a server set up for Embedded Payroll keeps working as before and refuses the new start route', async () => {

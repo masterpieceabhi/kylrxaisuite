@@ -8,7 +8,7 @@ const { resolveCountryCode } = require('../country-config');
 const { encryptField, decryptField } = require('../services/pii-crypto');
 const auditChain = require('../services/audit-chain');
 const {
-    validateEmployeeProfile, validateCompanyProfile, validateTaxpayerId, maskTaxpayerId
+    validateEmployeeProfile, validateCompanyProfile, validateTaxpayerId, maskTaxpayerId, validateEin
 } = require('../services/us-validation');
 
 // Who may do what on these routes (services/permissions.js decides which roles hold each permission):
@@ -152,9 +152,27 @@ function fromSignup(org) {
     };
 }
 
-router.get('/company/profile', COMPANY_READ, requireUsOrg, (req, res) => {
+router.get('/company/profile', COMPANY_READ, requireUsOrg, async (req, res) => {
     const profile = req.org.usProfile || null;
-    res.json({ success: true, orgId: req.orgId, profile, suggested: profile ? null : fromSignup(req.org) });
+    // a profile that was only partly filled (from Gusto) still gets the sign-up answers for the gaps
+    const complete = Boolean(profile && profile.ein && profile.legalName && profile.businessAddress && (profile.workStates || []).length);
+    let gusto = { connected: false };
+    try { const c = await require('../services/gusto/store').defaultStore().getConnection(req.orgId); gusto = { connected: Boolean(c && c.status === 'connected' && c.companyUuid) }; } catch (_) { /* the page only hides the "Fill from Gusto" button */ }
+    res.json({ success: true, orgId: req.orgId, profile, suggested: complete ? null : fromSignup(req.org), gusto });
+});
+
+/** Just the EIN (and the legal name when there is none yet): what a page asks for in place when a feature needs it */
+router.put('/company/ein', COMPANY_WRITE, requireUsOrg, async (req, res) => {
+    const ein = validateEin((req.body || {}).ein);
+    if (!ein.valid) return res.status(400).json({ success: false, errors: [ein.error] });
+    const had = req.org.usProfile || {};
+    const legalName = String((req.body || {}).legalName || '').trim().slice(0, 200);
+    const updatedAt = new Date().toISOString();
+    const patch = { ein: ein.formatted, updatedAt, ...(legalName && !had.legalName ? { legalName } : {}) };
+    if (had.fromGusto) patch.fromGusto = { ...had.fromGusto, einMismatch: false, fields: (had.fromGusto.fields || []).filter((f) => f !== 'ein') };
+    await rawCollection('organizations').doc(req.orgId).set({ usProfile: patch }, { merge: true });
+    audit(req.orgId, req, 'us_company_ein_saved', req.orgId, { changed: Boolean(had.ein) && had.ein !== ein.formatted });
+    res.json({ success: true, ein: ein.formatted });
 });
 
 router.put('/company/profile', COMPANY_WRITE, requireUsOrg, async (req, res) => {

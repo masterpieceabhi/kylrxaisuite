@@ -27,6 +27,7 @@ function allowed(method, path, role) {
 const EXPECTED = [
     ['get', '/company/profile', ['super_admin', 'hr_admin', 'payroll_admin', 'accountant', 'auditor']],
     ['put', '/company/profile', ['super_admin', 'hr_admin']],
+    ['put', '/company/ein', ['super_admin', 'hr_admin']],
     ['get', '/employees', ['super_admin', 'hr_admin', 'payroll_admin', 'accountant', 'auditor']],
     ['put', '/employees/:id/profile', ['super_admin', 'hr_admin']],
     ['post', '/employees/:id/taxpayer-id/reveal', ['super_admin', 'hr_admin']]

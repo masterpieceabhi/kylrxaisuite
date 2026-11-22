@@ -113,8 +113,8 @@ async function completeAuthorization(q, deps = {}) {
         await store.clearCompanyTokens(orgId);
         throw fail('Gusto did not say which company approved the connection', 502, 'no_company');
     }
-    let companyName = null;
-    try { const c = await ctx.client.get(`/v1/companies/${res.uuid}`); companyName = (c && (c.name || c.trade_name)) || null; } catch (_) { /* the name is a nicety; the scope may not allow it */ }
+    let companyName = null; let company = null;
+    try { const c = await ctx.client.get(`/v1/companies/${res.uuid}`); company = c && typeof c === 'object' ? c : null; companyName = (c && (c.name || c.trade_name)) || null; } catch (_) { /* the name is a nicety; the scope may not allow it */ }
 
     // A different company than before: ids remembered for the old one must not carry over.
     if (conn.companyUuid && conn.companyUuid !== res.uuid) {
@@ -126,7 +126,8 @@ async function completeAuthorization(q, deps = {}) {
         scope: typeof info.scope === 'string' ? info.scope.slice(0, 2000) : null,
         approvedByType: (info.resource_owner && info.resource_owner.type) || null
     });
-    return { orgId, companyUuid: res.uuid, companyName, scope: info.scope || null };
+    // `company` lets the caller fill the empty company-profile fields (EIN, legal name, address) from Gusto: services/company-ein.js
+    return { orgId, companyUuid: res.uuid, companyName, scope: info.scope || null, company };
 }
 
 /**

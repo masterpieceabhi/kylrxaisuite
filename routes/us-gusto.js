@@ -97,7 +97,9 @@ async function oauthCallback(req, res) {
     try {
         const out = await appConnect.completeAuthorization({ state: one(q.state), code: one(q.code), error: one(q.error) });
         logger.info(`[Gusto] company connected through its own Gusto account ${JSON.stringify({ orgId: out.orgId })}`);
-        return res.redirect(303, `${PAYROLL_PAGE}?gusto=connected`);
+        // EIN, legal name and address from Gusto fill the empty company details, so nobody types them again
+        const filled = await require('../services/company-ein').fillFromGusto(out.orgId, { company: out.company || undefined });
+        return res.redirect(303, `${PAYROLL_PAGE}?gusto=connected${filled.filled.length ? `&filled=${encodeURIComponent(filled.filled.join(','))}` : ''}${filled.einMismatch ? '&einMismatch=1' : ''}`);
     } catch (e) {
         const why = e && e.name === 'GustoError' && /^[a-z_]{1,40}$/.test(String(e.code || '')) ? e.code : 'failed';
         logger.warn(`[Gusto] connecting a Gusto account did not finish ${JSON.stringify({ why })}`);
@@ -111,7 +113,7 @@ router.use(verifyToken);
 // With GUSTO_INTEGRATION=app the customer runs payroll in their own Gusto account, and Gusto does not let an app
 // integration set up a company, run payroll, fetch pay stubs or tax forms, or pay contractors. Those routes exist
 // for Embedded Payroll only, so here they are refused before they can call Gusto and fail halfway.
-const APP_ROUTES = [/^\/status$/, /^\/oauth\/start$/, /^\/disconnect$/, /^\/people$/, /^\/sync\/pull$/, /^\/errors(\/|$)/, /^\/match(\/|$)/, /^\/time-sheets(\/|$)/, /^\/pay-periods$/, /^\/payroll-syncs(\/|$)/, /^\/pay-results(\/|$)/];
+const APP_ROUTES = [/^\/company-facts$/, /^\/status$/, /^\/oauth\/start$/, /^\/disconnect$/, /^\/people$/, /^\/sync\/pull$/, /^\/errors(\/|$)/, /^\/match(\/|$)/, /^\/time-sheets(\/|$)/, /^\/pay-periods$/, /^\/payroll-syncs(\/|$)/, /^\/pay-results(\/|$)/];
 router.use((req, res, next) => {
     if (config.integration() !== 'app' || APP_ROUTES.some((r) => r.test(req.path))) return next();
     return res.status(409).json({ success: false, code: 'app_integration', error: 'This server connects to each customer\'s own Gusto account, where payroll is run. This action is only available with Gusto Embedded Payroll.' });
@@ -152,6 +154,14 @@ router.post('/connect', ...CONNECT, run(async (req, res) => {
     const out = await onboarding.connectCompany(ctx, input, actorOf(req));
     await audit(req.orgId, req, 'gusto_connected', out.companyUuid, { mode: ctx.opts.mode });
     res.status(201).json({ success: true, ...out, mode: ctx.opts.mode });
+}));
+
+/** Fill the empty company details (EIN, legal name, address, work states) from the connected Gusto account */
+router.post('/company-facts', requirePermission('org.settings'), requireUsOrg, run(async (req, res) => {
+    const r = await require('../services/company-ein').fillFromGusto(req.orgId, { deps: { org: req.org } });
+    if (r.filled.length || r.einMismatch) await audit(req.orgId, req, 'us_company_profile_filled_from_gusto', req.orgId, { fields: r.filled, einMismatch: r.einMismatch });
+    const why = { not_connected: 'Gusto is not connected yet.', nothing_at_gusto: 'Gusto did not return company details for this account.', gusto_error: 'Gusto could not be reached, or this connection may not read company details. Try again later, or enter them yourself.', already_filled: 'Your company details were already filled in; nothing was changed.' };
+    res.json({ success: true, filled: r.filled, einMismatch: Boolean(r.einMismatch), note: r.filled.length ? null : why[r.reason] || null });
 }));
 
 router.post('/disconnect', ...CONNECT, run(async (req, res) => {

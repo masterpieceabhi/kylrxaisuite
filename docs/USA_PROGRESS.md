@@ -46,7 +46,7 @@ Moved to Done since 2026-11-12: A07 (permissions on every US route), A10 (every 
 
 | Id | Status | What exists | What is missing |
 |---|---|---|---|
-| US-A01 | Partial | Country settings, India-page gate; signup has a country choice and a US company can sign up (no India tax numbers asked, lands on the dashboard with the US menu) | Canada; EIN is entered after signup, not during |
+| US-A01 | Partial | Country settings, India-page gate; signup has a country choice and a US company can sign up (no India tax numbers asked, lands on the dashboard with the US menu) | Canada. EIN on purpose not asked at sign-up: since 2026-11-22 it is copied from the company's Gusto account (on connect, from Home's Getting started check, or the "Fill from Gusto" button; only empty fields, a different EIN is only reported), and asked for in place only where a feature needs it (`services/company-ein.js`, `us-ein.js`; today the state new-hire file, which no longer goes out with the EIN blank) |
 | US-A02 | Done | EIN, entity type, address, work states, industry code (NAICS) and the month the fiscal year starts, on the company form in `admin-us-people.html`; saving refuses a stale copy | |
 | US-A03 | Partial | Locations with state, city, county (`us-org.js`), tests, page `admin-us-org.html` | Tax-jurisdiction mapping |
 | US-A04 | Partial | India menus hidden for US | A few India cards may remain on the payroll Documents tab (not confirmed) |

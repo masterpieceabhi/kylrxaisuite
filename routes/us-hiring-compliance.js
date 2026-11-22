@@ -228,6 +228,11 @@ router.get('/hiring/newhire/export.csv', NH_REVEAL, requireUsOrg, async (req, re
     let chosen = rows;
     if (req.query.userIds) { const ids = new Set(String(req.query.userIds).split(',')); chosen = rows.filter((r) => ids.has(r.userId)); }
     if (!chosen.length) return res.status(404).json({ success: false, error: 'No pending new hires for that state' });
+    // every state asks for the employer's EIN: never hand out a file with that column empty
+    const CE = require('../services/company-ein');
+    const got = await CE.ensureEin(req.orgId, req.org);
+    if (!got.ein) return CE.einNeeded(res, 'the state new-hire report');
+    const org = got.source === 'gusto' ? { ...req.org, usProfile: { ...(req.org.usProfile || {}), ein: got.ein } } : req.org;
     const entries = [];
     for (const r of chosen) {
         const u = (await rawCollection('users').doc(r.userId).get()).data();
@@ -239,7 +244,7 @@ router.get('/hiring/newhire/export.csv', NH_REVEAL, requireUsOrg, async (req, re
     }
     await audit(req.orgId, req, 'new_hire_csv_downloaded', state, { count: entries.length, includesFullSsn: true });
     res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="new-hires-${state}.csv"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-    res.send(nh.buildCsv(entries, req.org));
+    res.send(nh.buildCsv(entries, org));
 });
 
 router.post('/hiring/newhire/submit', nhManage, requireUsOrg, async (req, res) => {
