@@ -132,7 +132,8 @@ async function pendingFor(orgId, userId, { policies, ctx, notices, consents, row
     if (!(policy.biometric && policy.biometric.enabled)) {
         const hypo = R.requirements({ ...policy, allowedMethods: [...(policy.allowedMethods || []), 'biometric'], biometric: { enabled: true } }, ctx.workState, ctx.city, rows);
         offered = (hypo.methods.biometric || [])
-            .filter((t) => ['none', 'stale'].includes(R.consentStatus(consents, t, notices[t].version)))
+            // a worker who said no, or took it back, can change their mind here (it is not a popup; only the notices sheet shows it)
+            .filter((t) => ['none', 'stale', 'declined'].includes(R.consentStatus(consents, t, notices[t].version)))
             .map((t) => ({ type: t, version: notices[t].version, textHash: notices[t].textHash, title_en: notices[t].title_en, body_en: notices[t].body_en, title_es: notices[t].title_es, body_es: notices[t].body_es }));
     }
     return { policy, req, statuses, pending, offered, required: pending.length > 0, selfie: policy.selfie, geofence: policy.geofence.mode, workState: ctx.workState };
