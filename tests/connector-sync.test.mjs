@@ -320,7 +320,7 @@ test('runtime: a failed run marks the connection, counts the streak, and one goo
     const { id } = await runtime.createConnection('orgA', fileConn({ config: { driver: 'sftp', 'sftp.host': 'files.example.com' } }));
     const f1 = await runtime.runConnection('orgA', id);
     assert.equal(f1.run.status, 'failed'); assert.equal(f1.failureStreak, 1);
-    assert.match(f1.run.errors[0].message, /batch export failed: SFTP driver is not installed/);
+    assert.match(f1.run.errors[0].message, /batch export failed: SFTP server fingerprint is not set/);
     let c = (await runtime.listConnections('orgA'))[0];
     assert.equal(c.status, 'error'); assert.equal(c.last_status, 'failed'); assert.equal(c.failed_runs_in_a_row, 1);
     const open = await runtime.listDeadLetters('orgA', id, 'open');

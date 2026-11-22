@@ -80,8 +80,10 @@ test('SFTP driver: uploads through the client it is given; without the package i
     assert.deepEqual(await d.list(), ['a.csv', 'b.csv']);
     assert.deepEqual(await d.ping(), { ok: true, detail: 'files.example.com' });
     await assert.rejects(() => d.put('../x.csv', 'x'), /unsafe file name/);
-    const real = F.createFileDriver('org_a', { driver: 'sftp', sftp: { host: 'files.example.com' } });
+    const real = F.createFileDriver('org_a', { driver: 'sftp', sftp: { host: 'files.example.com' } }, { loadSftp: () => { throw new Error('no module'); } });
     await assert.rejects(() => real.put('a.csv', 'x'), /SFTP driver is not installed/);
+    const unpinned = F.createFileDriver('org_a', { driver: 'sftp', sftp: { host: 'files.example.com' } });
+    await assert.rejects(() => unpinned.put('a.csv', 'x'), /server fingerprint is not set/);
     assert.ok(F.createFileDriver('org_a', { folder: 'drop' }) instanceof F.LocalFolderDriver, 'local folder is the default driver');
 });
 

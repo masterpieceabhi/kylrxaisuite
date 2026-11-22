@@ -103,7 +103,7 @@ test('a connector that fails three runs in a row raises one alert; more failures
     assert.equal(list.length, 1);
     assert.deepEqual({ kind: list[0].kind, source: list[0].source_id, name: list[0].source_name, status: list[0].status, failures: list[0].failures, threshold: list[0].threshold },
         { kind: 'connector_sync', source: id, name: 'Nightly files', status: 'open', failures: 3, threshold: 3 });
-    assert.match(list[0].last_error, /SFTP driver is not installed/);
+    assert.match(list[0].last_error, /SFTP server fingerprint is not set/);
     assert.ok(!JSON.stringify(list).includes('pw-123456'));
     assert.ok((await runtime.listLogs('orgA', id)).some((l) => /Alert raised: 3 sync runs in a row have failed/.test(l.message)));
     const fourth = await runtime.runConnection('orgA', id);

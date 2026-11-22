@@ -56,27 +56,49 @@ class LocalFolderDriver {
     async ping() { fs.mkdirSync(this.dir, { recursive: true }); fs.accessSync(this.dir, fs.constants.W_OK); return { ok: true, detail: 'local folder is writable' }; }
 }
 
+/**
+ * Accepts the host key fingerprint either as OpenSSH prints it ("SHA256:<base64>") or as hex (with or without colons).
+ * Returns lowercase hex, or null when nothing was given.
+ */
+function normaliseFingerprint(fp) {
+    const s = String(fp || '').trim();
+    if (!s) return null;
+    if (/^SHA256:/i.test(s)) return Buffer.from(s.slice(7), 'base64').toString('hex');
+    const hex = s.replace(/:/g, '').toLowerCase();
+    return /^[0-9a-f]{64}$/.test(hex) ? hex : null;
+}
+
 class SftpDriver {
-    /** config: { host, port, username, password | privateKey, remoteDir }. `client` may be injected (tests). */
-    constructor(config, client) { this.config = config || {}; this.client = client || null; }
+    /**
+     * config: { host, port, username, password | privateKey, remoteDir, hostFingerprint }.
+     * hostFingerprint is required for a real connection: the server's key must match it, or the connection is refused.
+     * `client` (a ready client) and `loadSftp` (returns the library's constructor) may be injected for tests.
+     */
+    constructor(config, client, loadSftp) { this.config = config || {}; this.client = client || null; this.loadSftp = loadSftp || (() => require('ssh2-sftp-client')); }
     async _connect() {
         if (this.client) return this.client;
         let Sftp;
-        try { Sftp = require('ssh2-sftp-client'); } catch (_) { throw new Error('SFTP driver is not installed on this server (npm i ssh2-sftp-client). Use the local folder driver until it is.'); }
+        try { Sftp = this.loadSftp(); } catch (_) { throw new Error('SFTP driver is not installed on this server (npm i ssh2-sftp-client). Use the local folder driver until it is.'); }
+        const want = normaliseFingerprint(this.config.hostFingerprint);
+        if (!want) throw new Error('SFTP server fingerprint is not set: add the server SHA256 fingerprint to this connection before using SFTP');
         const c = new Sftp();
-        await c.connect({ host: this.config.host, port: this.config.port || 22, username: this.config.username, password: this.config.password, privateKey: this.config.privateKey, readyTimeout: 15000 });
+        const opts = { host: this.config.host, port: this.config.port || 22, username: this.config.username, password: this.config.password, privateKey: this.config.privateKey, readyTimeout: 15000 };
+        opts.hostHash = 'sha256';
+        opts.hostVerifier = (hexDigest) => String(hexDigest).toLowerCase() === want;
+        await c.connect(opts);
         return c;
     }
     async _done(c) { if (c.end && !this.client) await c.end(); }
-    async put(name, content) { const c = await this._connect(); const remote = `${String(this.config.remoteDir || '').replace(/\/$/, '')}/${safeName(name)}`; await c.put(Buffer.from(content), remote); await this._done(c); return { path: remote, bytes: Buffer.byteLength(content) }; }
-    async list() { const c = await this._connect(); const l = await c.list(this.config.remoteDir || '/'); await this._done(c); return l.map((x) => x.name).sort(); }
-    async get() { throw new Error('not implemented'); }
+    _remote(name) { return `${String(this.config.remoteDir || '').replace(/\/$/, '')}/${safeName(name)}`; }
+    async put(name, content) { const c = await this._connect(); const remote = this._remote(name); try { await c.put(Buffer.from(content), remote); } finally { await this._done(c); } return { path: remote, bytes: Buffer.byteLength(content) }; }
+    async list() { const c = await this._connect(); try { const l = await c.list(this.config.remoteDir || '/'); return l.map((x) => x.name).sort(); } finally { await this._done(c); } }
+    async get(name) { const c = await this._connect(); try { const buf = await c.get(this._remote(name)); return Buffer.isBuffer(buf) ? buf.toString('utf8') : String(buf); } finally { await this._done(c); } }
     async ping() { const c = await this._connect(); await this._done(c); return { ok: true, detail: String(this.config.host) }; }
 }
 
 function createFileDriver(orgId, config, deps = {}) {
-    if (config.driver === 'sftp') return new SftpDriver(config.sftp || {}, deps.sftpClient);
+    if (config.driver === 'sftp') return new SftpDriver(config.sftp || {}, deps.sftpClient, deps.loadSftp);
     return new LocalFolderDriver({ orgId, folder: config.folder || 'default' });
 }
 
-module.exports = { csvCell, toCsv, parseCsv, LocalFolderDriver, SftpDriver, createFileDriver, EXPORT_ROOT };
+module.exports = { csvCell, toCsv, parseCsv, LocalFolderDriver, SftpDriver, createFileDriver, normaliseFingerprint, EXPORT_ROOT };

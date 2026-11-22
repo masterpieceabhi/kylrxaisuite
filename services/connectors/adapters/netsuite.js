@@ -10,12 +10,34 @@ const { defineAdapter, oauthToken, journalEntity, peopleEntity, ACCOUNT_FIELDS, 
 const host = (c) => c.baseUrl || `https://${String(c.accountId || '').toLowerCase().replace(/_/g, '-')}.suitetalk.api.netsuite.com`;
 const b64url = (b) => Buffer.from(b).toString('base64url');
 
-/** Signed client assertion (RS256). TODO(verify): NetSuite also accepts PS256 and ES256; match the algorithm of the uploaded certificate. */
-function clientAssertion({ clientId, certificateId, privateKey, audience, now = Math.floor(Date.now() / 1000) }) {
-    const head = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: certificateId }));
+/**
+ * Signed client assertion. NetSuite accepts RS256, PS256 and ES256; the certificate uploaded to the Integration decides which.
+ * alg 'auto' (default) picks it from the private key: RSA -> RS256, RSA-PSS -> PS256, EC -> ES256.
+ * An explicit alg must match the key type, otherwise the token would be refused by NetSuite.
+ */
+const ALGS = {
+    RS256: { keyTypes: ['rsa'], sign: (data, key) => crypto.sign('sha256', data, key) },
+    PS256: { keyTypes: ['rsa', 'rsa-pss'], sign: (data, key) => crypto.sign('sha256', data, { key, padding: crypto.constants.RSA_PKCS1_PSS_PADDING, saltLength: 32 }) },
+    ES256: { keyTypes: ['ec'], sign: (data, key) => crypto.sign('sha256', data, { key, dsaEncoding: 'ieee-p1363' }) }
+};
+const AUTO = { rsa: 'RS256', 'rsa-pss': 'PS256', ec: 'ES256' };
+function pickAlg(privateKey, requested) {
+    const keyType = crypto.createPrivateKey(privateKey).asymmetricKeyType;
+    const want = String(requested || 'auto').toUpperCase();
+    if (want === 'AUTO') {
+        if (!AUTO[keyType]) throw new Error('NetSuite private key type "' + keyType + '" is not supported (use an RSA or EC key)');
+        return AUTO[keyType];
+    }
+    if (!ALGS[want]) throw new Error('NetSuite JWT algorithm must be auto, RS256, PS256 or ES256');
+    if (!ALGS[want].keyTypes.includes(keyType)) throw new Error('NetSuite JWT algorithm ' + want + ' cannot be used with a ' + keyType + ' key');
+    return want;
+}
+function clientAssertion({ clientId, certificateId, privateKey, audience, algorithm, now = Math.floor(Date.now() / 1000) }) {
+    const alg = pickAlg(privateKey, algorithm);
+    const head = b64url(JSON.stringify({ alg, typ: 'JWT', kid: certificateId }));
     const body = b64url(JSON.stringify({ iss: clientId, scope: ['rest_webservices'], aud: audience, iat: now, exp: now + 3000 }));
-    const sig = crypto.sign('RSA-SHA256', Buffer.from(`${head}.${body}`), privateKey).toString('base64url');
-    return `${head}.${body}.${sig}`;
+    const sig = ALGS[alg].sign(Buffer.from(head + '.' + body), privateKey).toString('base64url');
+    return head + '.' + body + '.' + sig;
 }
 
 module.exports = defineAdapter({
@@ -23,12 +45,12 @@ module.exports = defineAdapter({
     description: 'Creates or updates employee records and posts payroll journal entries (idempotent by external ID).',
     entities: [peopleEntity('employee', 'Employees'), journalEntity],
     credentialFields: [{ key: 'clientId', label: 'Integration client ID' }, { key: 'certificateId', label: 'Certificate ID (kid)' }, { key: 'privateKey', label: 'Private key (PEM)', secret: true }, { key: 'accessToken', label: 'Access token (alternative to the key)', secret: true }],
-    configFields: [{ key: 'accountId', label: 'Account ID (e.g. 1234567 or 1234567_SB1)', required: true }, { key: 'subsidiaryId', label: 'Subsidiary internal ID', required: true }, { key: 'baseUrl', label: 'API base URL override' }, ...ACCOUNT_FIELDS],
+    configFields: [{ key: 'accountId', label: 'Account ID (e.g. 1234567 or 1234567_SB1)', required: true }, { key: 'subsidiaryId', label: 'Subsidiary internal ID', required: true }, { key: 'baseUrl', label: 'API base URL override' }, { key: 'jwtAlgorithm', label: 'JWT signing algorithm: auto, RS256, PS256 or ES256 (auto matches the key type)' }, ...ACCOUNT_FIELDS],
     needsVerification: [
         'A NetSuite account with an Integration record, OAuth 2.0 M2M certificate mapping and a role that may create Employees and Journal Entries',
         'Account/department internal IDs (not names); subsidiary internal ID; whether Journal Entry approval routing is on (field approved)',
         'Employee required fields differ per account customisation (e.g. custom forms, mandatory custom fields) and supervisor needs an internal ID',
-        'JWT algorithm (RS256 vs PS256) matching the uploaded certificate; external ID upsert via PUT .../eid:<externalId>'
+        'Confirm the certificate type uploaded to the Integration matches the key (auto picks it); external ID upsert via PUT .../eid:<externalId>'
     ],
     defaultMappings: {
         employee: [
@@ -68,7 +90,7 @@ module.exports = defineAdapter({
         const c = ctx.conn.credentials; const cfg = ctx.conn.config;
         if (c.accessToken) return { headers: { Authorization: `Bearer ${c.accessToken}`, Accept: 'application/json' } };
         const url = `${host(cfg)}/services/rest/auth/oauth2/v1/token`;
-        const assertion = clientAssertion({ clientId: c.clientId, certificateId: c.certificateId, privateKey: c.privateKey, audience: url });
+        const assertion = clientAssertion({ clientId: c.clientId, certificateId: c.certificateId, privateKey: c.privateKey, audience: url, algorithm: cfg.jwtAlgorithm });
         const t = await oauthToken(ctx, { url, form: { grant_type: 'client_credentials', client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer', client_assertion: assertion } });
         return { headers: { Authorization: `Bearer ${t.token}`, Accept: 'application/json' } };
     },
@@ -85,3 +107,4 @@ module.exports = defineAdapter({
     }
 });
 module.exports.clientAssertion = clientAssertion;
+module.exports.ALGS = ALGS;
