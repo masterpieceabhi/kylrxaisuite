@@ -316,8 +316,21 @@ async function pinPost(path, body) {
 /** One step of the sign-in. Returns the token to finish with, or null when the person has something more to type. */
 async function pinStep(login, pin) {
     if (signin.stage === 'pin') {
-        const out = await pinPost('start', { login, pin });
+        let prefer = '';
+        try { prefer = (JSON.parse(localStorage.getItem('onnhr_code_way') || '{}') || {}).via || ''; } catch (_) { /* private window */ }
+        const out = await pinPost('start', { login, pin, prefer });
         if (out.next === 'signed_in') return out.token;
+        // a typo on the person's own device: say so, send nothing
+        if (out.next === 'retry') { passwordInput.value = String(); passwordInput.focus(); throw new Error(out.message); }
+        if (!/@/.test(login) && el('signinPhone')) el('signinPhone').value = login;
+        // the code was sent at once, the person's way: straight to the code box ("Send it another way" stays below it)
+        if (out.next === 'code') {
+            signin.challenge = out.challenge; signin.choice = out.choice; signin.stage = 'code';
+            el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
+            el('signinCode').value = '';
+            showStage();
+            return null;
+        }
         signin.choice = out.challenge; signin.stage = 'choose';
         // signed in with a mobile number: that number is where a text or WhatsApp code goes
         if (!/@/.test(login) && el('signinPhone')) el('signinPhone').value = login;
@@ -399,6 +412,8 @@ const codeWays = (() => {
     };
 })();
 el('otherWayLink')?.addEventListener('click', () => { if (errorMessage) errorMessage.style.display = 'none'; signin.stage = 'choose'; showStage(); });
+// "Didn't get it?" reads better next to a code that was sent by itself
+if (el('otherWayLink')) el('otherWayLink').textContent = "Didn't get it? Send it another way";
 el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means a code is used
 el('keepPinLink')?.addEventListener('click', () => { signin.keep = true; loginBtn?.click(); });
 

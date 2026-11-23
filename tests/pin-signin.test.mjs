@@ -107,10 +107,21 @@ test('a person with no mobile number on record gets no text, whatever number is 
     assert.equal((await w.service.verifyCode({ challenge: mail.challenge, code: w.sent[0].code })).token, 'token-for-u1');
 });
 
-test('a wrong PIN goes to the code; the answer does not say the PIN was wrong until the code is accepted', async () => {
+test('on the person\'s own device a wrong PIN only says try again; nothing is sent', async () => {
     const w = world(); await w.add('u1', 'ana@shop.test', '4826');
     const device = await w.knownDevice('ana@shop.test', '4826');
-    const wrong = await w.service.start({ email: 'ana@shop.test', pin: '9999', deviceToken: device });
+    const sentBefore = w.sent.length;
+    const typo = await w.service.start({ email: 'ana@shop.test', pin: '9999', deviceToken: device });
+    assert.equal(typo.next, 'retry');
+    assert.match(typo.message, /Try again/);
+    assert.equal(w.sent.length, sentBefore, 'no code for a typo');
+    assert.equal(w.people.get('u1').pinAttempts, 1, 'it still counts toward the lock');
+    assert.equal((await w.service.start({ email: 'ana@shop.test', pin: '4826', deviceToken: device })).next, 'signed_in');
+});
+
+test('on a new device a wrong PIN goes to the code; the answer does not say the PIN was wrong until the code is accepted', async () => {
+    const w = world(); await w.add('u1', 'ana@shop.test', '4826');
+    const wrong = await w.service.start({ email: 'ana@shop.test', pin: '9999' });
     const right = await (async () => { const x = world(); await x.add('u1', 'ana@shop.test', '4826'); return x.service.start({ email: 'ana@shop.test', pin: '4826' }); })();
     assert.deepEqual(Object.keys(wrong).sort(), Object.keys(right).sort());
     assert.equal(wrong.message, right.message);
@@ -186,7 +197,7 @@ test('two people who share a device keep one device token between them', async (
     assert.equal(done.deviceToken, device);
     assert.equal((await w.service.start({ email: 'ana@shop.test', pin: '4826', deviceToken: device })).next, 'signed_in');
     assert.equal((await w.service.start({ email: 'ben@shop.test', pin: '1357', deviceToken: device })).next, 'signed_in');
-    assert.equal((await w.service.start({ email: 'ben@shop.test', pin: '4826', deviceToken: device })).next, 'choose', "Ana's PIN does not open Ben's account");
+    assert.equal((await w.service.start({ email: 'ben@shop.test', pin: '4826', deviceToken: device })).next, 'retry', "Ana's PIN does not open Ben's account");
 });
 
 test('the code is shown to the page only on a development server', async () => {
@@ -293,4 +304,37 @@ test('sign in with a mobile number instead of an email, and a password instead o
     // a number nobody has, or junk, gets the same answer as an unknown email: nothing is revealed
     assert.equal((await service.start({ login: '414-555-0000', pin: '4826' })).next, 'choose');
     await assert.rejects(service.start({ login: 'not a login', pin: '4826' }), (e) => e.code === 'bad_input');
+});
+
+test('a code is sent at once, the person\'s way, and the answer never says which way', async () => {
+    const people = new Map([
+        ['u1', { uid: 'u1', email: 'ana@shop.test', phone: '(414) 213-4642', pinHash: null, pinAttempts: 0, signinDevices: [], active: true, codeVia: '' }],
+        ['u2', { uid: 'u2', email: 'ben@shop.test', phone: '(414) 555-0142', pinHash: null, pinAttempts: 0, signinDevices: [], active: true, codeVia: 'whatsapp' }],
+        ['u3', { uid: 'u3', email: 'cy@shop.test', phone: '', pinHash: null, pinAttempts: 0, signinDevices: [], active: true, codeVia: 'phone' }]
+    ]);
+    const out = []; let n = 0;
+    const service = pinSignin.create({
+        findPerson: async (email) => { const p = [...people.values()].find((x) => x.email === email); return p ? { ...p } : null; },
+        findPersonByPhone: async (ten) => { const h = [...people.values()].filter((x) => pinSignin.tenDigits(x.phone) === ten); return h.length === 1 ? { ...h[0] } : null; },
+        savePerson: async () => {}, otp: { generateOtp: () => { n += 1; return { otpId: `o${n}`, code: String(300000 + n) }; }, verifyOtp: () => ({ success: true }) },
+        mintToken: async (uid) => `t-${uid}`,
+        sendCode: async (to) => { out.push(['email', to]); return true; },
+        sendText: async (to) => { out.push(['text', to]); return true; },
+        sendWhatsApp: async (to) => { out.push(['whatsapp', to]); return true; },
+        autoSend: true, ways: () => ({ text: true, whatsapp: true }), secret: 's'
+    });
+    const go = async (login, extra = {}) => { out.length = 0; const r = await service.start({ login, pin: '', ...extra }); return { r, sent: out.slice() }; };
+
+    const a = await go('ana@shop.test');
+    assert.equal(a.r.next, 'code'); assert.deepEqual(a.sent, [['email', 'ana@shop.test']], 'typed an email: email');
+    assert.ok(a.r.choice, 'the other ways stay one tap away');
+    assert.deepEqual((await go('414-213-4642')).sent, [['text', '+14142134642']], 'typed a mobile number: text');
+    assert.deepEqual((await go('414-213-4642', { prefer: 'whatsapp' })).sent, [['whatsapp', '+14142134642']], 'used WhatsApp last on this device');
+    assert.deepEqual((await go('ben@shop.test')).sent, [['whatsapp', '+14145550142']], 'chose WhatsApp in My details: even when signing in by email');
+    assert.deepEqual((await go('cy@shop.test')).sent, [['email', 'cy@shop.test']], 'chose text but has no mobile on record: email');
+
+    const nobody = await go('nobody@shop.test');
+    assert.equal(nobody.r.next, 'code'); assert.deepEqual(nobody.sent, [], 'nobody: nothing is sent');
+    assert.equal(nobody.r.message, a.r.message, 'the same words for everyone');
+    assert.deepEqual(Object.keys(nobody.r).sort(), Object.keys(a.r).sort());
 });

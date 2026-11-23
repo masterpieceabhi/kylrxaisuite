@@ -8,6 +8,10 @@
  *                                                                           ->  answer "choose": where should the code go?
  *        A mobile number finds the person only when exactly one active person has it on record; otherwise it is
  *        treated like an unknown email (same answer, nothing sent).
+ *      When a code is needed it is SENT AT ONCE, the person's way: their choice in My details (codeVia), else the phone
+ *      when they signed in with their mobile number (WhatsApp if they used it last on this device, else text), else
+ *      email. The answer never says which way, so it says nothing about the account. "Send it another way" is step 2.
+ *      On a device the person used before, a wrong PIN or password only says "try again" (a typo should not send a code).
  *   2. requestCode(challenge, via, phone)
  *        via "email": the code goes to the email typed in step 1.
  *        via "phone": the person types their mobile number; the code is texted only when that number is the one
@@ -78,7 +82,7 @@ function create(deps) {
         return d;
     };
 
-    async function start({ email, login, pin, deviceToken }) {
+    async function start({ email, login, pin, deviceToken, prefer }) {
         const typed = String(login || email || '').trim();
         const byEmail = looksLikeEmail(cleanEmail(typed));
         const phone = byEmail ? '' : tenDigits(typed);
@@ -117,12 +121,32 @@ function create(deps) {
 
         const known = usable && deviceToken && (person.signinDevices || []).some((d) => d && d.h === sha(deviceToken));
         if (pinOk && known) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
+        // the person's own device and a typo: try again, nothing is sent
+        if (known && secret && !pinOk && !locked) return { next: 'retry', message: 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.' };
 
-        // everything else goes through a code; the answer is the same whether or not the person exists
+        // everything else goes through a code, sent at once; the answer is the same whether or not the person exists
         const choice = usable
             ? { type: 'signin_choose', uid: person.uid, email: address, pinOk, hasPin: Boolean(person.pinHash) }
             : { type: 'signin_choose', none: true, n: crypto.randomBytes(8).toString('hex') };
-        return { next: 'choose', challenge: sign(choice, CODE_TTL_SECONDS), message: 'Choose where to get your sign-in code.' };
+        const choiceToken = sign(choice, CODE_TTL_SECONDS);
+        if (!deps.autoSend) return { next: 'choose', challenge: choiceToken, message: 'Choose where to get your sign-in code.' };
+        const via = usable ? pickWay(person, { byPhone: Boolean(phone), prefer }) : 'email';
+        const sent = await requestCode({ challenge: choiceToken, via, phone: via === 'email' ? undefined : person.phone }).catch((e) => { if (e && e.code === 'slow_down') throw e; return null; });
+        if (!sent) return { next: 'choose', challenge: choiceToken, message: 'Choose where to get your sign-in code.' };
+        return { next: 'code', challenge: sent.challenge, choice: choiceToken, message: 'We sent you a sign-in code, the way you chose (email, text or WhatsApp). It works for 10 minutes.', ...(sent.devCode ? { devCode: sent.devCode, devNote: sent.devNote } : {}) };
+    }
+
+    /** The way a code goes when nobody chose on the page: My details, then how they signed in, then email. */
+    function pickWay(person, { byPhone, prefer }) {
+        const ways = deps.ways ? deps.ways() : { text: true, whatsapp: Boolean(deps.sendWhatsApp) };
+        const has = (w) => w === 'email' || (Boolean(tenDigits(person.phone)) && (w === 'phone' ? ways.text : w === 'whatsapp' ? ways.whatsapp : false));
+        if (person.codeVia && has(person.codeVia)) return person.codeVia;
+        if (byPhone) {
+            if (prefer === 'whatsapp' && has('whatsapp')) return 'whatsapp';
+            if (has('phone')) return 'phone';
+            if (has('whatsapp')) return 'whatsapp';
+        }
+        return 'email';
     }
 
     /** Sends the code by email or by text. The answer is the same whether or not anything was sent. */

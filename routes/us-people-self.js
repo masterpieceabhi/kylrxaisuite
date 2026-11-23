@@ -196,7 +196,7 @@ router.get('/me/profile', requireUsOrg, async (req, res) => {
         profile: {
             id: emp.id, employeeId: emp.data.employeeId || null, name: emp.data.name || null, email: emp.data.email || null,
             legalFirstName: p.legalFirstName || '', legalMiddleName: p.legalMiddleName || '', legalLastName: p.legalLastName || '',
-            preferredName: p.preferredName || '', phone: p.phone || emp.data.phone || '', maritalStatus: p.maritalStatus || '',
+            preferredName: p.preferredName || '', phone: p.phone || emp.data.phone || '', maritalStatus: p.maritalStatus || '', codeVia: p.codeVia || '',
             homeAddress: p.homeAddress || null, emergencyContacts: emergencyOf(emp), bank: currentFor(emp, 'bankDetails')
         },
         customFields: fields,
@@ -209,7 +209,7 @@ router.put('/me/profile', requireUsOrg, async (req, res) => {
     const emp = await me(req, res); if (!emp) return;
     const { errors, value } = PC.validateDirectEdit(req.body);
     if (errors.length) return invalid(res, errors);
-    if (!Object.keys(value).length) return invalid(res, ['send preferredName, phone or maritalStatus']);
+    if (!Object.keys(value).length) return invalid(res, ['send preferredName, phone, maritalStatus or codeVia']);
     await emp.ref.set({ usProfile: { ...value, updatedAt: now() }, ...(value.phone !== undefined ? { phone: value.phone } : {}) }, { merge: true });
     audit(req.orgId, req, 'self_profile_updated', emp.id, { fields: Object.keys(value) });
     res.json({ success: true, updated: value });

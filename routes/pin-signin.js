@@ -36,6 +36,7 @@ async function findPerson(email) {
     return {
         uid, email, phone: d.phone || (d.usProfile && (d.usProfile.mobilePhone || d.usProfile.phone)) || '', pinHash: d.pinHash || null, pinAttempts: d.pinAttempts || 0, pinLockedUntil: d.pinLockedUntil || null,
         signinDevices: Array.isArray(d.signinDevices) ? d.signinDevices : [],
+        codeVia: (d.usProfile && d.usProfile.codeVia) || '', // how they want sign-in codes (My details)
         // the authenticator app, when the person has set one up (routes/authenticator.js); the secret is stored encrypted
         totp: require('../services/authenticator').forSignin(uid, d.totp),
         active: !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(d.status || 'Active'))
@@ -150,6 +151,7 @@ async function sendWhatsApp(phone, code) {
 const service = pinSignin.create({
     totp: require('../services/totp'),
     findPerson, findPersonByPhone, checkPassword, savePerson, sendCode, sendText, sendWhatsApp,
+    autoSend: true, ways: () => channels(),
     // why a code was not sent, for whoever looks at the server log (the page always gives the same answer)
     note: (reason, d) => logger.warn(`[PinSignin] code not sent by ${d.via}: ${reason}${d.uid ? ` (user ${d.uid})` : ''}`),
     otp: require('../services/otp-verification-service'),
@@ -178,7 +180,7 @@ const deviceOf = (req) => { const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-
 const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
 
 router.get('/pin/channels', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ success: true, ...channels() }); });
-router.post('/pin/start', limiter, run((b, req) => service.start({ login: text(b.login || b.email, 254), pin: text(b.pin, 200), deviceToken: deviceOf(req) })));
+router.post('/pin/start', limiter, run((b, req) => service.start({ login: text(b.login || b.email, 254), pin: text(b.pin, 200), deviceToken: deviceOf(req), prefer: text(b.prefer, 10) })));
 router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/remember', limiter, run((b, req) => service.rememberDevice({ grant: text(b.grant, 2000), deviceToken: deviceOf(req) })));

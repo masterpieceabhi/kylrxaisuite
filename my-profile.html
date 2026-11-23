@@ -44,6 +44,7 @@ form[hidden]{display:none}
       <label><span data-t="preferred"></span><input name="preferredName" maxlength="60" autocomplete="nickname"></label>
       <label><span data-t="phone"></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 555-1234"><span class="hint" data-t="phoneWhy"></span></label>
       <div class="row" id="phoneSuggestRow" hidden><button class="soft" type="button" id="phoneSuggest"></button></div>
+      <label><span data-t="codeVia"></span><select name="codeVia"><option value="" data-t="viaAuto"></option><option value="email" data-t="viaEmail"></option><option value="phone" data-t="viaText"></option><option value="whatsapp" data-t="viaWhatsApp"></option></select><span class="hint" data-t="codeViaHint"></span></label>
       <button class="go" type="submit" data-t="save"></button>
     </form>
   </section>
@@ -121,7 +122,7 @@ const $ = (id) => document.getElementById(id);
 const T = {
   en: {
     todoTitle: 'Still missing', todoPhone: 'Add your mobile number', todoPhoneWhy: 'Needed to get sign-in codes by text or WhatsApp.', todoContact: 'Add an emergency contact', todoContactWhy: 'Who we call if something happens to you at work.', todoAddress: 'Add your home address', todoAddressWhy: 'It goes on your W-2 tax form.', todoBank: 'Add a bank account for pay', todoBankWhy: 'So your pay goes straight to your account.', fixIt: 'Add it',
-    phoneWhy: 'Your mobile. Sign-in codes by text or WhatsApp go only to this number.', usePhone: 'Use {p}', zipState: 'ZIP {z} is in {s}. State filled in.', routingOk: 'Routing number looks right.', routingBad: 'This routing number does not look right. Check the 9 digits on a check or in your bank app.', acctOk: 'The account numbers match.', acctBad: 'The two account numbers are different.',
+    phoneWhy: 'Your mobile. Sign-in codes by text or WhatsApp go only to this number.', codeVia: 'Send my sign-in codes by', viaAuto: 'Pick for me (email, or my phone when I sign in with my number)', viaEmail: 'Email', viaText: 'Text message', viaWhatsApp: 'WhatsApp', codeViaHint: 'Used on any device. Text and WhatsApp need your mobile above; without it, codes go by email.', usePhone: 'Use {p}', zipState: 'ZIP {z} is in {s}. State filled in.', routingOk: 'Routing number looks right.', routingBad: 'This routing number does not look right. Check the 9 digits on a check or in your bank app.', acctOk: 'The account numbers match.', acctBad: 'The two account numbers are different.',
     title: 'My details', back: 'Back to the clock', basics: 'Name and phone', preferred: 'Name you like to be called', phone: 'Phone', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
     contacts: 'Emergency contacts', contactsHint: 'Who we call if something happens to you at work.', addContact: 'Add a contact', cName: 'Full name', cRel: 'How you know them (wife, brother, friend)', cEmail: 'Email (optional)', cPrimary: 'Call this person first', noContacts: 'No emergency contacts yet.', first1: 'call first', edit: 'Edit', remove: 'Remove', removeAsk: 'Remove this contact?',
     guarded: 'Legal name, address and bank', guardedHint: 'HR checks these changes before they are saved, because they affect your pay and tax forms.', legal: 'Legal name', address: 'Home address', bank: 'Bank account for pay', askChange: 'Ask to change', none: 'Not on file',
@@ -132,7 +133,7 @@ const T = {
   },
   es: {
     todoTitle: 'Falta', todoPhone: 'Agregue su número de celular', todoPhoneWhy: 'Necesario para recibir códigos de entrada por mensaje de texto o WhatsApp.', todoContact: 'Agregue un contacto de emergencia', todoContactWhy: 'A quién llamamos si le pasa algo en el trabajo.', todoAddress: 'Agregue la dirección de su casa', todoAddressWhy: 'Aparece en su formulario de impuestos W-2.', todoBank: 'Agregue una cuenta de banco para su pago', todoBankWhy: 'Para que su pago vaya directo a su cuenta.', fixIt: 'Agregar',
-    phoneWhy: 'Su celular. Los códigos de entrada por mensaje de texto o WhatsApp van solo a este número.', usePhone: 'Usar {p}', zipState: 'El código postal {z} está en {s}. Estado completado.', routingOk: 'El número de ruta parece correcto.', routingBad: 'Este número de ruta no parece correcto. Revise los 9 dígitos en un cheque o en la app de su banco.', acctOk: 'Los números de cuenta coinciden.', acctBad: 'Los dos números de cuenta son diferentes.',
+    phoneWhy: 'Su celular. Los códigos de entrada por mensaje de texto o WhatsApp van solo a este número.', codeVia: 'Enviar mis códigos de entrada por', viaAuto: 'Elegir por mí (correo, o mi teléfono si entro con mi número)', viaEmail: 'Correo electrónico', viaText: 'Mensaje de texto', viaWhatsApp: 'WhatsApp', codeViaHint: 'Sirve en cualquier dispositivo. Texto y WhatsApp necesitan su celular arriba; sin él, los códigos van por correo.', usePhone: 'Usar {p}', zipState: 'El código postal {z} está en {s}. Estado completado.', routingOk: 'El número de ruta parece correcto.', routingBad: 'Este número de ruta no parece correcto. Revise los 9 dígitos en un cheque o en la app de su banco.', acctOk: 'Los números de cuenta coinciden.', acctBad: 'Los dos números de cuenta son diferentes.',
     title: 'Mis datos', back: 'Volver al reloj', basics: 'Nombre y teléfono', preferred: 'Nombre que prefiere usar', phone: 'Teléfono', save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado.',
     contacts: 'Contactos de emergencia', contactsHint: 'A quién llamamos si le pasa algo en el trabajo.', addContact: 'Agregar un contacto', cName: 'Nombre completo', cRel: 'Relación (esposa, hermano, amigo)', cEmail: 'Correo electrónico (opcional)', cPrimary: 'Llamar primero a esta persona', noContacts: 'Todavía no hay contactos de emergencia.', first1: 'llamar primero', edit: 'Editar', remove: 'Quitar', removeAsk: '¿Quitar este contacto?',
     guarded: 'Nombre legal, dirección y banco', guardedHint: 'Recursos Humanos revisa estos cambios antes de guardarlos, porque afectan su pago y sus formularios de impuestos.', legal: 'Nombre legal', address: 'Dirección de casa', bank: 'Cuenta de banco para su pago', askChange: 'Pedir un cambio', none: 'No registrado',
@@ -194,7 +195,10 @@ function paint() {
   }).join('');
 }
 function fillBasics() {
-  const p = data.profile; const f = $('basicForm').elements; f.preferredName.value = p.preferredName; f.phone.value = formatPhone(p.phone);
+  const p = data.profile; const f = $('basicForm').elements; f.preferredName.value = p.preferredName; f.phone.value = formatPhone(p.phone); f.codeVia.value = p.codeVia || '';
+  // only the ways this server offers
+  if (!fillBasics.ways) fillBasics.ways = fetch('/api/auth/pin/channels').then((r) => r.json()).catch(() => ({}));
+  fillBasics.ways.then((w) => { f.codeVia.querySelector('option[value="phone"]').hidden = !w.text; f.codeVia.querySelector('option[value="whatsapp"]').hidden = !w.whatsapp; });
   // no mobile on record: offer the number typed on the sign-in page in this browser
   const typed = phoneFromSignin();
   const show = !p.phone && typed;
@@ -241,7 +245,7 @@ const closeForms = () => ['legalForm', 'addressForm', 'bankForm'].forEach((id) =
 
 $('basicForm').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = new FormData(e.target);
-  try { await req('PUT', '/me/profile', { preferredName: f.get('preferredName'), phone: f.get('phone') }); if (f.get('phone')) rememberPhoneForSignin(f.get('phone')); await load(); fillBasics(); say(tr('saved')); } catch (err) { say(err.message, false); }
+  try { await req('PUT', '/me/profile', { preferredName: f.get('preferredName'), phone: f.get('phone'), codeVia: f.get('codeVia') || '' }); if (f.get('phone')) rememberPhoneForSignin(f.get('phone')); await load(); fillBasics(); say(tr('saved')); } catch (err) { say(err.message, false); }
 });
 $('contactAdd').addEventListener('click', () => { contactEdit = null; $('contactForm').reset(); $('contactForm').elements.isPrimary.checked = !(data && data.profile.emergencyContacts.length); $('contactForm').hidden = false; $('contactForm').elements.name.focus(); });
 $('contactCancel').addEventListener('click', () => { $('contactForm').hidden = true; });

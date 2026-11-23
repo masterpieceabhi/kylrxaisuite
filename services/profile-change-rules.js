@@ -33,6 +33,11 @@ function validateDirectEdit(input) {
         if (b.phone === '' || b.phone === null) value.phone = '';
         else { const r = validatePhone(b.phone); if (r.error) errors.push(r.error); else value.phone = r.value; }
     }
+    // how the person wants sign-in codes: '' = pick by itself (email, or the phone when they sign in with their number)
+    if (b.codeVia !== undefined) {
+        if (!['', 'email', 'phone', 'whatsapp'].includes(String(b.codeVia || ''))) errors.push('codeVia must be email, phone or whatsapp');
+        else value.codeVia = String(b.codeVia || '');
+    }
     if (b.maritalStatus !== undefined) {
         if (b.maritalStatus === '' || b.maritalStatus === null) value.maritalStatus = '';
         else if (!MARITAL.includes(b.maritalStatus)) errors.push(`maritalStatus must be one of: ${MARITAL.join(', ')}`);
