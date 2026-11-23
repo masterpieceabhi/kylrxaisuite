@@ -57,6 +57,8 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   mintToken(uid)           -> a sign-in token for the browser (Firebase custom token)
  *   sendCode(email, code)    -> emails the code; resolves true when it was handed to a mail server
  *   sendText(phone, code)    -> texts the code to a +1XXXXXXXXXX number; resolves true when a provider took it
+ *   sendWhatsApp(phone, code)-> sends the code by WhatsApp to that number; resolves true when a provider took it (optional)
+ *   note(reason, detail)     -> a line for the server log when a code was NOT sent (never shown on the page; optional)
  *   secret                   -> signing secret for the short-lived tokens here
  *   showCode                 -> true only on a development server: the code is also returned to the page
  *   now()                    -> Date (tests)
@@ -113,29 +115,36 @@ function create(deps) {
                     : { type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS)
             };
         }
-        if (via !== 'email' && via !== 'phone') throw fail(400, 'bad_input', 'Choose email, text message or authenticator app.');
+        if (via !== 'email' && via !== 'phone' && via !== 'whatsapp') throw fail(400, 'bad_input', 'Choose email, text message, WhatsApp or authenticator app.');
+        const byPhone = via === 'phone' || via === 'whatsapp';
         const typed = tenDigits(phone);
-        if (via === 'phone' && !typed) throw fail(400, 'bad_input', 'Enter your mobile number with its area code.');
+        if (byPhone && !typed) throw fail(400, 'bad_input', 'Enter your mobile number with its area code.');
+        const note = (reason, detail) => { try { if (deps.note) deps.note(reason, { via, ...(detail || {}) }); } catch (_) { /* a log line never fails sign-in */ } };
         const out = {
             next: 'code', via,
             message: via === 'email' ? 'If that email is registered, a code is on its way to it. It works for 10 minutes.'
-                : 'If that number is the one on your record, a code is on its way by text. It works for 10 minutes.'
+                : via === 'whatsapp' ? 'If that number is the one on your record, a code is on its way by WhatsApp. It works for 10 minutes.'
+                    : 'If that number is the one on your record, a code is on its way by text. It works for 10 minutes.'
         };
         const nothing = () => { out.challenge = sign({ type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS); return out; };
-        if (c.none) return nothing();
+        if (c.none) { note('no_such_person'); return nothing(); }
         const person = await deps.findPerson(c.email);
-        if (!person || person.uid !== c.uid || person.active === false) return nothing();
-        if (via === 'phone' && tenDigits(person.phone) !== typed) return nothing(); // not the number on file: nothing is sent
+        if (!person || person.uid !== c.uid || person.active === false) { note('person_not_usable'); return nothing(); }
+        if (byPhone && !tenDigits(person.phone)) { note('no_mobile_on_record', { uid: person.uid }); return nothing(); }
+        if (byPhone && tenDigits(person.phone) !== typed) { note('number_does_not_match_record', { uid: person.uid }); return nothing(); } // nothing is sent
         let made;
         try { made = deps.otp.generateOtp({ identifier: c.email, purpose: 'pin_signin', ttlSeconds: CODE_TTL_SECONDS, maxAttempts: CODE_MAX_ATTEMPTS }); }
         catch (e) { throw fail(429, 'slow_down', 'A code was just sent. Wait half a minute, then try again.'); }
-        const send = via === 'email' ? deps.sendCode(c.email, made.code) : deps.sendText(`+1${typed}`, made.code);
+        const send = via === 'email' ? deps.sendCode(c.email, made.code)
+            : via === 'whatsapp' ? (deps.sendWhatsApp ? deps.sendWhatsApp(`+1${typed}`, made.code) : false)
+                : deps.sendText(`+1${typed}`, made.code);
         const sent = await Promise.resolve(send).catch(() => false);
+        if (!sent) note('provider_did_not_take_it', { uid: person.uid });
         out.challenge = sign({ type: 'signin_code', uid: person.uid, email: c.email, otpId: made.otpId, pinOk: Boolean(c.pinOk), hasPin: Boolean(c.hasPin), via }, CODE_TTL_SECONDS);
         if (deps.showCode) {
             out.devCode = made.code;
             out.devNote = sent ? 'Shown here because this is a development server.'
-                : `${via === 'email' ? 'Email' : 'Text messaging'} is not set up on this server, so the code is shown here. A real server never shows it.`;
+                : `${via === 'email' ? 'Email' : via === 'whatsapp' ? 'WhatsApp' : 'Text messaging'} is not set up on this server, so the code is shown here. A real server never shows it.`;
         }
         return out;
     }

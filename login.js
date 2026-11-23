@@ -341,10 +341,12 @@ async function pinStep(email, pin) {
 /** The person chose where the code goes. */
 async function sendSigninCode(via) {
     if (errorMessage) errorMessage.style.display = 'none';
-    const buttons = [el('sendEmailBtn'), el('sendTextBtn')];
+    const buttons = [el('sendEmailBtn'), el('sendTextBtn'), el('sendWhatsAppBtn')];
     buttons.forEach((b) => { if (b) b.disabled = true; });
     try {
-        const out = await pinPost('send', { challenge: signin.choice, via, phone: via === 'phone' ? el('signinPhone').value.trim() : undefined });
+        const phoneWay = via === 'phone' || via === 'whatsapp';
+        const out = await pinPost('send', { challenge: signin.choice, via, phone: phoneWay ? el('signinPhone').value.trim() : undefined });
+        codeWays.remember(via, phoneWay ? el('signinPhone').value.trim() : '');
         signin.challenge = out.challenge; signin.stage = 'code';
         el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
         el('signinCode').value = '';
@@ -356,7 +358,43 @@ async function sendSigninCode(via) {
 }
 el('sendEmailBtn')?.addEventListener('click', () => sendSigninCode('email'));
 el('sendTextBtn')?.addEventListener('click', () => sendSigninCode('phone'));
-el('signinPhone')?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); sendSigninCode('phone'); } });
+el('sendWhatsAppBtn')?.addEventListener('click', () => sendSigninCode('whatsapp'));
+el('signinPhone')?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); sendSigninCode(codeWays.lastPhoneWay()); } });
+
+// Ways to get a code besides email (text, WhatsApp) show only when this server offers them. The way a person used last
+// on this browser, and their mobile number, are remembered here (this browser only) and offered first next time.
+const codeWays = (() => {
+    const KEY = 'onnhr_code_way';
+    const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (_) { return {}; } };
+    const saved = read();
+    const apply = (offer) => {
+        const text = Boolean(offer && offer.text); const wa = Boolean(offer && offer.whatsapp);
+        if (el('sendTextBtn')) el('sendTextBtn').hidden = !text;
+        if (el('sendWhatsAppBtn')) el('sendWhatsAppBtn').hidden = !wa;
+        if (el('phoneWays')) el('phoneWays').hidden = !(text || wa);
+        if (el('phoneWaysLabel')) el('phoneWaysLabel').textContent = text && wa ? 'or to your phone' : wa ? 'or by WhatsApp' : 'or by text message';
+        if (saved.phone && el('signinPhone') && !el('signinPhone').value) el('signinPhone').value = saved.phone;
+        // the way used last goes first
+        const first = { email: el('sendEmailBtn'), phone: el('sendTextBtn'), whatsapp: el('sendWhatsAppBtn') }[saved.via];
+        if (first && !first.hidden) first.classList.add('preferred');
+        if ((saved.via === 'phone' || saved.via === 'whatsapp') && first && !first.hidden && el('phoneWays') && el('chooseGroup')) {
+            el('chooseGroup').insertBefore(el('phoneWays'), el('sendEmailBtn'));
+            const lab = el('phoneWays').querySelector('div'); if (lab) lab.style.marginTop = '.35rem';
+            el('phoneWaysLabel').textContent = text && wa ? 'To your phone' : wa ? 'By WhatsApp' : 'By text message';
+            // and email becomes the other way, below
+            const or = document.createElement('div');
+            or.style.cssText = 'display:flex;align-items:center;gap:.6rem;margin:.9rem 0 .6rem;color:#94a3b8;font-size:.78rem';
+            const line = () => { const x = document.createElement('span'); x.style.cssText = 'flex:1;height:1px;background:#e2e8f0'; return x; };
+            or.append(line(), document.createTextNode('or by email'), line());
+            el('chooseGroup').insertBefore(or, el('sendEmailBtn'));
+        }
+    };
+    fetch('/api/auth/pin/channels').then((r) => r.json()).then(apply).catch(() => apply(null));
+    return {
+        remember(via, phone) { try { localStorage.setItem(KEY, JSON.stringify({ via, phone: phone ? String(phone).slice(0, 20) : (saved.phone || '') })); } catch (_) { /* private window */ } },
+        lastPhoneWay() { return saved.via === 'whatsapp' && el('sendWhatsAppBtn') && !el('sendWhatsAppBtn').hidden ? 'whatsapp' : (el('sendTextBtn') && !el('sendTextBtn').hidden ? 'phone' : 'whatsapp'); }
+    };
+})();
 el('otherWayLink')?.addEventListener('click', () => { if (errorMessage) errorMessage.style.display = 'none'; signin.stage = 'choose'; showStage(); });
 el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means a code is used
 el('keepPinLink')?.addEventListener('click', () => { signin.keep = true; loginBtn?.click(); });

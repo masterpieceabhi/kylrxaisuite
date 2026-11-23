@@ -211,3 +211,49 @@ test('a device grant from sign-up or a set-up link adds this device without push
     await rejects(w.service.rememberDevice({ grant: pinSignin.deviceGrant('other-secret', 'u2', 'ben@shop.test') }), 'expired');
     await rejects(w.service.rememberDevice({ grant: pinSignin.deviceGrant('test-secret', 'u1', 'ben@shop.test') }), 'expired'); // the grant names someone else
 });
+
+test('a code by WhatsApp goes only to the mobile number on record, and the server log says why when nothing is sent', async () => {
+    const notes = []; const wa = [];
+    const people = new Map([['u1', { uid: 'u1', email: 'ana@shop.test', phone: '414-555-0123', pinHash: null, pinAttempts: 0, signinDevices: [], active: true }],
+        ['u2', { uid: 'u2', email: 'ben@shop.test', phone: '', pinHash: null, pinAttempts: 0, signinDevices: [], active: true }]]);
+    let n = 0;
+    const service = pinSignin.create({
+        findPerson: async (email) => [...people.values()].find((p) => p.email === email) || null,
+        savePerson: async () => {},
+        otp: { generateOtp: () => { n += 1; return { otpId: `o${n}`, code: String(200000 + n) }; }, verifyOtp: () => ({ success: true }) },
+        mintToken: async (uid) => `t-${uid}`, sendCode: async () => true, sendText: async () => true,
+        sendWhatsApp: async (phone, code) => { wa.push({ phone, code }); return true; },
+        note: (reason, d) => notes.push({ reason, via: d.via }),
+        secret: 's', showCode: false
+    });
+    const ask = async (email, phone) => { const a = await service.start({ email, pin: '' }); return service.requestCode({ challenge: a.challenge, via: 'whatsapp', phone }); };
+
+    const ok = await ask('ana@shop.test', '(414) 555-0123');
+    assert.match(ok.message, /by WhatsApp/);
+    assert.deepEqual(wa, [{ phone: '+14145550123', code: '200001' }]);
+
+    await ask('ana@shop.test', '414-555-9999');
+    assert.equal(wa.length, 1, 'another number gets nothing');
+    assert.deepEqual(notes.at(-1), { reason: 'number_does_not_match_record', via: 'whatsapp' });
+
+    await ask('ben@shop.test', '414-555-0123');
+    assert.deepEqual(notes.at(-1), { reason: 'no_mobile_on_record', via: 'whatsapp' });
+
+    await ask('nobody@shop.test', '414-555-0123');
+    assert.deepEqual(notes.at(-1), { reason: 'no_such_person', via: 'whatsapp' });
+
+    await assert.rejects(ask('ana@shop.test', ''), (e) => e.code === 'bad_input');
+});
+
+test('when the provider does not take the message, the log says so', async () => {
+    const notes = [];
+    const service = pinSignin.create({
+        findPerson: async () => ({ uid: 'u1', email: 'ana@shop.test', phone: '4145550123', signinDevices: [], active: true }),
+        savePerson: async () => {}, otp: { generateOtp: () => ({ otpId: 'o1', code: '123456' }), verifyOtp: () => ({ success: true }) },
+        mintToken: async () => 't', sendCode: async () => true, sendText: async () => false,
+        note: (reason, d) => notes.push({ reason, via: d.via }), secret: 's'
+    });
+    const a = await service.start({ email: 'ana@shop.test', pin: '' });
+    await service.requestCode({ challenge: a.challenge, via: 'phone', phone: '4145550123' });
+    assert.deepEqual(notes, [{ reason: 'provider_did_not_take_it', via: 'phone' }]);
+});

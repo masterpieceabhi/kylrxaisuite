@@ -23,6 +23,27 @@ email. The text goes only to the mobile number already on their record (`routes/
 5. Each tester needs a **mobile number on their record** (My profile, or HR on the person's profile).
 6. Test: sign in with a wrong PIN, choose "Text me a code", type the code.
 
+### Codes by WhatsApp (same Twilio account)
+The sign-in page shows **WhatsApp it to me** next to **Text it to me** when `TWILIO_WHATSAPP_FROM` is set. Each browser
+remembers which way a person used last and offers it first, with their number filled in.
+
+Testing with the free **WhatsApp sandbox**:
+1. Twilio console > Messaging > Try it out > Send a WhatsApp message. It shows the sandbox number (+1 415 523 8886)
+   and a join phrase such as `join two-words`.
+2. Each tester sends that phrase from their own WhatsApp to the sandbox number once. A join lasts 72 hours, then
+   send it again.
+3. On the server: `TWILIO_WHATSAPP_FROM=+14155238886`, then restart.
+4. Sign in with a wrong PIN and choose WhatsApp it to me.
+
+For production: register your own WhatsApp sender in Twilio (needs a Meta Business account) and create an
+**authentication** template whose variable `{{1}}` is the code; put its id (HX...) in `TWILIO_WHATSAPP_CONTENT_SID`.
+WhatsApp only allows such a template for messages a person did not just ask for in a chat.
+
+### Why did a code not arrive?
+The page always gives the same answer (so nobody can test whose number is whose). The server log says why:
+`sudo journalctl -u onnhr --since "30 min ago" | grep PinSignin` shows lines such as `code not sent by phone:
+number_does_not_match_record`, `no_mobile_on_record`, or `Twilio refused the text: HTTP 400, error 21608: ...`.
+
 ### For production (real customers)
 - Upgrade the Twilio account (pay as you go) and buy a number.
 - US carriers require registration before an app may text people: either **A2P 10DLC** (brand plus campaign

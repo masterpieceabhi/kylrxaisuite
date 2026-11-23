@@ -79,13 +79,50 @@ async function sendText(phone, code) {
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.` })
     });
-    if (!res.ok) { logger.warn(`[PinSignin] the text message provider answered ${res.status}`); return false; }
+    if (!res.ok) { logger.warn(`[PinSignin] Twilio refused the text: ${await twilioWhy(res)}`); return false; }
+    return true;
+}
+
+/** Twilio's own error code and message, for the server log (never the page). */
+async function twilioWhy(res) {
+    const j = await res.json().catch(() => ({}));
+    return `HTTP ${res.status}${j.code ? `, error ${j.code}` : ''}${j.message ? `: ${String(j.message).slice(0, 200)}` : ''}`;
+}
+
+/** Which ways of getting a code this server offers besides email (no person is named, so nothing is revealed). */
+function channels(e = process.env) {
+    const twilio = Boolean((e.TWILIO_ACCOUNT_SID || e.TWILIO_SID) && (e.TWILIO_AUTH_TOKEN || e.TWILIO_TOKEN));
+    return { text: twilio && Boolean(e.TWILIO_FROM), whatsapp: twilio && Boolean(e.TWILIO_WHATSAPP_FROM) };
+}
+
+/**
+ * Sends the code by WhatsApp through Twilio, from TWILIO_WHATSAPP_FROM (a WhatsApp sender on the Twilio account; for
+ * testing, Twilio's WhatsApp sandbox number). With TWILIO_WHATSAPP_CONTENT_SID (an approved authentication template whose
+ * variable {{1}} is the code) the template is used, which WhatsApp requires outside a 24-hour conversation; without it
+ * a plain message is sent, which works in the sandbox after the person has joined it.
+ */
+async function sendWhatsApp(phone, code) {
+    const e = process.env;
+    const sid = e.TWILIO_ACCOUNT_SID || e.TWILIO_SID; const token = e.TWILIO_AUTH_TOKEN || e.TWILIO_TOKEN;
+    const from = String(e.TWILIO_WHATSAPP_FROM || '').replace(/^whatsapp:/i, '');
+    if (!sid || !token || !from) { logger.warn('[PinSignin] WhatsApp is not set up (TWILIO_WHATSAPP_FROM), so the sign-in code was not sent'); return false; }
+    const body = new URLSearchParams({ To: `whatsapp:${phone}`, From: `whatsapp:${from}` });
+    if (e.TWILIO_WHATSAPP_CONTENT_SID) { body.set('ContentSid', e.TWILIO_WHATSAPP_CONTENT_SID); body.set('ContentVariables', JSON.stringify({ 1: code })); }
+    else body.set('Body', `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.`);
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
+        method: 'POST',
+        headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body
+    });
+    if (!res.ok) { logger.warn(`[PinSignin] Twilio refused the WhatsApp message: ${await twilioWhy(res)}`); return false; }
     return true;
 }
 
 const service = pinSignin.create({
     totp: require('../services/totp'),
-    findPerson, savePerson, sendCode, sendText,
+    findPerson, savePerson, sendCode, sendText, sendWhatsApp,
+    // why a code was not sent, for whoever looks at the server log (the page always gives the same answer)
+    note: (reason, d) => logger.warn(`[PinSignin] code not sent by ${d.via}: ${reason}${d.uid ? ` (user ${d.uid})` : ''}`),
     otp: require('../services/otp-verification-service'),
     // a company that requires single sign-on gets no PIN or code sign-in (break-glass accounts excepted)
     mintToken: require('../services/sso').guardMint((uid) => admin.auth().createCustomToken(uid)),
@@ -111,6 +148,7 @@ const COOKIE = 'onnhr_device';
 const deviceOf = (req) => { const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-f0-9]{64})(?:;|$)').exec(String(req.headers.cookie || '')); return m ? m[1] : ''; };
 const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
 
+router.get('/pin/channels', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ success: true, ...channels() }); });
 router.post('/pin/start', limiter, run((b, req) => service.start({ email: text(b.email, 254), pin: text(b.pin, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
