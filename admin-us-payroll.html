@@ -465,7 +465,8 @@ $('paidPull').addEventListener('click', guard(async () => {
 $('matchConfirm').addEventListener('click', guard(async () => {
   const pairs = matches.rows.filter((r) => r.state === 'suggested').map((r) => ({ userId: r.userId, gustoUuid: r.gustoUuid }));
   const out = await req('POST', '/match/confirm', { pairs });
-  say(`Matched ${out.saved}.${out.refused.length ? ` Not matched: ${out.refused.length}. ${out.refused[0].reason}` : ''}`, !out.refused.length);
+  const warn = (out.warnings || []).map((w) => `${w.name}: ${w.warning}`).join(' ');
+  say(`Matched ${out.saved}.${out.refused.length ? ` Not matched: ${out.refused.length}. ${out.refused[0].reason}` : ''}${warn ? ` Check: ${warn}` : ''}`, !out.refused.length && !warn);
   await loadMatches();
 }));
 $('matchRows').addEventListener('click', async (ev) => {
@@ -478,7 +479,8 @@ $('matchRows').addEventListener('click', async (ev) => {
       if (!sel || !sel.value) throw new Error('Choose who this person is in Gusto first.');
       const out = await req('POST', '/match/confirm', { pairs: [{ userId: use.dataset.usepick, gustoUuid: sel.value }] });
       if (out.refused.length) throw new Error(out.refused[0].reason);
-      say('Matched.');
+      const warn = (out.warnings || [])[0];
+      say(warn ? `Matched. Check: ${warn.warning}` : 'Matched.', !warn);
     }
     await loadMatches();
   } catch (e) { say(e.message, false); }

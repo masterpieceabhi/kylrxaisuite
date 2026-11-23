@@ -34,7 +34,7 @@ Vendor support can only look at a company's data read-only, for 1 to 72 hours, a
 
 ## Still open (be honest)
 - The Content-Security-Policy still allows inline scripts (`unsafe-inline`) because many existing pages use them. Removing it needs those pages moved to external scripts.
-- Dependency vulnerabilities reported by `npm audit` are tracked in `docs/DEPLOY.md`; the Excel library `xlsx` needs the vendor's patched build.
+- Dependency vulnerabilities: `npm audit` finds none on 2026-11-22 (the Excel library uses the vendor's patched build since 2026-11-20).
 - Independent penetration test and SOC 2 are not done (see the plan).
-- TOTP / hardware-key MFA is not built (email code only).
+- Authenticator-app codes (TOTP) are built (2026-11-19); hardware keys are not. Since 2026-11-22 a right PIN or password signs in on any device, so a second step is optional; a company setting to require a code on new devices for privileged roles is proposed in `docs/GUSTO_APPLICATION.md`.
 - Rules for biometric data, photos and location at the clock are data-driven and must be reviewed by counsel per state.

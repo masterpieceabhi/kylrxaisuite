@@ -390,3 +390,13 @@ test('a company that is not connected, or a server set up for Embedded Payroll, 
     await assert.rejects(async () => sheets.send(await ctx(), '2026-11-09', '2026-11-15'), (e) => e.code === 'not_connected');
     assert.equal((await provider()).length, 0);
 });
+
+test('matching warns when someone is paid by the hour here but salaried without overtime in Gusto', () => {
+    const job = (unit, flsa) => ({ jobs: [{ primary: true, current_compensation_uuid: 'c', compensations: [{ uuid: 'c', payment_unit: unit, flsa_status: flsa }] }] });
+    assert.match(sheets.payMismatch({ payType: 'hourly' }, job('Year', 'Exempt')), /will not put this person's hours on a payroll/);
+    assert.match(sheets.payMismatch({ payType: 'hourly' }, job('Year', 'Salaried Nonexempt')), /salaried in Gusto/);
+    assert.match(sheets.payMismatch({ payType: 'salary' }, job('Hour', 'Nonexempt')), /paid by the hour in Gusto/);
+    assert.equal(sheets.payMismatch({ payType: 'hourly' }, job('Hour', 'Nonexempt')), null);
+    assert.equal(sheets.payMismatch({ payType: 'hourly' }, { jobs: [] }), null, 'nothing to compare: no warning');
+    assert.equal(sheets.payMismatch({}, job('Year', 'Exempt')), null);
+});

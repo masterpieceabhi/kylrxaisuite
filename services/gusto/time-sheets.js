@@ -44,6 +44,28 @@ const fullName = (e) => [e.first_name, e.last_name].filter(Boolean).join(' ');
 const isW2 = (p) => p.classification === 'W2' || !p.classification;
 const primaryJob = (e) => { const jobs = Array.isArray(e.jobs) ? e.jobs : []; return jobs.find((j) => j.primary) || jobs[0] || null; };
 
+/** How Gusto pays someone, from their primary job's current pay: { unit: 'Hour' | 'Year' | ..., flsa } or null. */
+function gustoPay(e) {
+    const j = e ? primaryJob(e) : null;
+    const comps = j && Array.isArray(j.compensations) ? j.compensations : [];
+    const c = comps.find((x) => x && x.uuid && x.uuid === j.current_compensation_uuid) || comps[comps.length - 1];
+    return c && c.payment_unit ? { unit: String(c.payment_unit), flsa: String(c.flsa_status || '') } : null;
+}
+/**
+ * A warning when the two systems disagree on how someone is paid. Gusto does not put the hours of a salaried person
+ * who gets no overtime on a payroll (found on the demo on 2026-11-22), so an hourly person here matched to such a
+ * person there would quietly not be paid for their hours.
+ */
+function payMismatch(person, e) {
+    const g = gustoPay(e); const ours = String((person && person.payType) || '').toLowerCase();
+    if (!g || !ours) return null;
+    const salariedNoOvertime = g.unit !== 'Hour' && !/nonexempt/i.test(g.flsa);
+    if (ours === 'hourly' && salariedNoOvertime) return 'Paid by the hour here, but salaried without overtime in Gusto: Gusto will not put this person\'s hours on a payroll. Change the pay type in one of them.';
+    if (ours === 'hourly' && g.unit !== 'Hour') return 'Paid by the hour here, but salaried in Gusto. Check the pay type in both.';
+    if ((ours === 'salary' || ours === 'salaried') && g.unit === 'Hour') return 'Salaried here, but paid by the hour in Gusto. Check the pay type in both.';
+    return null;
+}
+
 /* ------------------------------- matching people ------------------------------- */
 
 /** Which of Gusto's three matching facts agree for this person and this Gusto employee */
@@ -91,8 +113,8 @@ async function getMatches(ctx) {
             const e = byUuid.get(link.gustoUuid);
             return {
                 userId: p.id, name: p.name, state: e ? 'matched' : 'missing_in_gusto', gustoUuid: link.gustoUuid, gustoName: e ? fullName(e) : (link.gusto && link.gusto.name) || null,
-                matchedBy: link.matchedBy || [], hasJob: Boolean(link.jobUuid), leftGusto: Boolean(e && e.terminated),
-                note: !e ? 'This person is no longer in the Gusto account. Remove the match and choose again.' : !link.jobUuid ? 'Gusto shows no job for this person, so hours cannot be sent yet.' : null
+                matchedBy: link.matchedBy || [], hasJob: Boolean(link.jobUuid), leftGusto: Boolean(e && e.terminated), payWarning: e ? payMismatch(p, e) : null,
+                note: !e ? 'This person is no longer in the Gusto account. Remove the match and choose again.' : !link.jobUuid ? 'Gusto shows no job for this person, so hours cannot be sent yet.' : payMismatch(p, e)
             };
         }
         const list = strong.get(p.id) || [];
@@ -101,8 +123,8 @@ async function getMatches(ctx) {
         return {
             userId: p.id, name: p.name, state: single ? 'suggested' : 'unmatched',
             gustoUuid: single ? single.e.uuid : null, gustoName: single ? fullName(single.e) : null, matchedBy: single ? single.by : [],
-            candidates: possible.map((x) => ({ gustoUuid: x.e.uuid, name: fullName(x.e), agreesOn: x.by })),
-            note: single ? null : list.length > 1 ? 'More than one person in Gusto looks the same. Choose the right one.' : possible.length ? 'Only one fact agrees. Check and choose.' : 'Nobody in Gusto looks like this person. Add them in Gusto first.'
+            candidates: possible.map((x) => ({ gustoUuid: x.e.uuid, name: fullName(x.e), agreesOn: x.by, payWarning: payMismatch(p, x.e) })), payWarning: single ? payMismatch(p, single.e) : null,
+            note: single ? payMismatch(p, single.e) : list.length > 1 ? 'More than one person in Gusto looks the same. Choose the right one.' : possible.length ? 'Only one fact agrees. Check and choose.' : 'Nobody in Gusto looks like this person. Add them in Gusto first.'
         };
     });
     const used = new Set(rows.map((r) => r.gustoUuid).filter(Boolean));
@@ -122,7 +144,7 @@ async function confirmMatches(ctx, pairs, actor) {
     const people = new Map(peopleAll.map((p) => [p.id, p]));
     const byUuid = new Map(employees.map((e) => [e.uuid, e]));
     const owner = new Map(links.filter((l) => l.gustoUuid).map((l) => [l.gustoUuid, l.ourId]));
-    const out = { saved: 0, refused: [] };
+    const out = { saved: 0, refused: [], warnings: [] };
     const seen = new Set();
     for (const pair of pairs) {
         const userId = String((pair && pair.userId) || ''); const gustoUuid = String((pair && pair.gustoUuid) || '');
@@ -137,6 +159,8 @@ async function confirmMatches(ctx, pairs, actor) {
             gusto: { name: fullName(e), onboarded: Boolean(e.onboarded) }
         });
         out.saved += 1;
+        const warn = payMismatch(p, e);
+        if (warn) out.warnings.push({ userId, name: p.name || null, gustoName: fullName(e), warning: warn });
     }
     return out;
 }
@@ -455,4 +479,4 @@ async function listSent(ctx, start, end) {
         .sort((a, b) => `${a.date}${a.name}`.localeCompare(`${b.date}${b.name}`));
 }
 
-module.exports = { getMatches, confirmMatches, removeMatch, refreshMatches, setAutoSend, afterWeekChange, buildShifts, preview, send, listSent, criteria, payloadOf, _internal: { fingerprint, primaryJob } };
+module.exports = { payMismatch, getMatches, confirmMatches, removeMatch, refreshMatches, setAutoSend, afterWeekChange, buildShifts, preview, send, listSent, criteria, payloadOf, _internal: { fingerprint, primaryJob } };
