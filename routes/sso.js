@@ -37,6 +37,29 @@ router.use(verifyToken);
 const orgIdOf = (req) => req.user.orgId || req.tenantOrgId || null;
 const exists = (s) => (typeof s.exists === 'function' ? s.exists() : s.exists);
 
+/**
+ * Sign-in rules (organizations/{id}.signinRules): who must also enter a code on a device they have not used before.
+ *   newDeviceCode: 'privileged' (default: roles that can see SSNs, pay or company settings) | 'everyone' | 'off'
+ */
+const NEW_DEVICE = ['privileged', 'everyone', 'off'];
+router.get('/signin-rules', requirePermission('security.manage'), async (req, res) => {
+    const orgId = orgIdOf(req);
+    if (!orgId) return res.status(404).json({ success: false, error: 'No organization for this user' });
+    const snap = await rawCollection('organizations').doc(orgId).get();
+    const r = (exists(snap) && snap.data().signinRules) || {};
+    res.json({ success: true, rules: { newDeviceCode: NEW_DEVICE.includes(r.newDeviceCode) ? r.newDeviceCode : 'privileged' } });
+});
+router.put('/signin-rules', requirePermission('security.manage'), async (req, res) => {
+    const orgId = orgIdOf(req);
+    if (!orgId) return res.status(404).json({ success: false, error: 'No organization for this user' });
+    const v = String((req.body || {}).newDeviceCode || '');
+    if (!NEW_DEVICE.includes(v)) return res.status(400).json({ success: false, errors: [`newDeviceCode must be one of: ${NEW_DEVICE.join(', ')}`] });
+    const at = new Date().toISOString();
+    await rawCollection('organizations').doc(orgId).set({ signinRules: { newDeviceCode: v, updatedAt: at, updatedBy: req.user.id } }, { merge: true });
+    Promise.resolve().then(() => require('../services/audit-chain').writeAudit(orgId, { action: 'signin_rules_updated', targetId: orgId, actorId: req.user.id, at, newDeviceCode: v })).catch(() => {});
+    res.json({ success: true, rules: { newDeviceCode: v } });
+});
+
 router.get('/settings', requirePermission('security.manage'), async (req, res) => {
     const orgId = orgIdOf(req);
     if (!orgId) return res.status(404).json({ success: false, error: 'No organization for this user' });

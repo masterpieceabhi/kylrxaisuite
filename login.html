@@ -99,6 +99,7 @@
           <div class="form-group" id="chooseGroup" hidden>
             <label>Where should we send your sign-in code?</label>
             <button type="button" id="sendEmailBtn" class="btn-social" style="width:100%;justify-content:center;margin-top:.35rem"><i data-lucide="mail"></i><span>Email it to me</span></button>
+            <button type="button" id="sendAppBtn" class="btn-social" style="width:100%;justify-content:center;margin-top:.5rem"><i data-lucide="smartphone"></i><span>Use my authenticator app</span></button>
             <div id="phoneWays" hidden>
               <div style="display:flex;align-items:center;gap:.6rem;margin:.9rem 0 .6rem;color:#94a3b8;font-size:.78rem"><span style="flex:1;height:1px;background:#e2e8f0"></span><span id="phoneWaysLabel">or to your phone</span><span style="flex:1;height:1px;background:#e2e8f0"></span></div>
               <div class="input-wrapper">
@@ -320,7 +321,7 @@
     </div>
   </div>
 
-  <script type="module" src="login.js?v=4.4"></script>
+  <script type="module" src="login.js?v=4.5"></script>
   <script>if (window.lucide) { lucide.createIcons(); } else { console.error("Lucide failed to load"); }</script>
 </body>
 </html>

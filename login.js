@@ -353,7 +353,7 @@ async function pinStep(login, pin) {
         try { out = signin.link ? await pinPost('link', { link: signin.link }) : await pinPost('code', { challenge: signin.challenge, code: el('signinCode').value.trim() }); }
         catch (err) { if (err.code === 'expired') { signin.stage = 'pin'; showStage(); } throw err; }
         signin.token = out.token; signin.setupToken = out.setupToken;
-        if (out.hasPin && out.pinWasRight) return out.token; // the PIN was right, this was only a device we had not seen
+        if (out.pinWasRight) return out.token; // the PIN or password was right, this was only a device we had not seen
         signin.stage = 'newpin';
         el('newPinHint').textContent = out.hasPin ? 'Choose a new PIN, or keep the one you have.' : 'You will use this PIN to sign in next time on this device.';
         el('keepPinRow').hidden = !out.hasPin;
@@ -367,7 +367,7 @@ async function pinStep(login, pin) {
 /** The person chose where the code goes. */
 async function sendSigninCode(via) {
     if (errorMessage) errorMessage.style.display = 'none';
-    const buttons = [el('sendEmailBtn'), el('sendTextBtn'), el('sendWhatsAppBtn')];
+    const buttons = [el('sendEmailBtn'), el('sendTextBtn'), el('sendWhatsAppBtn'), el('sendAppBtn')];
     buttons.forEach((b) => { if (b) b.disabled = true; });
     try {
         const phoneWay = via === 'phone' || via === 'whatsapp';
@@ -385,6 +385,7 @@ async function sendSigninCode(via) {
 el('sendEmailBtn')?.addEventListener('click', () => sendSigninCode('email'));
 el('sendTextBtn')?.addEventListener('click', () => sendSigninCode('phone'));
 el('sendWhatsAppBtn')?.addEventListener('click', () => sendSigninCode('whatsapp'));
+el('sendAppBtn')?.addEventListener('click', () => sendSigninCode('app'));
 el('signinPhone')?.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); sendSigninCode(codeWays.lastPhoneWay()); } });
 
 // Ways to get a code besides email (text, WhatsApp) show only when this server offers them. The way a person used last

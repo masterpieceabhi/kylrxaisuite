@@ -29,6 +29,20 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px
   <div id="msg" role="status"></div>
 
   <section class="card">
+    <h2>Sign-in on a new device</h2>
+    <p class="s">Everyone signs in with their PIN or password. On a phone or computer they have not used before, you can ask for a one-time code too (sent by email, text or WhatsApp). After that, the device signs in with the PIN or password alone.</p>
+    <form id="rules"><div class="grid">
+      <label>Ask for a code on a new device
+        <select name="newDeviceCode">
+          <option value="privileged">Owners, HR, payroll and accountants (recommended: they can see SSNs and pay)</option>
+          <option value="everyone">Everyone</option>
+          <option value="off">Nobody</option>
+        </select>
+      </label>
+    </div><div class="row"><button type="submit">Save</button></div></form>
+  </section>
+
+  <section class="card">
     <h2>Single sign-on (SSO)</h2>
     <p class="s">Let people sign in with your company account (Microsoft Entra, Okta, Google Workspace and others) instead of a password.</p>
     <div class="note">First create the OIDC or SAML provider in Firebase Authentication (Identity Platform) and note its provider id, for example <code>oidc.entra</code> or <code>saml.okta</code>. Then enter it here.</div>
@@ -54,8 +68,9 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 10px
   <section class="card">
     <h2>Other protections that are always on</h2>
     <table><tbody>
-      <tr><td>Email one-time code at sign-in</td><td><span class="tag ok">On</span></td></tr>
-      <tr><td>Account locks after repeated wrong passwords</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Sign-in locks for 15 minutes after 5 wrong PINs or passwords</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Sign-in codes and one-tap links work once and run out after 10 minutes</td><td><span class="tag ok">On</span></td></tr>
+      <tr><td>Authenticator app codes available to everyone (My details)</td><td><span class="tag ok">On</span></td></tr>
       <tr><td>Social Security numbers and bank numbers are encrypted</td><td><span class="tag ok">On</span></td></tr>
       <tr><td>People who leave lose access at the end of their last day</td><td><span class="tag ok">On</span></td></tr>
       <tr><td>Managers see only the people who report to them</td><td><span class="tag ok">On</span></td></tr>
@@ -77,12 +92,17 @@ async function api(method, path, body) {
 }
 const list = (v) => String(v || '').split(',').map((s) => s.trim()).filter(Boolean);
 async function load() {
+  try { $('rules').newDeviceCode.value = (await api('GET', '/sso/signin-rules')).rules.newDeviceCode; } catch (_) { /* older server: the box keeps the default */ }
   const s = (await api('GET', '/sso/settings')).settings; const f = $('sso');
   f.enabled.value = String(Boolean(s.enabled)); f.providerId.value = s.providerId || ''; f.allowedDomains.value = (s.allowedDomains || []).join(', ');
   f.enforce.value = String(Boolean(s.enforce)); f.breakGlassEmails.value = (s.breakGlassEmails || []).join(', ');
   const g = (await api('GET', '/support/grants')).data;
   $('grants').innerHTML = g.map((x) => `<tr><td>${esc(x.reason)}</td><td>${esc(String(x.createdAt).slice(0, 16).replace('T', ' '))}</td><td>${esc(String(x.expiresAt).slice(0, 16).replace('T', ' '))}</td><td><span class="tag ${x.active ? 'ok' : 'off'}">${x.active ? 'Active' : (x.revokedAt ? 'Revoked' : 'Ended')}</span></td><td>${x.active ? `<button class="no" data-rev="${x.id}">Turn off now</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="hint">No support access has been given.</td></tr>';
 }
+$('rules').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { await api('PUT', '/sso/signin-rules', { newDeviceCode: e.target.newDeviceCode.value }); say('Saved. It applies from the next sign-in.'); } catch (err) { say(err.message, false); }
+});
 $('sso').addEventListener('submit', async (e) => {
   e.preventDefault(); const f = e.target;
   try { await api('PUT', '/sso/settings', { enabled: f.enabled.value === 'true', providerId: f.providerId.value, allowedDomains: list(f.allowedDomains.value), enforce: f.enforce.value === 'true', breakGlassEmails: list(f.breakGlassEmails.value) }); say('Saved.'); await load(); }

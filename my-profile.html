@@ -49,6 +49,20 @@ form[hidden]{display:none}
     </form>
   </section>
 
+  <section class="card" id="appCard">
+    <h2 data-t="appTitle"></h2>
+    <p class="hint" data-t="appHint"></p>
+    <div class="kv"><span data-t="appStatus"></span><b id="appState"></b></div>
+    <div class="row"><button class="soft" type="button" id="appStart" data-t="appSetUp"></button><button class="soft" type="button" id="appRemove" data-t="appRemove" hidden></button></div>
+    <div id="appSetup" hidden style="margin-top:12px">
+      <p class="hint" data-t="appScan"></p>
+      <div id="appQr" style="margin:8px 0"></div>
+      <p class="hint"><span data-t="appKey"></span> <code id="appSecret" style="overflow-wrap:anywhere"></code></p>
+      <p class="hint"><a id="appOpen" href="#" data-t="appOpen"></a></p>
+      <form id="appConfirm"><label><span data-t="appCode"></span><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="go" type="submit" data-t="appTurnOn"></button></form>
+    </div>
+  </section>
+
   <section class="card">
     <h2 data-t="contacts"></h2>
     <p class="hint" data-t="contactsHint"></p>
@@ -121,6 +135,7 @@ import { livePhone, formatPhone, stateForZip, routingLooksRight, CHOICES, offerC
 const $ = (id) => document.getElementById(id);
 const T = {
   en: {
+    appTitle: 'Authenticator app (optional)', appHint: 'Use an app such as Google Authenticator or Microsoft Authenticator for sign-in codes. Nothing is sent: the app shows the code. Recommended for owners, HR and payroll.', appStatus: 'Status', appOn: 'On', appOff: 'Not set up', appSetUp: 'Set up', appRemove: 'Remove', appScan: 'Scan this code with your authenticator app, then type the 6-digit code it shows.', appKey: 'Or type this key:', appOpen: 'On this phone? Open in your authenticator app', appCode: 'Code from the app', appTurnOn: 'Turn on', appDone: 'The authenticator app is on. Use "Use my authenticator app" when signing in.', appAskCode: 'Type the code your app shows now to remove it:', appGone: 'The authenticator app was removed.',
     todoTitle: 'Still missing', todoPhone: 'Add your mobile number', todoPhoneWhy: 'Needed to get sign-in codes by text or WhatsApp.', todoContact: 'Add an emergency contact', todoContactWhy: 'Who we call if something happens to you at work.', todoAddress: 'Add your home address', todoAddressWhy: 'It goes on your W-2 tax form.', todoBank: 'Add a bank account for pay', todoBankWhy: 'So your pay goes straight to your account.', fixIt: 'Add it',
     phoneWhy: 'Your mobile. Sign-in codes by text or WhatsApp go only to this number.', codeVia: 'Send my sign-in codes by', viaAuto: 'Pick for me (email, or my phone when I sign in with my number)', viaEmail: 'Email', viaText: 'Text message', viaWhatsApp: 'WhatsApp', codeViaHint: 'Used on any device. Text and WhatsApp need your mobile above; without it, codes go by email.', usePhone: 'Use {p}', zipState: 'ZIP {z} is in {s}. State filled in.', routingOk: 'Routing number looks right.', routingBad: 'This routing number does not look right. Check the 9 digits on a check or in your bank app.', acctOk: 'The account numbers match.', acctBad: 'The two account numbers are different.',
     title: 'My details', back: 'Back to the clock', basics: 'Name and phone', preferred: 'Name you like to be called', phone: 'Phone', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
@@ -132,6 +147,7 @@ const T = {
     f_legalName: 'Legal name', f_homeAddress: 'Home address', f_bankDetails: 'Bank account', s_pending: 'Waiting for HR', s_approved: 'Approved', s_rejected: 'Not approved', s_cancelled: 'Cancelled', hrNote: 'HR said:', fail: 'Could not load your details. Try again.', yes: 'Yes', no: 'No', choose: 'Choose'
   },
   es: {
+    appTitle: 'App de autenticación (opcional)', appHint: 'Use una app como Google Authenticator o Microsoft Authenticator para los códigos de entrada. No se envía nada: la app muestra el código. Recomendado para dueños, Recursos Humanos y nómina.', appStatus: 'Estado', appOn: 'Activada', appOff: 'Sin configurar', appSetUp: 'Configurar', appRemove: 'Quitar', appScan: 'Escanee este código con su app de autenticación y escriba el código de 6 dígitos que muestra.', appKey: 'O escriba esta clave:', appOpen: '¿En este teléfono? Abrir en su app de autenticación', appCode: 'Código de la app', appTurnOn: 'Activar', appDone: 'La app de autenticación está activada. Use "Use my authenticator app" al entrar.', appAskCode: 'Escriba el código que muestra su app ahora para quitarla:', appGone: 'Se quitó la app de autenticación.',
     todoTitle: 'Falta', todoPhone: 'Agregue su número de celular', todoPhoneWhy: 'Necesario para recibir códigos de entrada por mensaje de texto o WhatsApp.', todoContact: 'Agregue un contacto de emergencia', todoContactWhy: 'A quién llamamos si le pasa algo en el trabajo.', todoAddress: 'Agregue la dirección de su casa', todoAddressWhy: 'Aparece en su formulario de impuestos W-2.', todoBank: 'Agregue una cuenta de banco para su pago', todoBankWhy: 'Para que su pago vaya directo a su cuenta.', fixIt: 'Agregar',
     phoneWhy: 'Su celular. Los códigos de entrada por mensaje de texto o WhatsApp van solo a este número.', codeVia: 'Enviar mis códigos de entrada por', viaAuto: 'Elegir por mí (correo, o mi teléfono si entro con mi número)', viaEmail: 'Correo electrónico', viaText: 'Mensaje de texto', viaWhatsApp: 'WhatsApp', codeViaHint: 'Sirve en cualquier dispositivo. Texto y WhatsApp necesitan su celular arriba; sin él, los códigos van por correo.', usePhone: 'Usar {p}', zipState: 'El código postal {z} está en {s}. Estado completado.', routingOk: 'El número de ruta parece correcto.', routingBad: 'Este número de ruta no parece correcto. Revise los 9 dígitos en un cheque o en la app de su banco.', acctOk: 'Los números de cuenta coinciden.', acctBad: 'Los dos números de cuenta son diferentes.',
     title: 'Mis datos', back: 'Volver al reloj', basics: 'Nombre y teléfono', preferred: 'Nombre que prefiere usar', phone: 'Teléfono', save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado.',
@@ -240,7 +256,32 @@ function wireSmart() {
   bf.accountNumber.addEventListener('input', acct); bf.accountNumber2.addEventListener('input', acct);
   $('phoneSuggest').addEventListener('click', () => { $('basicForm').elements.phone.value = formatPhone(phoneFromSignin()); $('phoneSuggestRow').hidden = true; $('basicForm').elements.phone.focus(); });
 }
-async function load() { data = await req('GET', '/me/profile'); paint(); paintTodo(); }
+async function load() { data = await req('GET', '/me/profile'); paint(); paintTodo(); loadApp(); }
+async function loadApp() {
+  try {
+    const s = await req('GET', '/me/authenticator');
+    $('appState').textContent = tr(s.enabled ? 'appOn' : 'appOff');
+    $('appStart').hidden = s.enabled; $('appRemove').hidden = !s.enabled;
+  } catch (_) { $('appCard').hidden = true; }
+}
+$('appStart').addEventListener('click', async () => {
+  try {
+    const s = await req('POST', '/me/authenticator/start');
+    $('appSecret').textContent = s.secret; $('appOpen').href = s.otpauthUrl;
+    const svg = window.QrMini ? window.QrMini.svg(s.otpauthUrl, { scale: 4 }) : null;
+    $('appQr').innerHTML = svg || '';
+    $('appSetup').hidden = false; $('appConfirm').elements.code.focus();
+  } catch (err) { say(err.message, false); }
+});
+$('appConfirm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { await req('POST', '/me/authenticator/confirm', { code: e.target.elements.code.value.trim() }); $('appSetup').hidden = true; e.target.reset(); await loadApp(); say(tr('appDone')); }
+  catch (err) { say(err.message, false); }
+});
+$('appRemove').addEventListener('click', async () => {
+  const code = String(window.prompt(tr('appAskCode')) || '').trim(); if (!code) return;
+  try { await req('DELETE', '/me/authenticator', { code }); await loadApp(); say(tr('appGone')); } catch (err) { say(err.message, false); }
+});
 const closeForms = () => ['legalForm', 'addressForm', 'bankForm'].forEach((id) => { $(id).hidden = true; $(id).reset(); });
 
 $('basicForm').addEventListener('submit', async (e) => {
@@ -308,6 +349,7 @@ onAuthStateChanged(auth, async (user) => {
   try { await load(); fillBasics(); } catch (_) { say(tr('fail'), false); }
 });
 </script>
+<script src="qr-mini.js"></script>
 <script type="module" src="us-nav.js?v=2"></script>
 </body>
 </html>

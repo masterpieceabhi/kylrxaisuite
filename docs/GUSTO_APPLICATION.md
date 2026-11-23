@@ -56,7 +56,7 @@ or change time-off policies (all outside App Integration scope; those routes ans
 | Hosting and data residency | United States: Google Cloud (Compute Engine, us-central1) and Google Firebase (Firestore in a US location), behind Cloudflare. The server has no open inbound port (Cloudflare Tunnel). Production is set up the same way in a new project owned only by Prompt AI. |
 | Encryption in transit | HTTPS only (Cloudflare), TLS to Google and Gusto. |
 | Encryption at rest | Google encrypts all stored data. In addition SSN/ITIN, bank account numbers, I-9 document numbers and dependents' SSNs are encrypted by the app with AES-256-GCM, bound to the company and record. Gusto tokens are stored encrypted and never reach the browser. |
-| Authentication | Firebase Authentication. Sign-in by PIN or password; codes by email, text or WhatsApp; authenticator app (TOTP); optional company single sign-on (OIDC or SAML). Five wrong tries lock sign-in for 15 minutes; requests are rate-limited. **[YOU]** see decision 7 below on a second step for new devices. |
+| Authentication | Firebase Authentication. Sign-in by PIN or password; codes by email, text or WhatsApp; authenticator app (TOTP); optional company single sign-on (OIDC or SAML). Five wrong tries lock sign-in for 15 minutes; requests are rate-limited. **Multi-factor:** on a device not used before, owners, HR, payroll, accountants and auditors (the roles that can see SSNs, pay or settings) must also enter a one-time code from their authenticator app, or sent by email, text or WhatsApp; each company can extend this to everyone. Every person can set up an authenticator app in My details. |
 | Password and PIN storage | PINs hashed with bcrypt; passwords held by Firebase Authentication; temporary passwords shown once, never stored readable. |
 | Access control | Eight roles with named permissions checked on every route; nobody approves their own request; managers see only their own people. Tested per role. |
 | Record-level authorization | Every company's data is separated by company id in the server and in the database rules (rule tests run in CI). |
@@ -78,14 +78,12 @@ or change time-off policies (all outside App Integration scope; those routes ans
 1. **[YOU]** Fill every [YOU] above.
 2. **[YOU]** Adopt the three policies (read, change what you cannot keep to, add names and today's date).
 3. **[YOU]** Book the penetration test and put its date in section 5 (a booked test reads far better than "not yet").
-4. **[YOU]** Decide on a second step for new devices (below), so the MFA answer is strong.
+4. Done 2026-11-22: a second step on new devices for privileged roles (section 7).
 5. Submit at dev.gusto.com (the Onn HR application > request production access). Gusto replies by email; nothing more
    is needed from us until then.
 
-## 7. Decision: a second step on a new device
+## 7. A second step on a new device (built 2026-11-22)
 
-Since 2026-11-22 a right PIN signs in on any device. Gusto's review asks about multi-factor authentication. Options:
-- **A company setting "Ask for a code on new devices"**, on by default for owners, HR and payroll roles (they can see
-  SSNs and pay), off for employees. This keeps the quick PIN for staff and gives Gusto a clear "yes, MFA for privileged
-  users". Recommended; about an hour to build.
-- Leave it as is and answer "MFA available (authenticator app, codes), not enforced".
+A right PIN or password signs in. On a device the person has not used before, the roles that can see SSNs, pay or
+company settings must also enter a one-time code (authenticator app when set up, else email, text or WhatsApp); the
+device is then remembered. Each company chooses on its Security page: those roles (default), everyone, or nobody.

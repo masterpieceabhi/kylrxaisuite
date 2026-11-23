@@ -67,6 +67,7 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   mintToken(uid)           -> a sign-in token for the browser (Firebase custom token)
  *   findPersonByPhone(ten)   -> the one person with that mobile on record (same shape as findPerson), or null (optional)
  *   checkPassword(email, pw) -> true when that is the person's password (optional; without it a password just leads to a code)
+ *   secondStep(person)       -> true when this person must also enter a code on a device they have not used (optional)
  *   sendCode(email, code)    -> emails the code; resolves true when it was handed to a mail server
  *   sendCode(email, code, link), sendText(phone, code, link), sendWhatsApp(phone, code, link): link is the one-tap address
  *   linkUrl(id)              -> the full address of a one-tap link (optional; without it no link is sent)
@@ -116,14 +117,12 @@ function create(deps) {
                 : { pinAttempts: attempts });
         };
 
-        // a password (anything that is not a 4-6 digit PIN): right -> signed in on any device; wrong -> counts like a wrong PIN
+        // a password (anything that is not a 4-6 digit PIN): right -> like a right PIN; wrong -> counts like a wrong PIN
+        let passwordOk = false;
         if (secret && !validPin(secret) && usable && !locked && deps.checkPassword) {
-            const ok = await Promise.resolve(deps.checkPassword(address, secret)).catch(() => false);
-            if (ok) {
-                if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
-                return { next: 'signed_in', token: await deps.mintToken(person.uid) };
-            }
-            await wrongTry();
+            passwordOk = await Promise.resolve(deps.checkPassword(address, secret)).catch(() => false);
+            if (passwordOk) { if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 }); }
+            else await wrongTry();
         }
 
         // the PIN is always compared, against a dummy when there is nobody, so the time taken says nothing
@@ -132,25 +131,37 @@ function create(deps) {
             pinOk = await bcrypt.compare(secret, person.pinHash);
             if (!pinOk) await wrongTry();
             else if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
-        } else await bcrypt.compare(secret, DUMMY_HASH);
+        } else if (!passwordOk) await bcrypt.compare(secret, DUMMY_HASH);
 
-        // a right PIN signs in on any device (decided 2026-11-22: "either should work"), like a right password
-        if (pinOk) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
+        // A right PIN or password signs in (decided 2026-11-22: "either should work"). On a device this person has not
+        // used before, people whose company asks for it (by default the roles that can see SSNs, pay or company
+        // settings) first get a code: that is the second step of their sign-in. The device is then remembered.
+        const secretOk = pinOk || passwordOk;
+        let newDevice = false;
+        if (secretOk) {
+            const known = deviceToken && (person.signinDevices || []).some((d) => d && d.h === sha(deviceToken));
+            newDevice = !known && Boolean(deps.secondStep) && Boolean(await Promise.resolve(deps.secondStep(person)).catch(() => true));
+            if (!newDevice) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
+        }
         // something was typed and it was not right (or the person is unknown, or locked): try again, nothing is sent.
         // A code is sent only when they ask for one ("Forgot password or PIN?" sends an empty box).
         // one wording for every refusal, a locked PIN included: "locked" would tell a stranger that the account exists
-        if (secret) return { next: 'retry', message: 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.', ...(deps.showCode && !usable ? { devNote: 'Local only: there is no active account with that email or number in this test database. Use a demo account.' } : {}) };
+        if (secret && !secretOk) return { next: 'retry', message: 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.', ...(deps.showCode && !usable ? { devNote: 'Local only: there is no active account with that email or number in this test database. Use a demo account.' } : {}) };
 
         // everything else goes through a code, sent at once; the answer is the same whether or not the person exists
         const choice = usable
-            ? { type: 'signin_choose', uid: person.uid, email: address, pinOk, hasPin: Boolean(person.pinHash) }
+            ? { type: 'signin_choose', uid: person.uid, email: address, pinOk: secretOk, hasPin: Boolean(person.pinHash) }
             : { type: 'signin_choose', none: true, n: crypto.randomBytes(8).toString('hex') };
         const choiceToken = sign(choice, CODE_TTL_SECONDS);
         if (!deps.autoSend) return { next: 'choose', challenge: choiceToken, message: 'Choose where to get your sign-in code.' };
-        const via = usable ? pickWay(person, { byPhone: Boolean(phone), prefer }) : 'email';
+        // the second step on a new device: an authenticator app, when the person has one (nothing is sent), else a code
+        const via = usable ? (newDevice && person.totp && person.totp.secret ? 'app' : pickWay(person, { byPhone: Boolean(phone), prefer })) : 'email';
         const sent = await requestCode({ challenge: choiceToken, via, phone: via === 'email' ? undefined : person.phone }).catch((e) => { if (e && e.code === 'slow_down') throw e; return null; });
         if (!sent) return { next: 'choose', challenge: choiceToken, message: 'Choose where to get your sign-in code.' };
-        return { next: 'code', challenge: sent.challenge, choice: choiceToken, message: 'We sent you a sign-in code, the way you chose (email, text or WhatsApp). It works for 10 minutes.', ...(sent.devCode ? { devCode: sent.devCode, devNote: sent.devNote } : {}), ...(sent.devLink ? { devLink: sent.devLink } : {}) };
+        const words = newDevice && via === 'app' ? 'This device is new for your account. Open your authenticator app and type the 6-digit code for Onn HR. After that, this device signs in with your PIN or password alone.'
+            : newDevice ? 'This device is new for your account, so we sent you a code to finish signing in (by email, text or WhatsApp, the way you chose). It works for 10 minutes. After that, this device signs in with your PIN or password alone.'
+            : 'We sent you a sign-in code, the way you chose (email, text or WhatsApp). It works for 10 minutes.';
+        return { next: 'code', challenge: sent.challenge, choice: choiceToken, message: words, ...(newDevice ? { newDevice: true } : {}), ...(sent.devCode ? { devCode: sent.devCode, devNote: sent.devNote } : {}), ...(sent.devLink ? { devLink: sent.devLink } : {}) };
     }
 
     /** The way a code goes when nobody chose on the page: My details, then how they signed in, then email. */

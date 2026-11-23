@@ -37,6 +37,7 @@ async function findPerson(email) {
         uid, email, phone: d.phone || (d.usProfile && (d.usProfile.mobilePhone || d.usProfile.phone)) || '', pinHash: d.pinHash || null, pinAttempts: d.pinAttempts || 0, pinLockedUntil: d.pinLockedUntil || null,
         signinDevices: Array.isArray(d.signinDevices) ? d.signinDevices : [],
         codeVia: (d.usProfile && d.usProfile.codeVia) || '', // how they want sign-in codes (My details)
+        role: d.role || null, orgId: d.orgId || null,
         // the authenticator app, when the person has set one up (routes/authenticator.js); the secret is stored encrypted
         totp: require('../services/authenticator').forSignin(uid, d.totp),
         active: !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(d.status || 'Active'))
@@ -54,6 +55,22 @@ async function findPersonByPhone(ten) {
     for (const s of snaps) for (const d of s.docs || []) { const x = d.data(); if (x.orgId && x.email && !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(x.status || 'Active'))) found.set(d.id, x.email); }
     if (found.size !== 1) return null;
     return findPerson(String([...found.values()][0]).trim().toLowerCase());
+}
+
+/**
+ * The company's rule for a code on a new device (organizations/{id}.signinRules.newDeviceCode):
+ *   'privileged' (the default)  roles that can see SSNs, pay or company settings: owner, HR, payroll, accountant, auditor
+ *   'everyone' | 'off'
+ */
+const PRIVILEGED = ['people.read_pay', 'payroll.view', 'people.write', 'security.manage', 'org.settings'];
+async function needsSecondStep(person) {
+    if (!person || !person.orgId) return false;
+    let rule = 'privileged';
+    try { const o = await rawCollection('organizations').doc(String(person.orgId)).get(); const d = (typeof o.exists === 'function' ? o.exists() : o.exists) ? o.data() : {}; rule = (d.signinRules && d.signinRules.newDeviceCode) || 'privileged'; } catch (_) { rule = 'privileged'; }
+    if (rule === 'off') return false;
+    if (rule === 'everyone') return true;
+    const { can } = require('../services/permissions');
+    return PRIVILEGED.some((perm) => { try { return can({ role: person.role }, perm); } catch (_) { return false; } });
 }
 
 /** Checks a password with Firebase Authentication (the local emulator when one is set). False when it cannot be checked. */
@@ -157,6 +174,7 @@ const service = pinSignin.create({
     totp: require('../services/totp'),
     findPerson, findPersonByPhone, checkPassword, savePerson, sendCode, sendText, sendWhatsApp,
     autoSend: true, ways: () => channels(),
+    secondStep: (person) => needsSecondStep(person),
     // the one-tap link: the id is in the part after "#", which browsers never send to a server, and the page asks for a
     // tap before using it, so a mail scanner that opens links cannot use it up
     linkUrl: (id) => `${String(process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/+$/, '')}/login.html#k=${id}`,

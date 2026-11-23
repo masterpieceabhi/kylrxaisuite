@@ -393,3 +393,45 @@ test('nobody gets a link for an account that does not exist', async () => {
     await service.requestCode({ challenge: a.challenge, via: 'email' });
     assert.deepEqual(mails, []);
 });
+
+test('owners, HR and payroll get a code once on a new device; employees go straight in', async () => {
+    const people = new Map([
+        ['boss', { uid: 'boss', email: 'boss@shop.test', phone: '', pinHash: await bcrypt.hash('4826', 4), pinAttempts: 0, signinDevices: [], active: true, role: 'super_admin' }],
+        ['ana', { uid: 'ana', email: 'ana@shop.test', phone: '', pinHash: await bcrypt.hash('1357', 4), pinAttempts: 0, signinDevices: [], active: true, role: 'employee' }]
+    ]);
+    const mails = []; let n = 0;
+    const service = pinSignin.create({
+        findPerson: async (email) => { const p = [...people.values()].find((x) => x.email === email); return p ? { ...p, signinDevices: [...p.signinDevices] } : null; },
+        savePerson: async (uid, patch) => Object.assign(people.get(uid), patch),
+        otp: { generateOtp: () => { n += 1; return { otpId: `o${n}`, code: String(500000 + n) }; }, verifyOtp: ({ code }) => ({ success: code === String(500000 + n) }) },
+        mintToken: async (uid) => `t-${uid}`, sendCode: async (to, code) => { mails.push({ to, code }); return true; }, sendText: async () => true,
+        checkPassword: async (email, pw) => email === 'boss@shop.test' && pw === 'long boss password',
+        autoSend: true, ways: () => ({ text: false, whatsapp: false }),
+        secondStep: async (p) => ['super_admin', 'hr_admin', 'payroll_admin'].includes(p.role), secret: 's'
+    });
+
+    // the employee: right PIN on a new device -> straight in
+    assert.deepEqual(await service.start({ login: 'ana@shop.test', pin: '1357' }), { next: 'signed_in', token: 't-ana' });
+
+    // the owner: right PIN on a new device -> a code is sent at once; with it they are in, and the device is remembered
+    const first = await service.start({ login: 'boss@shop.test', pin: '4826' });
+    assert.equal(first.next, 'code'); assert.equal(first.newDevice, true); assert.match(first.message, /new for your account/);
+    assert.equal(mails.at(-1).to, 'boss@shop.test');
+    const done = await service.verifyCode({ challenge: first.challenge, code: mails.at(-1).code });
+    assert.equal(done.token, 't-boss'); assert.equal(done.pinWasRight, true, 'no new PIN to choose: the PIN was right');
+    assert.deepEqual(await service.start({ login: 'boss@shop.test', pin: '4826', deviceToken: done.deviceToken }), { next: 'signed_in', token: 't-boss' });
+
+    // a right password on another new device also asks for the code; a wrong one just says try again
+    assert.equal((await service.start({ login: 'boss@shop.test', pin: 'long boss password' })).next, 'code');
+    assert.equal((await service.start({ login: 'boss@shop.test', pin: 'wrong password!!' })).next, 'retry');
+});
+
+test('when the company rule cannot be read, the owner still gets the second step (safe side)', async () => {
+    const service = pinSignin.create({
+        findPerson: async () => ({ uid: 'b', email: 'b@x.test', pinHash: await bcrypt.hash('4826', 4), signinDevices: [], active: true }),
+        savePerson: async () => {}, otp: { generateOtp: () => ({ otpId: 'o', code: '111111' }), verifyOtp: () => ({ success: true }) },
+        mintToken: async () => 't', sendCode: async () => true, sendText: async () => true, autoSend: true,
+        secondStep: async () => { throw new Error('database down'); }, secret: 's'
+    });
+    assert.equal((await service.start({ login: 'b@x.test', pin: '4826' })).next, 'code');
+});
