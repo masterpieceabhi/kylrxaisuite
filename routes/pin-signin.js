@@ -66,11 +66,13 @@ async function sendCode(email, code) {
 }
 
 /**
- * Texts the code through Twilio when TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM are set. Resolves false
+ * Texts the code through Twilio when TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM are set (BizCRM's names
+ * TWILIO_SID and TWILIO_TOKEN are accepted too, so its lines can be pasted as they are). Resolves false
  * when they are not. Only ever called with a number that is already on the person's record.
  */
 async function sendText(phone, code) {
-    const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_FROM: from } = process.env;
+    const e = process.env;
+    const sid = e.TWILIO_ACCOUNT_SID || e.TWILIO_SID; const token = e.TWILIO_AUTH_TOKEN || e.TWILIO_TOKEN; const from = e.TWILIO_FROM;
     if (!sid || !token || !from) { logger.warn('[PinSignin] no text message provider is set up (TWILIO_*), so the sign-in code was not texted'); return false; }
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
         method: 'POST',

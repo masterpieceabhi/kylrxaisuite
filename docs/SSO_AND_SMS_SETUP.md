@@ -18,7 +18,8 @@ email. The text goes only to the mobile number already on their record (`routes/
    TWILIO_AUTH_TOKEN=...
    TWILIO_FROM=+1XXXXXXXXXX
    ```
-   then `sudo systemctl restart onnhr`.
+   then `sudo systemctl restart onnhr`. The names BizCRM uses (`TWILIO_SID`, `TWILIO_TOKEN`) work too, so its lines
+   can be pasted as they are; only `TWILIO_FROM` must be a number that is on the Twilio account.
 5. Each tester needs a **mobile number on their record** (My profile, or HR on the person's profile).
 6. Test: sign in with a wrong PIN, choose "Text me a code", type the code.
 
