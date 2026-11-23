@@ -146,7 +146,7 @@ test('after a QR sign-in the person chooses a PIN, and that PIN then signs them 
     });
     const express = await pin.start({ email: 'carlos@example.test', pin: '4821', deviceToken: done.deviceToken });
     assert.deepEqual([express.next, express.token], ['signed_in', 'custom-token-for-u1'], 'the PIN is the quick way in after a QR sign-in');
-    assert.equal((await pin.start({ email: 'carlos@example.test', pin: '4821', deviceToken: 'cd'.repeat(32) })).next, 'choose', 'not on a device that never proved who they are');
+    assert.equal((await pin.start({ email: 'carlos@example.test', pin: '4821', deviceToken: 'cd'.repeat(32) })).next, 'signed_in', 'the right PIN works on any device (decided 2026-11-22)');
     assert.equal((await pin.start({ email: 'carlos@example.test', pin: '9999', deviceToken: done.deviceToken })).next, 'retry', 'not with a wrong PIN (on their own device it only says try again)');
 });
 

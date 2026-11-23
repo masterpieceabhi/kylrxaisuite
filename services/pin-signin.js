@@ -2,10 +2,9 @@
  * Signing in with a PIN, with a code sent by email as the way back in.
  *
  *   1. start(login, secret, deviceToken)       login: an email OR a US mobile number on record; secret: a PIN OR a password
- *        The password is right                                              ->  signed in (on any device)
- *        The PIN is right AND this device has signed in with a code before  ->  signed in.
- *        Anything else (wrong PIN or password, no PIN yet, a device we have not seen, someone we do not know)
- *                                                                           ->  answer "choose": where should the code go?
+ *        The password or the PIN is right                                   ->  signed in (on any device)
+ *        Something else was typed (wrong, locked, or someone we do not know) ->  "try again"; nothing is sent
+ *        Nothing was typed ("Forgot password or PIN?")                      ->  a code is sent at once (see below)
  *        A mobile number finds the person only when exactly one active person has it on record; otherwise it is
  *        treated like an unknown email (same answer, nothing sent).
  *      When a code is needed it is SENT AT ONCE, the person's way: their choice in My details (codeVia), else the phone
@@ -119,10 +118,11 @@ function create(deps) {
             else if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
         } else await bcrypt.compare(secret, DUMMY_HASH);
 
-        const known = usable && deviceToken && (person.signinDevices || []).some((d) => d && d.h === sha(deviceToken));
-        if (pinOk && known) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
-        // the person's own device and a typo: try again, nothing is sent
-        if (known && secret && !pinOk && !locked) return { next: 'retry', message: 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.' };
+        // a right PIN signs in on any device (decided 2026-11-22: "either should work"), like a right password
+        if (pinOk) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
+        // something was typed and it was not right (or the person is unknown, or locked): try again, nothing is sent.
+        // A code is sent only when they ask for one ("Forgot password or PIN?" sends an empty box).
+        if (secret) return { next: 'retry', message: locked ? 'Too many tries. Wait 15 minutes, or press "Forgot password or PIN?" to get a code.' : 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.' };
 
         // everything else goes through a code, sent at once; the answer is the same whether or not the person exists
         const choice = usable

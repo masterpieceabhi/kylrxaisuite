@@ -345,7 +345,7 @@ async function pinStep(login, pin) {
         signin.token = out.token; signin.setupToken = out.setupToken;
         if (out.hasPin && out.pinWasRight) return out.token; // the PIN was right, this was only a device we had not seen
         signin.stage = 'newpin';
-        el('newPinHint').textContent = out.hasPin ? 'The PIN you typed was not right. Choose a new one, or keep the one you had.' : 'You will use this PIN to sign in next time on this device.';
+        el('newPinHint').textContent = out.hasPin ? 'Choose a new PIN, or keep the one you have.' : 'You will use this PIN to sign in next time on this device.';
         el('keepPinRow').hidden = !out.hasPin;
         el('newPin').value = '';
         showStage();
