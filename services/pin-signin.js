@@ -1,10 +1,13 @@
 /**
  * Signing in with a PIN, with a code sent by email as the way back in.
  *
- *   1. start(email, pin, deviceToken)
+ *   1. start(login, secret, deviceToken)       login: an email OR a US mobile number on record; secret: a PIN OR a password
+ *        The password is right                                              ->  signed in (on any device)
  *        The PIN is right AND this device has signed in with a code before  ->  signed in.
- *        Anything else (wrong PIN, no PIN yet, a device we have not seen, an email we do not know)
+ *        Anything else (wrong PIN or password, no PIN yet, a device we have not seen, someone we do not know)
  *                                                                           ->  answer "choose": where should the code go?
+ *        A mobile number finds the person only when exactly one active person has it on record; otherwise it is
+ *        treated like an unknown email (same answer, nothing sent).
  *   2. requestCode(challenge, via, phone)
  *        via "email": the code goes to the email typed in step 1.
  *        via "phone": the person types their mobile number; the code is texted only when that number is the one
@@ -55,6 +58,8 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   savePerson(uid, patch)   -> stores fields on that person
  *   otp                      -> { generateOtp({identifier,purpose,ttlSeconds,maxAttempts}), verifyOtp({otpId,identifier,purpose,code}) }
  *   mintToken(uid)           -> a sign-in token for the browser (Firebase custom token)
+ *   findPersonByPhone(ten)   -> the one person with that mobile on record (same shape as findPerson), or null (optional)
+ *   checkPassword(email, pw) -> true when that is the person's password (optional; without it a password just leads to a code)
  *   sendCode(email, code)    -> emails the code; resolves true when it was handed to a mail server
  *   sendText(phone, code)    -> texts the code to a +1XXXXXXXXXX number; resolves true when a provider took it
  *   sendWhatsApp(phone, code)-> sends the code by WhatsApp to that number; resolves true when a provider took it (optional)
@@ -73,24 +78,42 @@ function create(deps) {
         return d;
     };
 
-    async function start({ email, pin, deviceToken }) {
-        const address = cleanEmail(email);
-        if (!looksLikeEmail(address)) throw fail(400, 'bad_input', 'Enter your email address.');
-        const person = await deps.findPerson(address);
+    async function start({ email, login, pin, deviceToken }) {
+        const typed = String(login || email || '').trim();
+        const byEmail = looksLikeEmail(cleanEmail(typed));
+        const phone = byEmail ? '' : tenDigits(typed);
+        if (!byEmail && !phone) throw fail(400, 'bad_input', 'Enter your email address or mobile number.');
+        let person = null;
+        if (byEmail) person = await deps.findPerson(cleanEmail(typed));
+        else if (deps.findPersonByPhone) person = await deps.findPersonByPhone(phone);
+        const address = person && person.email ? cleanEmail(person.email) : (byEmail ? cleanEmail(typed) : '');
         const usable = person && person.uid && person.active !== false;
+        const locked = usable && person.pinLockedUntil && new Date(person.pinLockedUntil) > now();
+        const secret = String(pin || '');
+        const wrongTry = async () => {
+            const attempts = (person.pinAttempts || 0) + 1;
+            await deps.savePerson(person.uid, attempts >= PIN_MAX_ATTEMPTS
+                ? { pinAttempts: 0, pinLockedUntil: new Date(now().getTime() + PIN_LOCK_MINUTES * 60000).toISOString() }
+                : { pinAttempts: attempts });
+        };
+
+        // a password (anything that is not a 4-6 digit PIN): right -> signed in on any device; wrong -> counts like a wrong PIN
+        if (secret && !validPin(secret) && usable && !locked && deps.checkPassword) {
+            const ok = await Promise.resolve(deps.checkPassword(address, secret)).catch(() => false);
+            if (ok) {
+                if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
+                return { next: 'signed_in', token: await deps.mintToken(person.uid) };
+            }
+            await wrongTry();
+        }
 
         // the PIN is always compared, against a dummy when there is nobody, so the time taken says nothing
         let pinOk = false;
-        const locked = usable && person.pinLockedUntil && new Date(person.pinLockedUntil) > now();
-        if (usable && person.pinHash && validPin(pin) && !locked) {
-            pinOk = await bcrypt.compare(String(pin), person.pinHash);
-            if (!pinOk) {
-                const attempts = (person.pinAttempts || 0) + 1;
-                await deps.savePerson(person.uid, attempts >= PIN_MAX_ATTEMPTS
-                    ? { pinAttempts: 0, pinLockedUntil: new Date(now().getTime() + PIN_LOCK_MINUTES * 60000).toISOString() }
-                    : { pinAttempts: attempts });
-            } else if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
-        } else await bcrypt.compare(String(pin || ''), DUMMY_HASH);
+        if (usable && person.pinHash && validPin(secret) && !locked) {
+            pinOk = await bcrypt.compare(secret, person.pinHash);
+            if (!pinOk) await wrongTry();
+            else if (person.pinAttempts) await deps.savePerson(person.uid, { pinAttempts: 0 });
+        } else await bcrypt.compare(secret, DUMMY_HASH);
 
         const known = usable && deviceToken && (person.signinDevices || []).some((d) => d && d.h === sha(deviceToken));
         if (pinOk && known) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
@@ -122,7 +145,7 @@ function create(deps) {
         const note = (reason, detail) => { try { if (deps.note) deps.note(reason, { via, ...(detail || {}) }); } catch (_) { /* a log line never fails sign-in */ } };
         const out = {
             next: 'code', via,
-            message: via === 'email' ? 'If that email is registered, a code is on its way to it. It works for 10 minutes.'
+            message: via === 'email' ? 'If you have an account, a code is on its way to the email on it. It works for 10 minutes.'
                 : via === 'whatsapp' ? 'If that number is the one on your record, a code is on its way by WhatsApp. It works for 10 minutes.'
                     : 'If that number is the one on your record, a code is on its way by text. It works for 10 minutes.'
         };

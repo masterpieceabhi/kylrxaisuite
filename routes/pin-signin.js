@@ -41,6 +41,35 @@ async function findPerson(email) {
         active: !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(d.status || 'Active'))
     };
 }
+/**
+ * The one active person whose mobile on record is this number (stored in several formats over time), or null when
+ * nobody or more than one person has it: a number shared by two people must not pick one of them.
+ */
+async function findPersonByPhone(ten) {
+    const [a, b, c] = [ten.slice(0, 3), ten.slice(3, 6), ten.slice(6)];
+    const forms = [...new Set([ten, `1${ten}`, `+1${ten}`, `(${a}) ${b}-${c}`, `${a}-${b}-${c}`, `${a}.${b}.${c}`, `${a} ${b} ${c}`, `+1 (${a}) ${b}-${c}`, `+1 ${a}-${b}-${c}`, `+1 ${a} ${b} ${c}`, `1-${a}-${b}-${c}`])];
+    const snaps = await Promise.all(['phone', 'usProfile.phone', 'usProfile.mobilePhone'].map((f) => rawCollection('users').where(f, 'in', forms).get().catch(() => ({ docs: [] }))));
+    const found = new Map();
+    for (const s of snaps) for (const d of s.docs || []) { const x = d.data(); if (x.orgId && x.email && !/^(terminated|inactive|offboarded|suspended|locked)$/i.test(String(x.status || 'Active'))) found.set(d.id, x.email); }
+    if (found.size !== 1) return null;
+    return findPerson(String([...found.values()][0]).trim().toLowerCase());
+}
+
+/** Checks a password with Firebase Authentication (the local emulator when one is set). False when it cannot be checked. */
+async function checkPassword(email, password) {
+    if (process.env.PASSWORD_SIGNIN === 'off' || !email || !password) return false;
+    const emu = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+    let key = null;
+    try { key = JSON.parse(process.env.FIREBASE_WEB_CONFIG || '{}').apiKey || null; } catch (_) { key = null; }
+    key = key || process.env.FIREBASE_API_KEY || (emu ? 'local-emulator' : null);
+    if (!key) return false;
+    const base = emu ? `http://${emu}/identitytoolkit.googleapis.com/v1` : 'https://identitytoolkit.googleapis.com/v1';
+    try {
+        const res = await fetch(`${base}/accounts:signInWithPassword?key=${encodeURIComponent(key)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, returnSecureToken: false }) });
+        return res.ok;
+    } catch (_) { return false; }
+}
+
 async function savePerson(uid, patch) {
     const ref = refs.get(uid);
     if (!ref) throw new Error('person not loaded');
@@ -120,7 +149,7 @@ async function sendWhatsApp(phone, code) {
 
 const service = pinSignin.create({
     totp: require('../services/totp'),
-    findPerson, savePerson, sendCode, sendText, sendWhatsApp,
+    findPerson, findPersonByPhone, checkPassword, savePerson, sendCode, sendText, sendWhatsApp,
     // why a code was not sent, for whoever looks at the server log (the page always gives the same answer)
     note: (reason, d) => logger.warn(`[PinSignin] code not sent by ${d.via}: ${reason}${d.uid ? ` (user ${d.uid})` : ''}`),
     otp: require('../services/otp-verification-service'),
@@ -149,7 +178,7 @@ const deviceOf = (req) => { const m = new RegExp('(?:^|;\\s*)' + COOKIE + '=([a-
 const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production', path: '/api/auth/pin', maxAge: 365 * 86400000 });
 
 router.get('/pin/channels', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ success: true, ...channels() }); });
-router.post('/pin/start', limiter, run((b, req) => service.start({ email: text(b.email, 254), pin: text(b.pin, 12), deviceToken: deviceOf(req) })));
+router.post('/pin/start', limiter, run((b, req) => service.start({ login: text(b.login || b.email, 254), pin: text(b.pin, 200), deviceToken: deviceOf(req) })));
 router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/remember', limiter, run((b, req) => service.rememberDevice({ grant: text(b.grant, 2000), deviceToken: deviceOf(req) })));

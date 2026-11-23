@@ -77,19 +77,19 @@
 
         <form id="loginForm">
           <div class="form-group">
-            <label for="email">Email Address</label>
+            <label for="email">Email or mobile number</label>
             <div class="input-wrapper">
-              <i data-lucide="mail" class="icon-left"></i>
-              <input type="email" id="email" name="email" placeholder="Enter your email" required autocomplete="username">
+              <i data-lucide="user" class="icon-left"></i>
+              <input type="text" id="email" name="email" placeholder="you@company.com or (555) 555-1234" required autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false">
             </div>
-            <a href="javascript:void(0)" id="notYouLink" class="forgot-link" style="display:inline-block;margin-top:.4rem;font-size:.82rem" hidden>Not you? Use a different email</a>
+            <a href="javascript:void(0)" id="notYouLink" class="forgot-link" style="display:inline-block;margin-top:.4rem;font-size:.82rem" hidden>Not you? Use a different email or number</a>
           </div>
 
           <div class="form-group">
-            <label for="password">PIN</label>
+            <label for="password">Password or PIN</label>
             <div class="input-wrapper">
               <i data-lucide="lock" class="icon-left"></i>
-              <input type="password" id="password" name="password" placeholder="Your 4 to 6 digit PIN" inputmode="numeric" autocomplete="off" maxlength="6" data-lpignore="true" data-1p-ignore="true">
+              <input type="password" id="password" name="password" placeholder="Your password or 4 to 6 digit PIN" autocomplete="current-password" maxlength="128">
               <button type="button" class="eye-btn" data-target="password">
                 <i data-lucide="eye"></i>
               </button>
@@ -133,8 +133,8 @@
           </div>
 
           <div class="utils-row" id="pinHelpRow">
-            <span style="font-size:.82rem;color:#64748b">No password needed.</span>
-            <a href="javascript:void(0)" id="noPinLink" class="forgot-link">No PIN, or forgot it?</a>
+            <span style="font-size:.82rem;color:#64748b">Forgot it? We send you a code.</span>
+            <a href="javascript:void(0)" id="noPinLink" class="forgot-link">Forgot password or PIN?</a>
           </div>
           <div class="utils-row" id="keepPinRow" hidden>
             <span></span>
@@ -320,7 +320,7 @@
     </div>
   </div>
 
-  <script type="module" src="login.js?v=3.9"></script>
+  <script type="module" src="login.js?v=4.0"></script>
   <script>if (window.lucide) { lucide.createIcons(); } else { console.error("Lucide failed to load"); }</script>
 </body>
 </html>

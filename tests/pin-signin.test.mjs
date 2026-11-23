@@ -257,3 +257,40 @@ test('when the provider does not take the message, the log says so', async () =>
     await service.requestCode({ challenge: a.challenge, via: 'phone', phone: '4145550123' });
     assert.deepEqual(notes, [{ reason: 'provider_did_not_take_it', via: 'phone' }]);
 });
+
+test('sign in with a mobile number instead of an email, and a password instead of a PIN', async () => {
+    const people = new Map([
+        ['u1', { uid: 'u1', email: 'ana@shop.test', phone: '(414) 213-4642', pinHash: await bcrypt.hash('4826', 4), pinAttempts: 0, signinDevices: [], active: true }],
+        ['u2', { uid: 'u2', email: 'ben@shop.test', phone: '', pinHash: null, pinAttempts: 0, signinDevices: [], active: true }]
+    ]);
+    const saved = [];
+    const service = pinSignin.create({
+        findPerson: async (email) => { const p = [...people.values()].find((x) => x.email === email); return p ? { ...p } : null; },
+        findPersonByPhone: async (ten) => { const hits = [...people.values()].filter((x) => pinSignin.tenDigits(x.phone) === ten); return hits.length === 1 ? { ...hits[0] } : null; },
+        checkPassword: async (email, pw) => email === 'ben@shop.test' && pw === 'correct horse battery',
+        savePerson: async (uid, patch) => { saved.push({ uid, ...patch }); Object.assign(people.get(uid), patch); },
+        otp: { generateOtp: () => ({ otpId: 'o1', code: '111111' }), verifyOtp: () => ({ success: true }) },
+        mintToken: async (uid) => `t-${uid}`, sendCode: async () => true, sendText: async () => true, secret: 's'
+    });
+
+    // a right password signs in at once, on any device, by email or by mobile number
+    assert.deepEqual(await service.start({ login: 'BEN@shop.test', pin: 'correct horse battery' }), { next: 'signed_in', token: 't-u2' });
+    // a wrong password asks where to send a code, and counts like a wrong PIN
+    const wrongPw = await service.start({ login: 'ben@shop.test', pin: 'wrong password' });
+    assert.equal(wrongPw.next, 'choose');
+    assert.equal(people.get('u2').pinAttempts, 1);
+
+    // a mobile number finds the person; a right PIN on a new device still asks for a code once
+    const byPhone = await service.start({ login: '414-213-4642', pin: '4826' });
+    assert.equal(byPhone.next, 'choose');
+    const code = await service.requestCode({ challenge: byPhone.challenge, via: 'email' });
+    assert.match(code.message, /email on it/);
+    const done = await service.verifyCode({ challenge: code.challenge, code: '111111' });
+    assert.equal(done.token, 't-u1');
+    // on that device the mobile number and PIN now sign in straight away
+    assert.deepEqual(await service.start({ login: '+1 (414) 213 4642', pin: '4826', deviceToken: done.deviceToken }), { next: 'signed_in', token: 't-u1' });
+
+    // a number nobody has, or junk, gets the same answer as an unknown email: nothing is revealed
+    assert.equal((await service.start({ login: '414-555-0000', pin: '4826' })).next, 'choose');
+    await assert.rejects(service.start({ login: 'not a login', pin: '4826' }), (e) => e.code === 'bad_input');
+});

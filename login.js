@@ -263,7 +263,8 @@ function rememberedEmail() {
 (function prefillRememberedEmail() {
     const last = rememberedEmail();
     const notYou = document.getElementById('notYouLink');
-    if (!last || !emailInput || emailInput.value || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(last)) return;
+    // the email or mobile number used last on this browser
+    if (!last || !emailInput || emailInput.value || !(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(last) || /^[\d\s()+.-]{10,20}$/.test(last))) return;
     emailInput.value = last;
     if (notYou) notYou.hidden = false;
     setTimeout(() => passwordInput?.focus(), 0);
@@ -313,11 +314,13 @@ async function pinPost(path, body) {
     return json;
 }
 /** One step of the sign-in. Returns the token to finish with, or null when the person has something more to type. */
-async function pinStep(email, pin) {
+async function pinStep(login, pin) {
     if (signin.stage === 'pin') {
-        const out = await pinPost('start', { email, pin });
+        const out = await pinPost('start', { login, pin });
         if (out.next === 'signed_in') return out.token;
         signin.choice = out.challenge; signin.stage = 'choose';
+        // signed in with a mobile number: that number is where a text or WhatsApp code goes
+        if (!/@/.test(login) && el('signinPhone')) el('signinPhone').value = login;
         showStage();
         return null;
     }
@@ -403,9 +406,10 @@ const ssoSignin = { token: null }; // set by the SSO button below, used once by 
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   
-  const email = emailInput.value.trim();
-  const password = passwordInput.value.trim();
-  const cleanEmail = email.toLowerCase();
+  const typedLogin = emailInput.value.trim(); // an email or a mobile number
+  let email = typedLogin;
+  const password = passwordInput.value;
+  let cleanEmail = email.toLowerCase();
   
   const btnText = loginBtn.querySelector('span');
   const originalText = btnText.textContent;
@@ -413,22 +417,12 @@ loginForm?.addEventListener('submit', async (e) => {
   loginBtn.disabled = true;
   errorMessage.style.display = 'none';
 
-  // On a local demo server the demo buttons still fill in a password; everything else signs in with a PIN.
-  const withPassword = IS_LOCAL_DEMO && signin.stage === 'pin' && password && !/^\d{4,6}$/.test(password);
-  // A PIN is 4 to 6 digits. Anything else in the box is almost always an old password the browser filled in by
-  // itself: sending it would quietly look like "no PIN" and ask for a code, so say so and clear the box instead.
-  if (!withPassword && signin.stage === 'pin' && password && !/^\d{4,6}$/.test(password)) {
-    passwordInput.value = String();
-    showError('Your PIN is 4 to 6 digits. Your browser may have filled in an old saved password: type your PIN in the box.');
-    passwordInput.focus();
-    if (btnText) btnText.textContent = signinLabel();
-    loginBtn.disabled = false;
-    return;
-  }
+  // The server checks either: 4 to 6 digits is a PIN, anything else a password. A right password signs in at once; a right
+  // PIN signs in at once on a device used before; anything else asks where to send a code.
   let customToken = null;
   if (ssoSignin.token) { customToken = ssoSignin.token; ssoSignin.token = null; } // finished at the company's identity provider
-  else if (!withPassword) {
-    try { customToken = await pinStep(email, password); }
+  else {
+    try { customToken = await pinStep(typedLogin, password); }
     catch (err) { showError(err.name === 'TypeError' ? 'Network Error: Please check your internet connection.' : err.message); }
     if (!customToken) { if (btnText) btnText.textContent = signinLabel(); loginBtn.disabled = false; return; }
   }
@@ -453,6 +447,8 @@ loginForm?.addEventListener('submit', async (e) => {
         throw firstErr;
       }
       finalUid = userCredential.user.uid;
+      // signed in with a mobile number: from here on, use the email on the account
+      if (!/@/.test(email) && userCredential.user.email) { email = userCredential.user.email; cleanEmail = email.toLowerCase(); }
       token = userCredential.user.accessToken;
 
       // Server-assigned custom claims (set via the Admin SDK only) are the authoritative role
@@ -533,7 +529,7 @@ loginForm?.addEventListener('submit', async (e) => {
 
     console.log('✅ Login successful for:', email, 'Role:', role);
 
-    try { rememberEmail(String(email || '').trim().toLowerCase()); } catch (_) { /* a blocked cookie only means the email is typed next time */ }
+    try { rememberEmail(String(typedLogin || email || '').trim().toLowerCase()); } catch (_) { /* a blocked cookie only means the email is typed next time */ }
     localStorage.setItem('hr_logged_in', 'true');
     localStorage.setItem('hr_user_id', finalUid);
     if (token) localStorage.setItem('hr_access_token', token);
