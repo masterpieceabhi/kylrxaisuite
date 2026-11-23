@@ -113,7 +113,7 @@ function build() {
     if (!document.body.hasAttribute('data-no-onn-footer')) {
         const foot = document.createElement('footer');
         foot.className = 'onn-foot';
-        foot.innerHTML = `<div>${link('us-home.html', t.home)}${MINE.map(([h, x]) => link(h, x)).join('')}<a href="my-privacy.html">${t.privacy}</a><a href="mailto:support@promptaiusa.com">${t.help}</a><a href="#" data-onn="out">${t.out}</a></div>`
+        foot.innerHTML = `<div>${link('us-home.html', t.home)}${MINE.map(([h, x]) => link(h, x)).join('')}<a href="my-privacy.html">${t.privacy}</a><a href="help.html">${t.help}</a><a href="#" data-onn="out">${t.out}</a></div>`
             + `<div>&copy; ${new Date().getFullYear()} Prompt AI Ethical Solutions USA LLC &middot; Onn HR</div>`;
         document.body.appendChild(foot);
     }

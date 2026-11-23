@@ -112,6 +112,6 @@ async function show(name) {
 $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-t]'); if (b) { state.from = ''; state.to = ''; show(b.dataset.t); } });
 onAuthStateChanged(auth, (user) => { if (!user) { window.location.replace('login.html'); return; } show(tab); });
 </script>
-<script type="module" src="us-nav.js?v=2"></script>
+<script type="module" src="us-nav.js?v=3"></script>
 </body>
 </html>

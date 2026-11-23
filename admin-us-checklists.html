@@ -163,6 +163,6 @@ onAuthStateChanged(auth, async (user) => {
   try { const r = await req('GET', '/templates'); tpl = r.templates; $('note').textContent = r.note; paint(); } catch (e) { say(e.message, false); }
 });
 </script>
-<script type="module" src="us-nav.js?v=2"></script>
+<script type="module" src="us-nav.js?v=3"></script>
 </body>
 </html>
