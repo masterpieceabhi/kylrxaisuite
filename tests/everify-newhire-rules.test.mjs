@@ -79,3 +79,10 @@ test('submission validation', () => {
     assert.deepEqual(N.validateSubmission({ userIds: ['a'], state: 'tx', confirmationNumber: 'ABC-123', submittedOn: '2026-03-02' }, '2026-03-03').errors, []);
     assert.equal(N.validateSubmission({ userIds: [], state: 'ZZ', confirmationNumber: 'x', submittedOn: '2026-04-01' }, '2026-03-03').errors.length, 4);
 });
+
+test('the new-hire file names the employer by the legal name in Company details', () => {
+    const N2 = require('../services/new-hire-rules.js');
+    const csv = N2.buildCsv([{ user: { name: 'Leo Test', usProfile: { startDate: '2026-11-16', workState: 'CA' } }, ssn: '' }],
+        { Display_Name: 'Shop', usProfile: { legalName: 'Prompt AI Ethical Solutions USA LLC', ein: '12-3456789', businessAddress: { line1: '1 Main', city: 'San Jose', state: 'CA', zip: '95113' } } });
+    assert.match(csv.split('\r\n')[1], /"Prompt AI Ethical Solutions USA LLC","12-3456789"/);
+});

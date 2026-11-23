@@ -88,7 +88,7 @@ function buildCsv(entries, org) {
         const first = p.legalFirstName || name[0] || ''; const last = p.legalLastName || name.slice(1).join(' ');
         lines.push([
             first, last, e.ssn ? `${e.ssn.slice(0, 3)}-${e.ssn.slice(3, 5)}-${e.ssn.slice(5)}` : '', [a.line1, a.line2].filter(Boolean).join(' '), a.city, a.state, a.zip,
-            startDateOf(u) || '', stateOf(u, org) || '', org.name || org.companyName || '', o.ein || '', [oa.line1, oa.line2].filter(Boolean).join(' '), oa.city, oa.state, oa.zip
+            startDateOf(u) || '', stateOf(u, org) || '', o.legalName || org.Legal_Name || org.legalName || org.name || org.companyName || org.Display_Name || '', o.ein || '', [oa.line1, oa.line2].filter(Boolean).join(' '), oa.city, oa.state, oa.zip
         ].map(csvCell).join(','));
     }
     return lines.join('\r\n') + '\r\n';
