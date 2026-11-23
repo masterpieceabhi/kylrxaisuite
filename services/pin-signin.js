@@ -122,7 +122,8 @@ function create(deps) {
         if (pinOk) return { next: 'signed_in', token: await deps.mintToken(person.uid) };
         // something was typed and it was not right (or the person is unknown, or locked): try again, nothing is sent.
         // A code is sent only when they ask for one ("Forgot password or PIN?" sends an empty box).
-        if (secret) return { next: 'retry', message: locked ? 'Too many tries. Wait 15 minutes, or press "Forgot password or PIN?" to get a code.' : 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.' };
+        // one wording for every refusal, a locked PIN included: "locked" would tell a stranger that the account exists
+        if (secret) return { next: 'retry', message: 'That did not work. Try again, or press "Forgot password or PIN?" to get a code.', ...(deps.showCode && !usable ? { devNote: 'Local only: there is no active account with that email or number in this test database. Use a demo account.' } : {}) };
 
         // everything else goes through a code, sent at once; the answer is the same whether or not the person exists
         const choice = usable
@@ -173,7 +174,12 @@ function create(deps) {
                 : via === 'whatsapp' ? 'If that number is the one on your record, a code is on its way by WhatsApp. It works for 10 minutes.'
                     : 'If that number is the one on your record, a code is on its way by text. It works for 10 minutes.'
         };
-        const nothing = () => { out.challenge = sign({ type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS); return out; };
+        const nothing = () => {
+            out.challenge = sign({ type: 'signin_code', none: true, n: crypto.randomBytes(8).toString('hex') }, CODE_TTL_SECONDS);
+            // only a development server says why nothing came (a real one gives the same answer either way)
+            if (deps.showCode) { out.devCode = undefined; out.devNote = 'Local only: no code was made, because there is no active account with that email or number in this test database. Use a demo account.'; }
+            return out;
+        };
         if (c.none) { note('no_such_person'); return nothing(); }
         const person = await deps.findPerson(c.email);
         if (!person || person.uid !== c.uid || person.active === false) { note('person_not_usable'); return nothing(); }

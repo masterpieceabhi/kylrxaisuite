@@ -107,10 +107,15 @@ async function sendText(phone, code) {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
         method: 'POST',
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.` })
+        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.${otpLine(code)}` })
     });
     if (!res.ok) { logger.warn(`[PinSignin] Twilio refused the text: ${await twilioWhy(res)}`); return false; }
     return true;
+}
+
+/** "@host #code" as the last line of a text lets Android Chrome fill the code in on that site only (WebOTP). */
+function otpLine(code) {
+    try { const host = new URL(process.env.APP_URL || '').host; return host ? `\n\n@${host} #${code}` : ''; } catch (_) { return ''; }
 }
 
 /** Twilio's own error code and message, for the server log (never the page). */

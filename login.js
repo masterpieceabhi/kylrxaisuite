@@ -1,4 +1,5 @@
 import { auth, db, doc, getDoc, collection, query, where, getDocs, setDoc, serverTimestamp } from "./firebase-config.js";
+import { formatPhone } from "./us-smart-fill.js?v=1";
 import { signInWithEmailAndPassword, signInWithCustomToken, signOut, GoogleAuthProvider, OAuthProvider, SAMLAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 
 /** A page inside this app that asked for sign-in first (for example the app-approval page). Only plain same-site pages are accepted. */
@@ -321,12 +322,12 @@ async function pinStep(login, pin) {
         const out = await pinPost('start', { login, pin, prefer });
         if (out.next === 'signed_in') return out.token;
         // a typo on the person's own device: say so, send nothing
-        if (out.next === 'retry') { passwordInput.value = String(); passwordInput.focus(); throw new Error(out.message); }
+        if (out.next === 'retry') { passwordInput.value = String(); passwordInput.focus(); smartSignin.secretTyped(''); throw new Error(`${out.message}${out.devNote ? ` ${out.devNote}` : ''}`); }
         if (!/@/.test(login) && el('signinPhone')) el('signinPhone').value = login;
         // the code was sent at once, the person's way: straight to the code box ("Send it another way" stays below it)
         if (out.next === 'code') {
             signin.challenge = out.challenge; signin.choice = out.choice; signin.stage = 'code';
-            el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
+            el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}.` : ''}${out.devNote ? ` ${out.devNote}` : ''}`;
             el('signinCode').value = '';
             showStage();
             return null;
@@ -364,7 +365,7 @@ async function sendSigninCode(via) {
         const out = await pinPost('send', { challenge: signin.choice, via, phone: phoneWay ? el('signinPhone').value.trim() : undefined });
         codeWays.remember(via, phoneWay ? el('signinPhone').value.trim() : '');
         signin.challenge = out.challenge; signin.stage = 'code';
-        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}. ${out.devNote}` : ''}`;
+        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}.` : ''}${out.devNote ? ` ${out.devNote}` : ''}`;
         el('signinCode').value = '';
         showStage();
     } catch (err) {
@@ -884,3 +885,74 @@ import('./region.js').then(async (R) => {
     if (!info || !info.restricted || !form) return;
     for (const c of info.elsewhere) { const line = R.addressLine(c, 'sign in', 'login.html'); if (line) form.insertAdjacentElement('afterend', line); }
 }).catch(() => {});
+
+// ------------------------------------------------------------------------------------------------ smart sign-in boxes
+// Everything here only helps people type; the server decides who signs in. Remembered things stay in this browser.
+const smartSignin = (() => {
+    const KIND = 'onnhr_secret_kind'; // 'pin' or 'password': what this person used last on this browser
+    const idLabel = document.querySelector('label[for="email"]');
+    const pwLabel = document.querySelector('label[for="password"]');
+    const codeInput = document.getElementById('signinCode');
+    const phoneish = (v) => /^[\d\s()+.-]+$/.test(v) && v.replace(/\D/g, '').length >= 3;
+    const read = (k) => { try { return localStorage.getItem(k) || ''; } catch (_) { return ''; } };
+    const write = (k, v) => { try { localStorage.setItem(k, v); } catch (_) { /* private window */ } };
+    if (!emailInput || !passwordInput) return { secretTyped() {} };
+
+    // 1. the first box: a phone number is shown as one while it is typed, and the label says which it is
+    const label = () => { if (!idLabel) return; const v = emailInput.value.trim(); idLabel.textContent = /@/.test(v) ? 'Email' : phoneish(v) ? 'Mobile number' : 'Email or mobile number'; };
+    emailInput.addEventListener('input', (e) => {
+        const v = emailInput.value;
+        if (phoneish(v) && !(e.inputType || '').startsWith('delete')) { const f = formatPhone(v); if (f !== v) emailInput.value = f; }
+        label();
+    });
+    label();
+    // Enter in the first box goes to the second one when it is still empty
+    emailInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && signin.stage === 'pin' && !passwordInput.value) { e.preventDefault(); passwordInput.focus(); } });
+
+    // 2. the second box: the number pad for people who use a PIN, the full keyboard for a password, and a link to switch
+    const row = passwordInput.closest('.form-group');
+    const extra = document.createElement('div');
+    extra.style.cssText = 'display:flex;justify-content:space-between;gap:.6rem;margin-top:.35rem;font-size:.8rem';
+    const caps = document.createElement('span'); caps.style.color = '#b45309'; caps.textContent = 'Caps Lock is on'; caps.hidden = true;
+    const switcher = document.createElement('a'); switcher.href = 'javascript:void(0)'; switcher.className = 'forgot-link'; switcher.style.marginLeft = 'auto';
+    extra.append(caps, switcher);
+    if (row) row.appendChild(extra);
+    const useKind = (kind) => {
+        if (kind === 'pin') { passwordInput.setAttribute('inputmode', 'numeric'); passwordInput.placeholder = 'Your 4 to 6 digit PIN'; switcher.textContent = 'Use a password instead'; }
+        else { passwordInput.removeAttribute('inputmode'); passwordInput.placeholder = kind === 'password' ? 'Your password' : 'Your password or 4 to 6 digit PIN'; switcher.textContent = 'Use a PIN instead'; }
+        useKind.now = kind;
+    };
+    useKind(read(KIND) || '');
+    switcher.addEventListener('click', () => { useKind(useKind.now === 'pin' ? 'password' : 'pin'); passwordInput.value = String(); passwordInput.focus(); });
+    const secretTyped = (v) => {
+        if (pwLabel) pwLabel.textContent = !v ? 'Password or PIN' : /^\d{1,6}$/.test(v) ? 'PIN' : 'Password';
+    };
+    passwordInput.addEventListener('input', () => secretTyped(passwordInput.value));
+    const capsCheck = (e) => { if (e.getModifierState) caps.hidden = !e.getModifierState('CapsLock') || useKind.now === 'pin'; };
+    passwordInput.addEventListener('keydown', capsCheck); passwordInput.addEventListener('keyup', capsCheck);
+    passwordInput.addEventListener('blur', () => { caps.hidden = true; });
+    // remember which kind was used, once the form is sent with something in the box
+    loginForm?.addEventListener('submit', () => { const v = passwordInput.value; if (signin.stage === 'pin' && v) write(KIND, /^\d{4,6}$/.test(v) ? 'pin' : 'password'); }, true);
+
+    // 3. the code box: paste anything (only the digits are kept), and it sends itself at 6 digits
+    if (codeInput) {
+        codeInput.addEventListener('input', () => {
+            const d = codeInput.value.replace(/\D/g, '').slice(0, 6);
+            if (d !== codeInput.value) codeInput.value = d;
+            if (d.length === 6 && signin.stage === 'code') loginForm?.requestSubmit();
+        });
+        // on Android Chrome the code is read from the text message by itself (the message ends with "@site #code")
+        let asking = null;
+        const watch = new MutationObserver(() => {
+            const shown = signin.stage === 'code' && !el('codeGroup').hidden;
+            if (shown && !asking && 'OTPCredential' in window) {
+                asking = new AbortController();
+                navigator.credentials.get({ otp: { transport: ['sms'] }, signal: asking.signal })
+                    .then((otp) => { if (otp && otp.code && signin.stage === 'code') { codeInput.value = otp.code; codeInput.dispatchEvent(new Event('input')); } })
+                    .catch(() => {}).finally(() => { asking = null; });
+            } else if (!shown && asking) { asking.abort(); asking = null; }
+        });
+        watch.observe(el('codeGroup'), { attributes: true, attributeFilter: ['hidden'] });
+    }
+    return { secretTyped };
+})();

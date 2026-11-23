@@ -165,7 +165,7 @@ test('five wrong PINs lock the PIN for 15 minutes; the code still works, and the
     w.advance(1);
     const stillLocked = await w.service.start({ email: 'ana@shop.test', pin: '4826', deviceToken: device });
     assert.equal(stillLocked.next, 'retry', 'the right PIN does not sign in while the PIN is locked');
-    assert.match(stillLocked.message, /Too many tries/);
+    assert.equal(stillLocked.message, (await w.service.start({ email: 'nobody@shop.test', pin: '1111' })).message, 'a locked account reads like any wrong try');
     const locked = await w.byEmail({ email: 'ana@shop.test', pin: '', deviceToken: device });
     const viaCode = await w.service.verifyCode({ challenge: locked.challenge, code: w.sent.at(-1).code });
     assert.equal(viaCode.token, 'token-for-u1');
