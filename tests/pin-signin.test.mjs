@@ -343,3 +343,53 @@ test('a code is sent at once, the person\'s way, and the answer never says which
     assert.equal(nobody.r.message, a.r.message, 'the same words for everyone');
     assert.deepEqual(Object.keys(nobody.r).sort(), Object.keys(a.r).sort());
 });
+
+test('a one-tap link in the code message signs in once; the link and the code end each other', async () => {
+    const people = new Map([['u1', { uid: 'u1', email: 'ana@shop.test', phone: '', pinHash: null, pinAttempts: 0, signinDevices: [], active: true }]]);
+    const codes = new Map(); let n = 0; let clock = Date.parse('2026-11-22T12:00:00Z'); const mails = [];
+    const service = pinSignin.create({
+        findPerson: async (email) => { const p = people.get('u1'); return p.email === email ? { ...p } : null; },
+        savePerson: async (uid, patch) => Object.assign(people.get(uid), patch),
+        otp: {
+            generateOtp: () => { n += 1; const otpId = `o${n}`; const code = String(400000 + n); codes.set(otpId, { code, used: false }); return { otpId, code }; },
+            verifyOtp: ({ otpId, code }) => { const c = codes.get(otpId); if (!c || c.used || c.code !== code) return { success: false }; c.used = true; return { success: true }; }
+        },
+        mintToken: async (uid) => `t-${uid}`, sendCode: async (to, code, link) => { mails.push({ to, code, link }); return true; }, sendText: async () => true,
+        linkUrl: (id) => `https://app.test/login.html#k=${id}`, secret: 's', now: () => new Date(clock)
+    });
+    const ask = async () => { const a = await service.start({ login: 'ana@shop.test', pin: '' }); return service.requestCode({ challenge: a.challenge, via: 'email' }); };
+    const idOf = (link) => link.split('#k=')[1];
+
+    const first = await ask();
+    assert.match(mails[0].link, /^https:\/\/app\.test\/login\.html#k=[A-Za-z0-9_-]{24}$/, 'the email carries a link');
+    const done = await service.verifyLink({ link: idOf(mails[0].link) });
+    assert.equal(done.token, 't-u1'); assert.match(done.deviceToken, /^[a-f0-9]{64}$/);
+    await assert.rejects(service.verifyLink({ link: idOf(mails[0].link) }), (e) => e.code === 'link_used', 'once only');
+    await assert.rejects(service.verifyCode({ challenge: first.challenge, code: mails[0].code }), (e) => e.code === 'wrong_code', 'the code ends with the link');
+
+    // typing the code first ends the link
+    clock += 60000; const second = await ask();
+    await service.verifyCode({ challenge: second.challenge, code: mails[1].code });
+    await assert.rejects(service.verifyLink({ link: idOf(mails[1].link) }), (e) => e.code === 'link_used', 'the link ends with the code');
+
+    // a link runs out with its code
+    clock += 60000; await ask();
+    clock += 11 * 60000;
+    await assert.rejects(service.verifyLink({ link: idOf(mails[2].link) }), (e) => e.code === 'link_used');
+
+    // a made-up link does nothing
+    await assert.rejects(service.verifyLink({ link: 'x'.repeat(24) }), (e) => e.code === 'link_used');
+    await assert.rejects(service.verifyLink({ link: '' }), (e) => e.code === 'link_used');
+});
+
+test('nobody gets a link for an account that does not exist', async () => {
+    const mails = [];
+    const service = pinSignin.create({
+        findPerson: async () => null, savePerson: async () => {}, otp: { generateOtp: () => ({ otpId: 'o', code: '1' }), verifyOtp: () => ({ success: false }) },
+        mintToken: async () => 't', sendCode: async (to, code, link) => { mails.push(link); return true; }, sendText: async () => true,
+        linkUrl: (id) => `https://app.test/login.html#k=${id}`, secret: 's'
+    });
+    const a = await service.start({ login: 'nobody@shop.test', pin: '' });
+    await service.requestCode({ challenge: a.challenge, via: 'email' });
+    assert.deepEqual(mails, []);
+});

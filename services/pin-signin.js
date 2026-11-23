@@ -16,6 +16,10 @@
  *        via "phone": the person types their mobile number; the code is texted only when that number is the one
  *                     on their record. A code is never sent to a number or address that is not already on file.
  *   3. verifyCode(challenge, code)  ->  signed in; the device is remembered; a PIN may now be chosen.
+ *      verifyLink(link)              ->  the same, from the one-tap link in the same email, text or WhatsApp message.
+ *                                        A link works once, for 10 minutes, and is tied to the code: whichever is used
+ *                                        first, the other stops working. Only a hash of the link is kept, in memory
+ *                                        like the codes themselves.
  *   4. setPin(setupToken, pin)      ->  a new PIN, only right after a code was accepted.
  *
  * Why the device matters: a 4 to 6 digit PIN on its own could be guessed across many accounts ("1234" for everyone).
@@ -64,6 +68,8 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   findPersonByPhone(ten)   -> the one person with that mobile on record (same shape as findPerson), or null (optional)
  *   checkPassword(email, pw) -> true when that is the person's password (optional; without it a password just leads to a code)
  *   sendCode(email, code)    -> emails the code; resolves true when it was handed to a mail server
+ *   sendCode(email, code, link), sendText(phone, code, link), sendWhatsApp(phone, code, link): link is the one-tap address
+ *   linkUrl(id)              -> the full address of a one-tap link (optional; without it no link is sent)
  *   sendText(phone, code)    -> texts the code to a +1XXXXXXXXXX number; resolves true when a provider took it
  *   sendWhatsApp(phone, code)-> sends the code by WhatsApp to that number; resolves true when a provider took it (optional)
  *   note(reason, detail)     -> a line for the server log when a code was NOT sent (never shown on the page; optional)
@@ -72,6 +78,16 @@ function fail(status, code, message) { const e = new Error(message); e.status = 
  *   now()                    -> Date (tests)
  */
 function create(deps) {
+    const links = new Map(); // sha(link id) -> { payload, code, expiresAt }: one-tap links, kept like the codes, in memory
+    const makeLink = (payload, code) => {
+        if (!deps.linkUrl) return null;
+        const t = now().getTime();
+        for (const [k, v] of links) if (v.expiresAt < t) links.delete(k);
+        if (links.size > 5000) links.clear();
+        const id = crypto.randomBytes(18).toString('base64url');
+        links.set(sha(id), { payload, code, expiresAt: t + CODE_TTL_SECONDS * 1000 });
+        return deps.linkUrl(id);
+    };
     const now = deps.now || (() => new Date());
     const sign = (payload, seconds) => jwt.sign(payload, deps.secret, { expiresIn: seconds });
     const read = (token, type) => {
@@ -134,7 +150,7 @@ function create(deps) {
         const via = usable ? pickWay(person, { byPhone: Boolean(phone), prefer }) : 'email';
         const sent = await requestCode({ challenge: choiceToken, via, phone: via === 'email' ? undefined : person.phone }).catch((e) => { if (e && e.code === 'slow_down') throw e; return null; });
         if (!sent) return { next: 'choose', challenge: choiceToken, message: 'Choose where to get your sign-in code.' };
-        return { next: 'code', challenge: sent.challenge, choice: choiceToken, message: 'We sent you a sign-in code, the way you chose (email, text or WhatsApp). It works for 10 minutes.', ...(sent.devCode ? { devCode: sent.devCode, devNote: sent.devNote } : {}) };
+        return { next: 'code', challenge: sent.challenge, choice: choiceToken, message: 'We sent you a sign-in code, the way you chose (email, text or WhatsApp). It works for 10 minutes.', ...(sent.devCode ? { devCode: sent.devCode, devNote: sent.devNote } : {}), ...(sent.devLink ? { devLink: sent.devLink } : {}) };
     }
 
     /** The way a code goes when nobody chose on the page: My details, then how they signed in, then email. */
@@ -188,12 +204,15 @@ function create(deps) {
         let made;
         try { made = deps.otp.generateOtp({ identifier: c.email, purpose: 'pin_signin', ttlSeconds: CODE_TTL_SECONDS, maxAttempts: CODE_MAX_ATTEMPTS }); }
         catch (e) { throw fail(429, 'slow_down', 'A code was just sent. Wait half a minute, then try again.'); }
-        const send = via === 'email' ? deps.sendCode(c.email, made.code)
-            : via === 'whatsapp' ? (deps.sendWhatsApp ? deps.sendWhatsApp(`+1${typed}`, made.code) : false)
-                : deps.sendText(`+1${typed}`, made.code);
+        const payload = { type: 'signin_code', uid: person.uid, email: c.email, otpId: made.otpId, pinOk: Boolean(c.pinOk), hasPin: Boolean(c.hasPin), via };
+        const link = makeLink(payload, made.code);
+        const send = via === 'email' ? deps.sendCode(c.email, made.code, link)
+            : via === 'whatsapp' ? (deps.sendWhatsApp ? deps.sendWhatsApp(`+1${typed}`, made.code, link) : false)
+                : deps.sendText(`+1${typed}`, made.code, link);
         const sent = await Promise.resolve(send).catch(() => false);
         if (!sent) note('provider_did_not_take_it', { uid: person.uid });
-        out.challenge = sign({ type: 'signin_code', uid: person.uid, email: c.email, otpId: made.otpId, pinOk: Boolean(c.pinOk), hasPin: Boolean(c.hasPin), via }, CODE_TTL_SECONDS);
+        out.challenge = sign(payload, CODE_TTL_SECONDS);
+        if (deps.showCode && link) out.devLink = link;
         if (deps.showCode) {
             out.devCode = made.code;
             out.devNote = sent ? 'Shown here because this is a development server.'
@@ -264,7 +283,18 @@ function create(deps) {
         return { remembered: true, deviceToken };
     }
 
-    return { start, requestCode, verifyCode, setPin, rememberDevice };
+    /** The one-tap link from a code message: used once, then it is gone; a used or typed code ends it too. */
+    async function verifyLink({ link, deviceToken }) {
+        const used = fail(401, 'link_used', 'This sign-in link has been used or has run out. Ask for a new code.');
+        const key = sha(String(link || ''));
+        const entry = links.get(key);
+        links.delete(key);
+        if (!entry || !/^[A-Za-z0-9_-]{20,40}$/.test(String(link || '')) || entry.expiresAt < now().getTime()) throw used;
+        try { return await verifyCode({ challenge: sign(entry.payload, CODE_TTL_SECONDS), code: entry.code, deviceToken }); }
+        catch (e) { if (e && e.code === 'wrong_code') throw used; throw e; }
+    }
+
+    return { start, requestCode, verifyCode, verifyLink, setPin, rememberDevice };
 }
 
 /** The grant another step hands out for rememberDevice: ten minutes, one person. */

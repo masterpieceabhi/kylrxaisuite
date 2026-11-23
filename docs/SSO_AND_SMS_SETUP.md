@@ -39,6 +39,12 @@ For production: register your own WhatsApp sender in Twilio (needs a Meta Busine
 **authentication** template whose variable `{{1}}` is the code; put its id (HX...) in `TWILIO_WHATSAPP_CONTENT_SID`.
 WhatsApp only allows such a template for messages a person did not just ask for in a chat.
 
+### One-tap sign-in links
+Every code message (email, text, WhatsApp without a template) also carries a link: `https://<APP_URL>/login.html#k=...`.
+Tapping it opens the sign-in page, which asks for one tap ("Continue") and then signs the person in. The link works once,
+for 10 minutes, and is tied to the code: whichever is used first, the other stops working. `APP_URL` must be the address
+people open (it already is on staging). Texts also end with `@<host> #<code>` so Android Chrome can fill the code in.
+
 ### Why did a code not arrive?
 The page always gives the same answer (so nobody can test whose number is whose). The server log says why:
 `sudo journalctl -u onnhr --since "30 min ago" | grep PinSignin` shows lines such as `code not sent by phone:

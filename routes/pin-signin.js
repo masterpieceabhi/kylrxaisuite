@@ -81,7 +81,7 @@ async function savePerson(uid, patch) {
  * Emails the code through the app's one email sender (utils/email.js: SMTP_USER and SMTP_PASS, or RESEND_API_KEY).
  * Resolves false when no email is set up, or when the mail server refused it.
  */
-async function sendCode(email, code) {
+async function sendCode(email, code, link) {
     if (!((process.env.SMTP_USER && process.env.SMTP_PASS) || process.env.RESEND_API_KEY)) {
         logger.warn('[PinSignin] email is not set up (SMTP_USER and SMTP_PASS, or RESEND_API_KEY), so the sign-in code was not emailed');
         return false;
@@ -89,7 +89,7 @@ async function sendCode(email, code) {
     try {
         await require('../utils/email').sendEmail({
             to: email, subject: `${code} is your Onn HR sign-in code`,
-            text: `Your Onn HR sign-in code is ${code}.\n\nIt works for 10 minutes. If you did not try to sign in, you can ignore this email; nobody can sign in without the code.\n\nOnn HR by Prompt AI USA`
+            text: `Your Onn HR sign-in code is ${code}.\n\n${link ? `Or sign in with one tap: ${link}\n\n` : ''}It works for 10 minutes. If you did not try to sign in, you can ignore this email; nobody can sign in without the code.\n\nOnn HR by Prompt AI USA`
         });
         return true;
     } catch (e) { logger.warn(`[PinSignin] the sign-in code could not be emailed: ${String((e && e.message) || e).slice(0, 200)}`); return false; }
@@ -100,14 +100,14 @@ async function sendCode(email, code) {
  * TWILIO_SID and TWILIO_TOKEN are accepted too, so its lines can be pasted as they are). Resolves false
  * when they are not. Only ever called with a number that is already on the person's record.
  */
-async function sendText(phone, code) {
+async function sendText(phone, code, link) {
     const e = process.env;
     const sid = e.TWILIO_ACCOUNT_SID || e.TWILIO_SID; const token = e.TWILIO_AUTH_TOKEN || e.TWILIO_TOKEN; const from = e.TWILIO_FROM;
     if (!sid || !token || !from) { logger.warn('[PinSignin] no text message provider is set up (TWILIO_*), so the sign-in code was not texted'); return false; }
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
         method: 'POST',
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.${otpLine(code)}` })
+        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes.${link ? ` Or tap to sign in: ${link}` : ''} If you did not ask for it, ignore this message.${otpLine(code)}` })
     });
     if (!res.ok) { logger.warn(`[PinSignin] Twilio refused the text: ${await twilioWhy(res)}`); return false; }
     return true;
@@ -136,14 +136,14 @@ function channels(e = process.env) {
  * variable {{1}} is the code) the template is used, which WhatsApp requires outside a 24-hour conversation; without it
  * a plain message is sent, which works in the sandbox after the person has joined it.
  */
-async function sendWhatsApp(phone, code) {
+async function sendWhatsApp(phone, code, link) {
     const e = process.env;
     const sid = e.TWILIO_ACCOUNT_SID || e.TWILIO_SID; const token = e.TWILIO_AUTH_TOKEN || e.TWILIO_TOKEN;
     const from = String(e.TWILIO_WHATSAPP_FROM || '').replace(/^whatsapp:/i, '');
     if (!sid || !token || !from) { logger.warn('[PinSignin] WhatsApp is not set up (TWILIO_WHATSAPP_FROM), so the sign-in code was not sent'); return false; }
     const body = new URLSearchParams({ To: `whatsapp:${phone}`, From: `whatsapp:${from}` });
     if (e.TWILIO_WHATSAPP_CONTENT_SID) { body.set('ContentSid', e.TWILIO_WHATSAPP_CONTENT_SID); body.set('ContentVariables', JSON.stringify({ 1: code })); }
-    else body.set('Body', `${code} is your Onn HR sign-in code. It works for 10 minutes. If you did not ask for it, ignore this message.`);
+    else body.set('Body', `${code} is your Onn HR sign-in code. It works for 10 minutes.${link ? ` Or tap to sign in: ${link}` : ''} If you did not ask for it, ignore this message.`);
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
         method: 'POST',
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -157,6 +157,9 @@ const service = pinSignin.create({
     totp: require('../services/totp'),
     findPerson, findPersonByPhone, checkPassword, savePerson, sendCode, sendText, sendWhatsApp,
     autoSend: true, ways: () => channels(),
+    // the one-tap link: the id is in the part after "#", which browsers never send to a server, and the page asks for a
+    // tap before using it, so a mail scanner that opens links cannot use it up
+    linkUrl: (id) => `${String(process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/+$/, '')}/login.html#k=${id}`,
     // why a code was not sent, for whoever looks at the server log (the page always gives the same answer)
     note: (reason, d) => logger.warn(`[PinSignin] code not sent by ${d.via}: ${reason}${d.uid ? ` (user ${d.uid})` : ''}`),
     otp: require('../services/otp-verification-service'),
@@ -186,6 +189,7 @@ const remember = (res, token) => res.cookie(COOKIE, token, { httpOnly: true, sam
 
 router.get('/pin/channels', (req, res) => { res.set('Cache-Control', 'no-store'); res.json({ success: true, ...channels() }); });
 router.post('/pin/start', limiter, run((b, req) => service.start({ login: text(b.login || b.email, 254), pin: text(b.pin, 200), deviceToken: deviceOf(req), prefer: text(b.prefer, 10) })));
+router.post('/pin/link', limiter, run((b, req) => service.verifyLink({ link: text(b.link, 64), deviceToken: deviceOf(req) })));
 router.post('/pin/send', limiter, run((b) => service.requestCode({ challenge: text(b.challenge, 2000), via: text(b.via, 10), phone: text(b.phone, 30) })));
 router.post('/pin/code', limiter, run((b, req) => service.verifyCode({ challenge: text(b.challenge, 2000), code: text(b.code, 12), deviceToken: deviceOf(req) })));
 router.post('/pin/remember', limiter, run((b, req) => service.rememberDevice({ grant: text(b.grant, 2000), deviceToken: deviceOf(req) })));

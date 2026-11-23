@@ -314,6 +314,15 @@ async function pinPost(path, body) {
     if (!res.ok) { const err = new Error(json.error || 'Sign-in is not working right now. Try again in a minute.'); err.code = json.code; throw err; }
     return json;
 }
+/** The words under the code box; on a development server also the code and the one-tap link, for testing. */
+function codeHintFrom(out) {
+    const box = el('codeHint');
+    box.textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}.` : ''}${out.devNote ? ` ${out.devNote}` : ''}`;
+    if (out.devLink) {
+        const a = document.createElement('a'); a.href = out.devLink; a.target = '_blank'; a.rel = 'noopener'; a.className = 'forgot-link';
+        a.textContent = ' Open the one-tap link (testing)'; box.appendChild(a);
+    }
+}
 /** One step of the sign-in. Returns the token to finish with, or null when the person has something more to type. */
 async function pinStep(login, pin) {
     if (signin.stage === 'pin') {
@@ -327,7 +336,7 @@ async function pinStep(login, pin) {
         // the code was sent at once, the person's way: straight to the code box ("Send it another way" stays below it)
         if (out.next === 'code') {
             signin.challenge = out.challenge; signin.choice = out.choice; signin.stage = 'code';
-            el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}.` : ''}${out.devNote ? ` ${out.devNote}` : ''}`;
+            codeHintFrom(out);
             el('signinCode').value = '';
             showStage();
             return null;
@@ -341,7 +350,7 @@ async function pinStep(login, pin) {
     if (signin.stage === 'choose') return null; // nothing to submit: the two buttons of that step do the work
     if (signin.stage === 'code') {
         let out;
-        try { out = await pinPost('code', { challenge: signin.challenge, code: el('signinCode').value.trim() }); }
+        try { out = signin.link ? await pinPost('link', { link: signin.link }) : await pinPost('code', { challenge: signin.challenge, code: el('signinCode').value.trim() }); }
         catch (err) { if (err.code === 'expired') { signin.stage = 'pin'; showStage(); } throw err; }
         signin.token = out.token; signin.setupToken = out.setupToken;
         if (out.hasPin && out.pinWasRight) return out.token; // the PIN was right, this was only a device we had not seen
@@ -365,7 +374,7 @@ async function sendSigninCode(via) {
         const out = await pinPost('send', { challenge: signin.choice, via, phone: phoneWay ? el('signinPhone').value.trim() : undefined });
         codeWays.remember(via, phoneWay ? el('signinPhone').value.trim() : '');
         signin.challenge = out.challenge; signin.stage = 'code';
-        el('codeHint').textContent = `${out.message}${out.devCode ? ` Code for testing: ${out.devCode}.` : ''}${out.devNote ? ` ${out.devNote}` : ''}`;
+        codeHintFrom(out);
         el('signinCode').value = '';
         showStage();
     } catch (err) {
@@ -547,6 +556,7 @@ loginForm?.addEventListener('submit', async (e) => {
 
     try { rememberEmail(String(typedLogin || email || '').trim().toLowerCase()); } catch (_) { /* a blocked cookie only means the email is typed next time */ }
     localStorage.setItem('hr_logged_in', 'true');
+    try { new BroadcastChannel('onnhr-signin').postMessage('signed-in'); } catch (_) { /* old browser: the other tab just keeps waiting */ }
     localStorage.setItem('hr_user_id', finalUid);
     if (token) localStorage.setItem('hr_access_token', token);
     localStorage.setItem('userName', userData.name || email);
@@ -956,3 +966,42 @@ const smartSignin = (() => {
     }
     return { secretTyped };
 })();
+
+// ------------------------------------------------------------------------------- one-tap link from a code message
+// The address ends with #k=<link>. The part after # never reaches a server, and the link is used only after a tap,
+// so a mail scanner that opens links cannot use it up.
+(function oneTapLink() {
+    const m = /^#k=([A-Za-z0-9_-]{20,40})$/.exec(window.location.hash || '');
+    if (!m || !loginForm) return;
+    history.replaceState(null, '', window.location.pathname + window.location.search); // the link is not kept in the address bar
+    signin.link = m[1];
+    signin.stage = 'code';
+    const card = document.createElement('div');
+    card.className = 'form-group';
+    card.innerHTML = '<p style="margin:0 0 .6rem;font-size:.95rem;color:#334155">You opened a one-tap sign-in link. Tap Continue to sign in on this device.</p>';
+    const go = document.createElement('button'); go.type = 'button'; go.className = 'btn-primary'; go.style.width = '100%'; go.textContent = 'Continue \u2192';
+    card.appendChild(go);
+    const ignore = document.createElement('a'); ignore.href = 'login.html'; ignore.className = 'forgot-link'; ignore.style.cssText = 'display:inline-block;margin-top:.6rem;font-size:.82rem'; ignore.textContent = 'This was not me: sign in another way';
+    card.appendChild(ignore);
+    // only this card shows: the link already says who it is
+    [...loginForm.children].forEach((c) => { c.dataset.oneTapHidden = c.hidden ? '1' : '0'; c.hidden = true; });
+    loginForm.prepend(card);
+    if (emailInput) emailInput.required = false;
+    go.addEventListener('click', () => {
+        go.disabled = true; go.textContent = 'Signing in\u2026';
+        card.remove();
+        [...loginForm.children].forEach((c) => { c.hidden = c.dataset.oneTapHidden === '1'; });
+        showStage();
+        loginForm.requestSubmit();
+    });
+})();
+
+// The tab where the person asked for the code follows along when they sign in with the link in another tab.
+try {
+    new BroadcastChannel('onnhr-signin').onmessage = (e) => {
+        if (e.data !== 'signed-in' || signin.stage !== 'code' || signin.link) return;
+        const box = el('codeHint');
+        if (box) box.textContent = 'You signed in in another tab. You can close this one.';
+        const input = el('signinCode'); if (input) input.disabled = true;
+    };
+} catch (_) { /* old browser */ }
