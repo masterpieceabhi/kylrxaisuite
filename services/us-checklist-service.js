@@ -26,20 +26,25 @@ function factsFor(data, extra = {}) {
 }
 
 /**
- * Who has read the handbook: the company's published policies that ask for an acknowledgement, each acknowledged
- * in its current version. Returns a function userId -> true/false (false for everyone while nothing is published).
+ * Who has read the handbook. Either way a company collects it counts:
+ *   - its published policies that ask for an acknowledgement, each acknowledged in its current version, or
+ *   - a signed "Handbook acknowledgement" e-sign document (services/esign-rules.js, type handbook_ack).
+ * Returns a function userId -> true/false (false while the company has neither).
  */
 async function handbookFacts(orgId) {
     const P = require('./policy-rules');
-    const [pol, acks] = await Promise.all([
+    const [pol, acks, signs] = await Promise.all([
         rawCollection('policies').where('orgId', '==', orgId).get(),
-        rawCollection('policy_acks').where('orgId', '==', orgId).get()
+        rawCollection('policy_acks').where('orgId', '==', orgId).get(),
+        rawCollection('sign_requests').where('orgId', '==', orgId).get().catch(() => ({ docs: [] }))
     ]);
+    const signed = new Set(signs.docs.map((d) => d.data()).filter((r) => r.templateType === 'handbook_ack' && r.status === 'signed' && r.userId).map((r) => r.userId));
     const asking = pol.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.status === 'published' && P.ackState(p, []).needed);
-    if (!asking.length) return () => false;
     const byUser = new Map();
     acks.docs.forEach((d) => { const a = d.data(); if (!byUser.has(a.userId)) byUser.set(a.userId, []); byUser.get(a.userId).push(a); });
     return (userId) => {
+        if (signed.has(userId)) return true;
+        if (!asking.length) return false;
         const mine = byUser.get(userId) || [];
         return asking.every((p) => P.ackState(p, mine.filter((a) => a.policyId === p.id).map((a) => a.version)).done);
     };

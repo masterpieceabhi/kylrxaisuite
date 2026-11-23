@@ -69,7 +69,7 @@ async function loadPerson(uid) {
 }
 const savePerson = (uid, patch) => rawCollection('users').doc(String(uid)).update(patch);
 
-const service = qrSignin.create({ links, loadPerson, savePerson, mintToken: (uid) => admin.auth().createCustomToken(uid), secret: process.env.JWT_SECRET });
+const service = qrSignin.create({ links, loadPerson, savePerson, mintToken: require('../services/sso').guardMint((uid) => admin.auth().createCustomToken(uid)), secret: process.env.JWT_SECRET });
 
 /* ------------------------------- shared helpers ------------------------------- */
 

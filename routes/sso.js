@@ -15,6 +15,23 @@ router.get('/discover', discoverLimiter, async (req, res) => {
     res.json({ success: true, sso: true, providerId: found.providerId, enforce: found.enforce });
 });
 
+/**
+ * Public: finish a company SSO sign-in. Takes the identity provider's Firebase ID token, answers with a one-time
+ * sign-in token for the person's own Onn HR account (services/sso-complete.js).
+ */
+const completeLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { success: false, error: 'Too many requests' } });
+router.post('/complete', completeLimiter, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+        const out = await require('../services/sso-complete').complete(String((req.body || {}).idToken || ''), require('../services/sso-complete').realDeps());
+        Promise.resolve().then(() => require('../services/audit-chain').writeAudit(out.orgId, { action: 'sso_signin', targetId: out.userId, actorId: out.userId, at: new Date().toISOString(), provider: out.provider })).catch(() => {});
+        res.json({ success: true, token: out.token });
+    } catch (e) {
+        if (!e.status) require('../utils/logger').warn(`[SSO] completing a sign-in failed: ${String(e && e.message).slice(0, 160)}`);
+        res.status(e.status || 500).json({ success: false, code: e.code || 'failed', error: e.status ? e.message : 'The sign-in did not finish. Try again.' });
+    }
+});
+
 router.use(verifyToken);
 
 const orgIdOf = (req) => req.user.orgId || req.tenantOrgId || null;

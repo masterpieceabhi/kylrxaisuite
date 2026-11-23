@@ -85,7 +85,9 @@ module.exports = {
                     await page.goto(`${ctx.APP}/login.html`, { waitUntil: 'domcontentloaded', timeout: 45000 });
                     await page.waitForSelector('#email', { timeout: 20000 });
                     await page.type('#email', person.email);
-                    await page.type('#password', person.password);
+                    // the box is a PIN box (maxlength 6): typing a password would be cut short, so the value is set directly;
+                    // on a local demo server the page still accepts a password there
+                    await page.$eval('#password', (el, v) => { el.value = v; }, person.password);
                     await page.click('#loginBtn');
                     await page.waitForFunction(() => !/login\.html/.test(location.pathname), { timeout: 30000 }).catch(() => null);
                     const landed = page.url().replace(/^https?:\/\/[^/]+\//, '').split('?')[0];

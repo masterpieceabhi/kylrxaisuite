@@ -85,7 +85,8 @@ const service = pinSignin.create({
     totp: require('../services/totp'),
     findPerson, savePerson, sendCode, sendText,
     otp: require('../services/otp-verification-service'),
-    mintToken: (uid) => admin.auth().createCustomToken(uid),
+    // a company that requires single sign-on gets no PIN or code sign-in (break-glass accounts excepted)
+    mintToken: require('../services/sso').guardMint((uid) => admin.auth().createCustomToken(uid)),
     secret: process.env.JWT_SECRET,
     showCode: process.env.NODE_ENV !== 'production'
 });

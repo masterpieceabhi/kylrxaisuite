@@ -60,4 +60,18 @@ async function passwordLoginBlocked(user) {
     return true;
 }
 
-module.exports = { PROVIDER_ID, validateSettings, domainOf, discover, passwordLoginBlocked };
+/**
+ * For sign-in doors other than the password (PIN, code, QR): refuses to hand out a sign-in token for someone whose
+ * company requires SSO, unless they are a break-glass account. Wraps the door's own token maker.
+ */
+function guardMint(mint, { load, blocked = passwordLoginBlocked } = {}) {
+    const loadUser = load || (async (uid) => { const s = await rawCollection('users').doc(String(uid)).get(); return (typeof s.exists === 'function' ? s.exists() : s.exists) ? s.data() : null; });
+    return async (uid) => {
+        if (await blocked(await loadUser(uid))) {
+            throw Object.assign(new Error('Your company signs in with single sign-on. Type your email, then press "Sign in with your company (SSO)".'), { status: 403, code: 'sso_required' });
+        }
+        return mint(uid);
+    };
+}
+
+module.exports = { PROVIDER_ID, validateSettings, domainOf, discover, passwordLoginBlocked, guardMint };

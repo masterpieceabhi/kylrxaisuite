@@ -361,6 +361,7 @@ el('otherWayLink')?.addEventListener('click', () => { if (errorMessage) errorMes
 el('noPinLink')?.addEventListener('click', () => { passwordInput?.setRangeText(String(), 0, passwordInput.value.length); loginBtn?.click(); }); // empties the PIN box: no PIN means a code is used
 el('keepPinLink')?.addEventListener('click', () => { signin.keep = true; loginBtn?.click(); });
 
+const ssoSignin = { token: null }; // set by the SSO button below, used once by the sign-in handler
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   
@@ -387,7 +388,8 @@ loginForm?.addEventListener('submit', async (e) => {
     return;
   }
   let customToken = null;
-  if (!withPassword) {
+  if (ssoSignin.token) { customToken = ssoSignin.token; ssoSignin.token = null; } // finished at the company's identity provider
+  else if (!withPassword) {
     try { customToken = await pinStep(email, password); }
     catch (err) { showError(err.name === 'TypeError' ? 'Network Error: Please check your internet connection.' : err.message); }
     if (!customToken) { if (btnText) btnText.textContent = signinLabel(); loginBtn.disabled = false; return; }
@@ -779,8 +781,21 @@ if (googleLoginBtn) {
                     try {
                         const provider = r.providerId.startsWith('saml.') ? new SAMLAuthProvider(r.providerId) : new OAuthProvider(r.providerId);
                         const result = await signInWithPopup(auth, provider);
-                        if (result && result.user) await processGoogleLoginUser(result.user);
-                    } catch (error) { showError(error.message || 'Single sign-on failed.'); }
+                        if (!result || !result.user) return;
+                        // The provider's account is not the person's Onn HR account: the server checks the sign-in and
+                        // answers with a one-time token for the person's own account (routes/sso.js, POST /complete).
+                        const idToken = await result.user.getIdToken();
+                        const res = await fetch('/api/sso/complete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }) });
+                        const out = await res.json().catch(() => ({}));
+                        try { await signOut(auth); } catch (_) {}
+                        if (!res.ok || !out.token) { showError(out.error || 'Single sign-on failed. Try again.'); return; }
+                        ssoSignin.token = out.token;
+                        loginForm?.requestSubmit();
+                    } catch (error) {
+                        showError(error && error.code === 'auth/account-exists-with-different-credential'
+                            ? 'Single sign-on is not finished on our side yet: your administrator must allow one account per sign-in provider in Firebase Authentication. Sign in with your PIN for now.'
+                            : (error && error.code === 'auth/popup-closed-by-user' ? 'The sign-in window was closed before it finished.' : (error.message || 'Single sign-on failed.')));
+                    }
                 });
             } catch (_) {}
         }

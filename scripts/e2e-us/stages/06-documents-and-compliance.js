@@ -293,7 +293,8 @@ module.exports = {
         check('an answer without confirming it is voluntary is refused (400)', (await call('PUT', `${U}/eeo/me`, cashier, { sex: 'male', hispanic: 'yes', veteran: 'declined', disability: 'no', races: [] })).s === 400);
         const selfId = await call('PUT', `${U}/eeo/me`, cashier, { voluntaryNoticeAccepted: true, sex: 'male', hispanic: 'yes', veteran: 'not_protected_veteran', disability: 'no', races: [] });
         const eeoMe = await call('GET', `${U}/eeo/me`, cashier);
-        check('the cashier answers, and is shown only that they answered, never the answers', selfId.s === 200 && eeoMe.s === 200 && eeoMe.b.answered === true && !/hispanic|veteran|"male"/.test(eeoMe.text), { put: selfId.b, me: eeoMe.b });
+        // the person sees their own answers (to change them later); HR only ever sees totals (the report below)
+        check('the cashier answers and sees their own answers back', selfId.s === 200 && eeoMe.s === 200 && eeoMe.b.answered === true && eeoMe.b.answers && eeoMe.b.answers.sex === 'male', { put: selfId.b, me: eeoMe.b });
         const jobCat = (eeoOpt.b.jobCategories || []).find((c) => /sales/i.test(c.key + c.label)) || (eeoOpt.b.jobCategories || [])[0] || {};
         const setCat = await call('PUT', `${U}/eeo/job-category/${P.cashier.uid}`, hr, { jobCategory: jobCat.key });
         check('HR sets the cashier\'s EEO job category', setCat.s === 200, setCat.b);

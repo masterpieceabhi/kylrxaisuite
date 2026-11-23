@@ -234,8 +234,12 @@ module.exports = {
         const afterForms = await call('GET', `${U}/checklists/mine`, me);
         const formTasks = (((afterForms.b.lists || []).find((l) => l.id === listId) || { tasks: [] }).tasks).filter((t) => ['w4', 'i9_section1', 'direct_deposit'].includes(t.id));
         check('the three form tasks tick themselves once the forms are filled in', afterForms.s === 200 && formTasks.length === 3 && formTasks.every((t) => t.done && t.doneByData), formTasks.map((t) => ({ id: t.id, done: t.done })));
+        // the emergency-contact task completes from the data itself: ticking it by hand is refused, adding a contact ticks it
         const tickOwn = await call('PUT', `${T}/emergency_contact`, me, { status: 'done', note: 'Gave my sister\'s number' });
-        check('the new hire ticks one of their own tasks', tickOwn.s === 200, tickOwn.b);
+        check('the new hire cannot tick "emergency contact" by hand: it completes from the contact itself (403)', tickOwn.s === 403, tickOwn.b);
+        const contact = await call('POST', `${U}/me/emergency-contacts`, me, { name: 'Ana Sister', relationship: 'Sister', phone: '512-555-0177' });
+        const afterContact = (((await call('GET', `${U}/checklists/mine`, me)).b.lists || []).find((l) => l.id === listId) || { tasks: [] }).tasks.find((t) => t.id === 'emergency_contact') || {};
+        check('adding an emergency contact ticks the task by itself', (contact.s === 200 || contact.s === 201) && afterContact.done === true, { add: contact.b, task: afterContact });
         const tickHrs = await call('PUT', `${T}/manager_told`, me, { status: 'done' });
         check('the new hire cannot tick an HR task (403)', tickHrs.s === 403, tickHrs.b);
 
@@ -292,8 +296,9 @@ module.exports = {
                 const signedDocs = await call('GET', `${U}/vault/documents`, me);
                 check('it shows as signed, and the signed copy is among the new hire\'s documents', (mySigned.b.data || []).some((r) => r.id === hbId && r.status === 'signed') && (signedDocs.b.data || []).some((d) => /handbook/i.test(String(d.title))), { my: mySigned.b.data, docs: (signedDocs.b.data || []).map((d) => d.title) });
             }
-            const tickHandbook = await call('PUT', `${T}/handbook`, me, { status: 'done' });
-            check('the new hire ticks "read the employee handbook"', tickHandbook.s === 200, tickHandbook.b);
+            // a signed handbook acknowledgement completes "read the employee handbook" by itself
+            const hbTask = (((await call('GET', `${U}/checklists/mine`, me)).b.lists || []).find((l) => l.id === listId) || { tasks: [] }).tasks.find((t) => t.id === 'handbook') || {};
+            check('signing the handbook acknowledgement ticks "read the employee handbook" by itself', hbTask.done === true, hbTask);
         }
 
         // ---------------------------------------------------------------------------------------- E-Verify
