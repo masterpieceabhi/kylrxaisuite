@@ -124,7 +124,7 @@ async function sendText(phone, code, link) {
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
         method: 'POST',
         headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString('base64')}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes.${link ? ` Or tap to sign in: ${link}` : ''} If you did not ask for it, ignore this message.${otpLine(code)}` })
+        body: new URLSearchParams({ To: phone, From: from, Body: `${code} is your Onn HR sign-in code. It works for 10 minutes.${link ? ` Or tap to sign in: ${link}` : ''} If you did not ask for it, ignore this message. Reply STOP to opt out.${otpLine(code)}` })
     });
     if (!res.ok) { logger.warn(`[PinSignin] Twilio refused the text: ${await twilioWhy(res)}`); return false; }
     return true;
