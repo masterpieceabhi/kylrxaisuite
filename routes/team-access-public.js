@@ -102,7 +102,11 @@ router.post('/team/join/request', actLimiter, async (req, res) => {
     if (errors.length) return res.status(400).json({ success: false, errors });
     const r = await svc.submitJoinRequest(b.token, value, sentPassword ? b.password : svc.unknownPassword(), req.ip);
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.status === 404 ? DEAD_LINK : r.error });
-    if (r.created) auditFor(r.orgId, req, 'us_join_request_received', r.requestId);
+    if (r.created) {
+        auditFor(r.orgId, req, 'us_join_request_received', r.requestId);
+        // Not awaited: the answer must take the same time whether or not a request was stored
+        require('../services/team-invite-emails').notifyJoinRequest(r.orgId, `${value.firstName} ${value.lastName}`).catch(() => {});
+    }
     // The same answer whether or not a request was stored (an email that already has an account stores nothing)
     res.status(202).json({ success: true, status: 'waiting_for_approval' });
 });

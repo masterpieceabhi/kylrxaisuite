@@ -48,14 +48,16 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
       <a href="#quickCard"><b>Type names and emails</b><br>One person per line. Each one gets a personal link to choose their own PIN.</a>
       <a href="#joinCard"><b>Share one join link</b><br>Post a link or QR code. People ask to join and you approve them.</a>
     </div>
-    <p class="hint">This system does not send email. You copy each link or show the QR code yourself.</p>
+    <p class="hint mailOn" hidden>Set-up links are emailed to each person. You can also copy a link or show its QR code.</p>
+    <p class="hint mailOff">Email is not set up, so nothing is emailed: you copy each link or show the QR code yourself.</p>
   </section>
 
   <section class="card" id="importCard" hidden>
     <h2>1. Bring in your list</h2>
     <p class="hint">Copy the rows in Excel or Google Sheets (with the header row) and paste them here, or choose a CSV or Excel file. Exports from payroll tools work as they are: you do not need to rename columns. At most <span id="maxRows">500</span> people at a time.</p>
     <textarea id="pasteBox" placeholder="Paste here. For example:&#10;First Name&#9;Last Name&#9;Email&#9;Hire Date&#9;Job Title&#10;Maria&#9;Lopez&#9;maria@example.com&#9;1/17/2025&#9;Cook" spellcheck="false"></textarea>
-    <div class="row"><button type="button" id="readPaste">Read what I pasted</button><span class="hint">or</span><input type="file" id="fileIn" accept=".csv,.tsv,.txt,.xlsx,.xls"><span class="hint" id="fileNote"></span></div>
+    <div class="row"><button type="button" id="readPaste">Read what I pasted</button><span class="hint">or</span><input type="file" id="fileIn" accept=".csv,.tsv,.txt,.xlsx,.xls,.vcf,text/vcard,text/x-vcard"><span class="hint" id="fileNote"></span></div>
+    <div class="row"><button type="button" class="ghost" id="pickContacts" hidden>Pick from my phone's contacts</button><span class="hint" id="contactsHint">From your phone's contacts: export them as a .vcf file (iPhone: Contacts, select, Export; Android: Contacts, Fix and manage, Export) and choose that file above. Only names, emails and phone numbers are read.</span></div>
   </section>
 
   <section class="card" id="mapCard" hidden>
@@ -85,12 +87,13 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
       <label><input type="radio" name="access" value="link" checked> <span><b>A personal set-up link for each person (recommended).</b> Each person opens their link, chooses their own PIN and is signed in. Nobody else ever sees it. A link works once and for <span class="linkDays">7</span> days.</span></label>
       <label style="display:none"><input type="radio" name="access" value="password"> <span><b>A temporary password for each person.</b> You hand it over; the person must choose a new password right after their first sign-in.</span></label>
     </div>
+    <label class="mailOn" hidden style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400;margin-top:10px"><input type="checkbox" id="mailLinks" checked> Email each person their set-up link</label>
     <div class="row"><button type="button" id="createBtn" disabled>Add people</button><span class="hint" id="createNote"></span></div>
   </section>
 
   <section class="card" id="handCard" hidden>
     <h2>Hand these out</h2>
-    <div class="warn"><b>These are shown once.</b> This system does not send email: copy each one and give it to that person yourself (text message, chat, in person). Anyone holding a link can get into that person's account, so give each one only to its owner. If one gets lost, make a new one under "Sign-in help" below.</div>
+    <div class="warn"><b>These are shown once.</b> Links marked "Emailed" are already in that person's inbox. Give the others to the person yourself (text message, chat, in person, or let them scan the QR code). Anyone holding a link can get into that person's account, so give each one only to its owner. If one gets lost, make a new one under "Sign-in help" below.</div>
     <div class="scroll" style="margin-top:12px"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Give them this</th><th></th></tr></thead><tbody id="handRows"></tbody></table></div>
     <div class="row"><button type="button" class="ghost" id="copyAll">Copy the whole list</button><button type="button" class="ghost" id="dlAll">Download as a file</button><span class="hint">A downloaded file holds the same secrets. Delete it when you are done.</span></div>
   </section>
@@ -99,13 +102,13 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
     <h2>Quick add: just names and emails</h2>
     <p class="hint">One person per line, like <b>Maria Lopez, maria@example.com</b>. Each person gets a personal set-up link and fills in their own address, tax form and bank details after signing in.</p>
     <textarea id="quickBox" style="min-height:90px" placeholder="Maria Lopez, maria@example.com&#10;Joe Lee, joe@example.com" spellcheck="false"></textarea>
-    <div class="row end"><label>First day of work<input type="date" id="quickStart"></label><button type="button" id="quickBtn">Add them and make set-up links</button></div>
+    <div class="row end"><label>First day of work<input type="date" id="quickStart"></label><label class="mailOn" hidden style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="quickMail" checked> Email them their links</label><button type="button" id="quickBtn">Add them and make set-up links</button></div>
     <div id="quickOut" class="hint" style="margin-top:10px"></div>
   </section>
 
   <section class="card" id="joinCard" hidden>
     <h2>Company join link</h2>
-    <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name and email, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. This system does not send email, so check the waiting list yourself.</p>
+    <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name and email, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. <span class="mailOn" hidden>We email you and your HR administrators when someone asks, and email the person once you approve them.</span><span class="mailOff">Email is not set up, so check the waiting list yourself.</span></p>
     <div class="row end noprint"><label>Works for (days, 1 to <span id="maxDays">30</span>)<input type="number" id="joinDays" min="1" max="30" value="7" style="width:110px"></label><label>Note for yourself (optional)<input id="joinLabel" maxlength="60" placeholder="Kitchen staff, November"></label><button type="button" id="joinNew">Make a join link</button></div>
     <div id="joinFresh" hidden>
       <div class="warn noprint" style="margin-top:12px"><b>Copy this link now.</b> For safety we keep only a fingerprint of it, so it cannot be shown again. You can make another one at any time.</div>
@@ -158,6 +161,23 @@ async function copyText(text) {
   say('Copied.');
 }
 const setupUrl = (token) => `${location.origin}/join.html#s=${token}`;
+let MAIL = false; // email is set up on the server: set-up links can be emailed
+function mailedNote(s) {
+  const n = s.emailed || 0; const rest = s.created - n;
+  if (!n) return 'Now hand out what is listed under "Hand these out".';
+  return rest > 0 ? `${n} set-up ${n === 1 ? 'link was' : 'links were'} emailed. Hand out the other ${rest} yourself (see "Hand these out").` : `Everyone's set-up link was emailed. They are also listed under "Hand these out".`;
+}
+/** A contacts file can carry photos that make it huge: only the text lines we read are sent */
+function vcfText(text) {
+  const keep = []; let skipping = false;
+  for (const line of String(text).replace(/\r\n?/g, '\n').split('\n')) {
+    const qp = !skipping && keep.length && /=$/.test(keep[keep.length - 1]) && /QUOTED-PRINTABLE/i.test(keep.slice(-5).join(' '));
+    if (/^[ \t]/.test(line) || qp) { if (!skipping) keep.push(line); continue; }
+    skipping = !/^(BEGIN|END|VERSION|N|FN|EMAIL|TEL|item\d+\.(EMAIL|TEL))[;:]/i.test(line);
+    if (!skipping) keep.push(line);
+  }
+  return keep.join('\n');
+}
 const joinUrl = (token) => `${location.origin}/join.html#c=${token}`;
 function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
 const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
@@ -177,11 +197,19 @@ async function analyze(body) {
     sheet = r; showMapping();
   } catch (e) { say(e.message, false); }
 }
+if (navigator.contacts && typeof navigator.contacts.select === 'function') {
+  $('pickContacts').hidden = false; $('contactsHint').textContent = 'Choose the people who work for you. Only their names, emails and phone numbers are read.';
+  $('pickContacts').addEventListener('click', async () => {
+    try { const list = await navigator.contacts.select(['name', 'email', 'tel'], { multiple: true }); if (list && list.length) await analyze({ contacts: list }); }
+    catch (e) { say('Could not open your contacts. Export them as a .vcf file and choose that file instead.', false); }
+  });
+}
 $('readPaste').addEventListener('click', () => { const text = $('pasteBox').value; if (!text.trim()) return say('Paste your rows into the box first.', false); analyze({ text }); });
 $('fileIn').addEventListener('change', async (ev) => {
   const file = ev.target.files[0]; if (!file) return;
   try {
-    if (/\.(csv|tsv|txt)$/i.test(file.name)) { await analyze({ text: await file.text() }); } else {
+    if (/\.vcf$/i.test(file.name) || /vcard/i.test(file.type)) { $('fileNote').textContent = 'Phone contacts: tick "Skip" for anyone who does not work for you.'; await analyze({ text: vcfText(await file.text()) }); }
+    else if (/\.(csv|tsv|txt)$/i.test(file.name)) { await analyze({ text: await file.text() }); } else {
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false, blankrows: false });
       $('fileNote').textContent = wb.SheetNames.length > 1 ? `Only the first sheet ("${wb.SheetNames[0]}") is read.` : '';
@@ -293,10 +321,10 @@ $('createBtn').addEventListener('click', async () => {
   if (!window.confirm(`Add ${idx.length} ${idx.length === 1 ? 'person' : 'people'} now?`)) return;
   $('createBtn').disabled = true; say('Adding people. This can take a minute for a long list...');
   try {
-    const r = await api('POST', '/create', { people: idx.map((i) => people[i]), options: { ...options(), access } });
+    const r = await api('POST', '/create', { people: idx.map((i) => people[i]), options: { ...options(), access, email: MAIL && $('mailLinks').checked } });
     const done = new Set();
     r.results.forEach((x, n) => {
-      if (x.status === 'created') { done.add(idx[n]); handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: access, value: access === 'link' ? setupUrl(x.setupToken) : x.temporaryPassword }); } else { results[idx[n]] = { ...results[idx[n]], ok: false, problems: x.problems || [] }; }
+      if (x.status === 'created') { done.add(idx[n]); handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: access, value: access === 'link' ? setupUrl(x.setupToken) : x.temporaryPassword, emailed: Boolean(x.emailed) }); } else { results[idx[n]] = { ...results[idx[n]], ok: false, problems: x.problems || [] }; }
     });
     // created rows leave the grid; the rest stay to be fixed
     const keep = people.map((_, i) => i).filter((i) => !done.has(i));
@@ -304,7 +332,7 @@ $('createBtn').addEventListener('click', async () => {
     people = keep.map((i) => people[i]); results = keep.map((i) => results[i]); skipped = newSkipped;
     drawHandouts(); drawGrid();
     if (!people.length) { $('gridCard').hidden = true; $('mapCard').hidden = true; $('pasteBox').value = ''; }
-    say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added.${r.summary.ssnStored ? ` ${r.summary.ssnStored} Social Security ${r.summary.ssnStored === 1 ? 'number was' : 'numbers were'} stored encrypted.` : ''} Now hand out what is listed under "Hand these out".`);
+    say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added.${r.summary.ssnStored ? ` ${r.summary.ssnStored} Social Security ${r.summary.ssnStored === 1 ? 'number was' : 'numbers were'} stored encrypted.` : ''} ${mailedNote(r.summary)}`);
     $('handCard').scrollIntoView({ behavior: 'smooth' });
     loadAccess().catch(() => {});
   } catch (e) { say(e.message, false); summary(); }
@@ -313,7 +341,7 @@ $('createBtn').addEventListener('click', async () => {
 // --------------------------------------------------------------------------------------- hand out the links
 function drawHandouts() {
   $('handCard').hidden = handouts.length === 0;
-  $('handRows').innerHTML = handouts.map((h, i) => `<tr><td>${esc(h.employeeId || '')}</td><td>${esc(h.name)}</td><td>${esc(h.email)}</td><td>${h.kind === 'link' ? `<span class="hint">Set-up link</span> <code class="link">${esc(h.value)}</code>` : `<span class="hint">Temporary password</span> <code class="link">${esc(h.value)}</code>`}</td><td style="white-space:nowrap"><button type="button" class="ghost small" data-copy="${i}">Copy</button>${h.kind === 'link' ? ` <button type="button" class="ghost small" data-qr="${i}">QR code</button>` : ''}</td></tr>`).join('');
+  $('handRows').innerHTML = handouts.map((h, i) => `<tr><td>${esc(h.employeeId || '')}</td><td>${esc(h.name)}</td><td>${esc(h.email)}</td><td>${h.emailed ? '<span class="tag ok">Emailed</span> ' : ''}${h.kind === 'link' ? `<span class="hint">Set-up link</span> <code class="link">${esc(h.value)}</code>` : `<span class="hint">Temporary password</span> <code class="link">${esc(h.value)}</code>`}</td><td style="white-space:nowrap"><button type="button" class="ghost small" data-copy="${i}">Copy</button>${h.kind === 'link' ? ` <button type="button" class="ghost small" data-qr="${i}">QR code</button>` : ''}</td></tr>`).join('');
 }
 function showQr(title, text) {
   const svg = window.QrMini ? window.QrMini.svg(text, { size: 260 }) : null;
@@ -326,7 +354,7 @@ $('handRows').addEventListener('click', (ev) => {
   const c = ev.target.closest('[data-copy]'); if (c) return copyText(handouts[Number(c.dataset.copy)].value);
   const q = ev.target.closest('[data-qr]'); if (q) { const h = handouts[Number(q.dataset.qr)]; showQr(h.name, h.value); }
 });
-const handoutLines = (sep, cellFn) => [['employee_id', 'name', 'email', 'what', 'value'].join(sep), ...handouts.map((h) => [h.employeeId, h.name, h.email, h.kind === 'link' ? 'set-up link' : 'temporary password', h.value].map(cellFn).join(sep))].join('\n');
+const handoutLines = (sep, cellFn) => [['employee_id', 'name', 'email', 'what', 'value', 'emailed'].join(sep), ...handouts.map((h) => [h.employeeId, h.name, h.email, h.kind === 'link' ? 'set-up link' : 'temporary password', h.value, h.emailed ? 'yes' : 'no'].map(cellFn).join(sep))].join('\n');
 $('copyAll').addEventListener('click', () => copyText(handoutLines('\t', (v) => String(v ?? ''))));
 $('dlAll').addEventListener('click', () => download('new-people-sign-in.csv', handoutLines(',', csvCell)));
 
@@ -338,16 +366,16 @@ $('quickBtn').addEventListener('click', async () => {
   const list = lines.map((line) => { const m = /([^\s<>,;]+@[^\s<>,;]+)/.exec(line); const name = line.replace(m ? m[0] : '', ' ').replace(/[<>;\t]/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s+/g, ' '); const p = {}; if (name) p.full_name = name; if (m) p.email = m[1]; return p; });
   $('quickBtn').disabled = true;
   try {
-    const r = await api('POST', '/create', { people: list, options: { access: 'link', ssn: 'leave', defaultStartDate: $('quickStart').value || today() } });
+    const r = await api('POST', '/create', { people: list, options: { access: 'link', ssn: 'leave', defaultStartDate: $('quickStart').value || today(), email: MAIL && $('quickMail').checked } });
     const left = [];
     r.results.forEach((x, n) => {
-      if (x.status === 'created') handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: 'link', value: setupUrl(x.setupToken) });
+      if (x.status === 'created') handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: 'link', value: setupUrl(x.setupToken), emailed: Boolean(x.emailed) });
       else left.push({ line: lines[n], why: (x.problems || []).map((p) => p.message).join(' ') });
     });
     $('quickBox').value = left.map((l) => l.line).join('\n');
     $('quickOut').innerHTML = left.length ? `<b>${left.length}</b> not added (still in the box so you can fix them):<ul>${left.map((l) => `<li>${esc(l.line)}: ${esc(l.why)}</li>`).join('')}</ul>` : '';
     drawHandouts();
-    if (r.summary.created) { say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added. Hand out the set-up links listed under "Hand these out".`); $('handCard').scrollIntoView({ behavior: 'smooth' }); loadAccess().catch(() => {}); } else say('Nobody was added. See the notes under the box.', false);
+    if (r.summary.created) { say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added. ${mailedNote(r.summary)}`); $('handCard').scrollIntoView({ behavior: 'smooth' }); loadAccess().catch(() => {}); } else say('Nobody was added. See the notes under the box.', false);
   } catch (e) { say(e.message, false); }
   $('quickBtn').disabled = false;
 });
@@ -390,7 +418,7 @@ async function loadRequests() {
 $('waitRows').addEventListener('click', async (ev) => {
   const yes = ev.target.closest('[data-yes]'); const no = ev.target.closest('[data-no]');
   try {
-    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(`${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then \"No PIN, or forgot it?\" on the sign-in page.`); }
+    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(r.emailed ? `${r.employee.name} is approved (${r.employee.employeeId}). We emailed them how to sign in.` : `${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then \"No PIN, or forgot it?\" on the sign-in page.`); }
     else if (no) { if (!window.confirm(`Reject the request from ${no.dataset.name}?`)) return; await api('POST', `/join-requests/${encodeURIComponent(no.dataset.no)}/reject`); say('Request rejected.'); } else return;
     await loadRequests(); await loadAccess();
   } catch (e) { say(e.message, false); if (yes) yes.disabled = false; }
@@ -412,9 +440,9 @@ $('helpRows').addEventListener('click', async (ev) => {
   const what = b.dataset.re === 'link' ? 'a new set-up link' : 'a new temporary password';
   if (!window.confirm(`Give ${b.dataset.name} ${what}? Their current link stops working right away, and they are signed out everywhere.`)) return;
   try {
-    const r = await api('POST', `/people/${encodeURIComponent(b.dataset.id)}/reissue`, { method: b.dataset.re });
-    handouts.push({ employeeId: r.person.employeeId, name: r.person.name, email: r.person.email, kind: r.method, value: r.method === 'link' ? setupUrl(r.token) : r.temporaryPassword });
-    drawHandouts(); await loadAccess(); say(`Done. Give ${r.person.name} what is listed under "Hand these out".`); $('handCard').scrollIntoView({ behavior: 'smooth' });
+    const r = await api('POST', `/people/${encodeURIComponent(b.dataset.id)}/reissue`, { method: b.dataset.re, email: MAIL });
+    handouts.push({ employeeId: r.person.employeeId, name: r.person.name, email: r.person.email, kind: r.method, value: r.method === 'link' ? setupUrl(r.token) : r.temporaryPassword, emailed: Boolean(r.emailed) });
+    drawHandouts(); await loadAccess(); say(r.emailed ? `Done. The new link was emailed to ${r.person.email}. It is also listed under "Hand these out".` : `Done. Give ${r.person.name} what is listed under "Hand these out".`); $('handCard').scrollIntoView({ behavior: 'smooth' });
   } catch (e) { say(e.message, false); }
 });
 
@@ -426,6 +454,8 @@ onAuthStateChanged(auth, async (user) => {
     const f = await api('GET', '/fields');
     FIELDS = f.fields; LABEL = Object.fromEntries(FIELDS.map((x) => [x.key, x.label]));
     $('maxRows').textContent = f.maxRows; $('maxDays').textContent = f.joinLinkMaxDays; $('joinDays').max = f.joinLinkMaxDays;
+    MAIL = f.emailReady === true;
+    document.querySelectorAll('.mailOn').forEach((el) => { el.hidden = !MAIL; }); document.querySelectorAll('.mailOff').forEach((el) => { el.hidden = MAIL; });
     document.querySelectorAll('.linkDays').forEach((el) => { el.textContent = f.setupLinkDays; });
     $('quickStart').value = today(); $('approveStart').value = today();
     ['importCard', 'quickCard', 'joinCard', 'waitCard', 'helpCard'].forEach((id) => { $(id).hidden = false; });

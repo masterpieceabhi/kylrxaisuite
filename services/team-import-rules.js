@@ -583,9 +583,82 @@ function parseQuickAdd(text) {
     });
 }
 
+// ------------------------------------------------------------------------------------- phone contacts (vCard)
+
+/** Is this text a contacts file (.vcf) exported from a phone, Google Contacts, Outlook or iCloud? */
+const isVcf = (text) => /^\s*BEGIN:VCARD/i.test(String(text || '').replace(/^\uFEFF/, ''));
+
+function decodeQuotedPrintable(s) {
+    const bytes = [];
+    const src = String(s).replace(/=\r?\n/g, '');
+    for (let i = 0; i < src.length; i++) {
+        if (src[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(src.slice(i + 1, i + 3))) { bytes.push(parseInt(src.slice(i + 1, i + 3), 16)); i += 2; } else bytes.push(...Buffer.from(src[i], 'utf8'));
+    }
+    return Buffer.from(bytes).toString('utf8');
+}
+const vUnescape = (s) => String(s).replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim();
+/** Splits on ; that is not escaped */
+const vParts = (s) => String(s).split(/(?<!\\);/).map(vUnescape);
+
+/**
+ * Reads a contacts file into a table with a header row: First name, Last name, Full name, Email, Phone.
+ * One row per contact; the first email, and the mobile number when there is one. Contacts with neither a name nor an
+ * email are left out. Photos, addresses, notes and birthdays are never read.
+ */
+function parseVcf(text) {
+    const src = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    // Unfold: a line starting with a space or tab continues the one before; vCard 2.1 quoted-printable continues with "="
+    const lines = [];
+    for (const raw of src.split('\n')) {
+        if (/^[ \t]/.test(raw) && lines.length) lines[lines.length - 1] += raw.slice(1);
+        else if (lines.length && /ENCODING=QUOTED-PRINTABLE/i.test(lines[lines.length - 1]) && /=$/.test(lines[lines.length - 1])) lines[lines.length - 1] = lines[lines.length - 1].slice(0, -1) + raw;
+        else lines.push(raw);
+    }
+    const out = [['First name', 'Last name', 'Email', 'Phone']];
+    let card = null;
+    for (const line of lines) {
+        if (/^BEGIN:VCARD/i.test(line)) { card = { n: null, fn: '', emails: [], tels: [] }; continue; }
+        if (/^END:VCARD/i.test(line)) {
+            if (card) {
+                let first = card.n ? card.n[1] || '' : ''; let last = card.n ? card.n[0] || '' : '';
+                if (!first && !last && card.fn) { const s = splitFullName(card.fn); if (s) { first = s.first; last = s.last; } else first = card.fn; } // only "Joe Lee", no N line
+                const email = card.emails[0] || '';
+                const tel = (card.tels.find((x) => x.mobile) || card.tels[0] || {}).value || '';
+                if (first || last || email) out.push([first, last, email, tel].map((c) => cell(c)));
+                if (out.length > MAX_ROWS + 1) break;
+            }
+            card = null; continue;
+        }
+        if (!card) continue;
+        const colon = line.indexOf(':'); if (colon < 0) continue;
+        const head = line.slice(0, colon); let value = line.slice(colon + 1);
+        const params = head.split(';'); const name = params[0].replace(/^[^.]*\./, '').toUpperCase(); // "item1.EMAIL" -> EMAIL
+        const p = params.slice(1).join(';').toUpperCase();
+        if (/ENCODING=QUOTED-PRINTABLE/.test(p)) value = decodeQuotedPrintable(value);
+        if (name === 'N') card.n = vParts(value);
+        else if (name === 'FN') card.fn = vUnescape(value);
+        else if (name === 'EMAIL') { const e = vUnescape(value).replace(/^mailto:/i, ''); if (/^[^\s@]+@[^\s@]+$/.test(e)) card.emails.push(e); }
+        else if (name === 'TEL') { const v = vUnescape(value).replace(/^tel:/i, ''); if (/\d/.test(v)) card.tels.push({ value: v, mobile: /CELL|MOBILE|IPHONE/.test(p) }); }
+    }
+    return out;
+}
+
+/** Contacts picked on the phone itself (the Contact Picker in Android Chrome): [{ name: [], email: [], tel: [] }] -> a table */
+function contactsToTable(list) {
+    const out = [['Full name', 'Email', 'Phone']];
+    for (const c of (Array.isArray(list) ? list : []).slice(0, MAX_ROWS)) {
+        if (!c || typeof c !== 'object') continue;
+        const first = (a) => (Array.isArray(a) ? a.find((x) => typeof x === 'string' && x.trim()) || '' : '');
+        const row = [first(c.name), first(c.email), first(c.tel)].map((x) => cell(x));
+        if (row[0] || row[1]) out.push(row);
+    }
+    return out;
+}
+
 module.exports = {
     MAX_ROWS, MAX_COLUMNS, FIELDS, FIELD_KEYS, LABELS, IGNORE, SYNONYMS, FULL_PROFILE_NEEDS,
     parsePasted, cleanTable, parseDate, parseMoney, parseState, parsePayType, parseClassification, parseFlsa, parseEmploymentType, parsePayFrequency, parseRole,
     splitFullName, hasHeaderRow, guessFromHeader, guessFromCells, guessMapping, validateMapping, applyMapping,
-    normalizePerson, toPersonInput, plainProblem, mergeProblems, duplicateEmails, maskSsn, parseQuickAdd
+    normalizePerson, toPersonInput, plainProblem, mergeProblems, duplicateEmails, maskSsn, parseQuickAdd,
+    isVcf, parseVcf, contactsToTable
 };

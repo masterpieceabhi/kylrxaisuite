@@ -7,6 +7,8 @@ const svc = require('../services/us-people-service');
 const R = require('../services/team-import-rules');
 const L = require('../services/access-link-rules');
 const { validateTaxpayerId } = require('../services/us-validation');
+const Mail = require('../services/team-invite-emails');
+const { emailReady } = require('../services/email-notices');
 
 const MAX_BULK_ROWS = 500;
 
@@ -109,13 +111,15 @@ router.post('/employees/bulk', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
 
 /** The fields a column can be matched to, and the limits (for the page) */
 router.get('/team-import/fields', PEOPLE_WRITE, requireUsOrg, (req, res) => {
-    res.json({ success: true, fields: R.FIELDS, maxRows: R.MAX_ROWS, passwordRules: L.PASSWORD_RULES_TEXT, setupLinkDays: L.SETUP_LINK_DAYS, joinLinkMaxDays: L.JOIN_LINK_MAX_DAYS });
+    res.json({ success: true, fields: R.FIELDS, maxRows: R.MAX_ROWS, passwordRules: L.PASSWORD_RULES_TEXT, setupLinkDays: L.SETUP_LINK_DAYS, joinLinkMaxDays: L.JOIN_LINK_MAX_DAYS, emailReady: emailReady() });
 });
 
 /** Reads the sheet (rows of cells from a file, or pasted text) and guesses what each column is. Stores nothing. */
 router.post('/team-import/analyze', PEOPLE_WRITE, requireUsOrg, (req, res) => {
     const b = req.body || {};
-    const table = typeof b.text === 'string' ? R.parsePasted(b.text.slice(0, 2000000)) : b.rows;
+    // Pasted or uploaded text (CSV, tab-separated, or a phone contacts .vcf), contacts picked on the phone, or file rows
+    const text = typeof b.text === 'string' ? b.text.slice(0, 5000000) : null;
+    const table = text !== null ? (R.isVcf(text) ? R.parseVcf(text) : R.parsePasted(text)) : (Array.isArray(b.contacts) ? R.contactsToTable(b.contacts) : b.rows);
     const { errors, rows } = R.cleanTable(table);
     if (!errors.length && rows.length === 0) errors.push('There is nothing to read. Paste the rows you copied, or choose a file.');
     if (errors.length) return res.status(400).json({ success: false, errors });
@@ -207,6 +211,8 @@ router.post('/team-import/check', PEOPLE_WRITE, requireUsOrg, async (req, res) =
  * Creates the rows that pass the check; rows with problems are reported and skipped.
  *   options.access 'link' (default): nobody sees a password; each person gets a personal set-up link, returned once
  *   options.access 'password': a temporary password per person, returned once; they must change it at first sign-in
+ *   options.email (default true): with email set up, each set-up link is also emailed to that person (emailed: true).
+ *   A temporary password is never emailed.
  */
 router.post('/team-import/create', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
     const from = peopleFrom(req.body);
@@ -235,9 +241,14 @@ router.post('/team-import/create', PEOPLE_WRITE, requireUsOrg, async (req, res) 
         }
     }
     const created = results.filter((r) => r.status === 'created').length;
-    if (created) audit(req.orgId, req, 'us_team_import_created', req.orgId, { created, rows: rows.length, access, ssnStored });
+    let emailed = 0;
+    if (created && access === 'link' && options.email !== false) {
+        const sent = await Mail.sendSetupLinks(req.orgId, results.filter((r) => r.status === 'created').map((r) => ({ name: r.name, email: r.email, token: r.setupToken, expiresAt: r.linkExpiresAt })));
+        results.forEach((r) => { if (r.status === 'created' && sent.has(r.email)) { r.emailed = true; emailed += 1; } });
+    }
+    if (created) audit(req.orgId, req, 'us_team_import_created', req.orgId, { created, rows: rows.length, access, ssnStored, emailed });
     res.set('Cache-Control', 'no-store');
-    res.status(created ? 201 : 200).json({ success: true, access, summary: { rows: rows.length, created, skipped: results.filter((r) => r.status !== 'created').length, ssnStored }, results });
+    res.status(created ? 201 : 200).json({ success: true, access, summary: { rows: rows.length, created, skipped: results.filter((r) => r.status !== 'created').length, ssnStored, emailed }, results });
 });
 
 // ------------------------------------------------------------------------------------- sign-in help for HR
@@ -261,7 +272,8 @@ router.post('/team-import/people/:id/reissue', PEOPLE_WRITE, requireUsOrg, async
     const may = L.mayResetAccess(req.user, { ...emp.data, id: emp.id });
     if (!may.ok) return res.status(may.status).json({ success: false, error: may.error });
     const out = await svc.reissueAccess(req.orgId, emp.id, method, req.user.id);
-    audit(req.orgId, req, 'us_access_reissued', emp.id, { method, targetRole: emp.data.role || null });
+    if (method === 'link' && req.body.email !== false) out.emailed = (await Mail.sendSetupLinks(req.orgId, [{ name: emp.data.name, email: emp.data.email, token: out.token, expiresAt: out.expiresAt }])).size > 0;
+    audit(req.orgId, req, 'us_access_reissued', emp.id, { method, targetRole: emp.data.role || null, emailed: Boolean(out.emailed) });
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, person: { id: emp.id, employeeId: emp.data.employeeId || null, name: emp.data.name || null, email: emp.data.email }, ...out });
 });
@@ -300,8 +312,9 @@ router.post('/team-import/join-requests/:id/approve', PEOPLE_WRITE, requireUsOrg
     const b = req.body || {};
     const r = await svc.approveJoinRequest(req.orgId, request, req.user.id, { startDate: b.startDate, jobTitle: b.jobTitle, department: b.department });
     if (!r.ok) return res.status(r.status).json(r.errors ? { success: false, errors: r.errors } : { success: false, error: r.error });
-    audit(req.orgId, req, 'us_join_request_approved', r.person.uid, { requestId: request.id, employeeId: r.person.employeeId });
-    res.status(201).json({ success: true, employee: r.person });
+    const emailed = (await Mail.sendApproved(req.orgId, { name: `${request.data.firstName} ${request.data.lastName}`, email: request.data.email })) > 0;
+    audit(req.orgId, req, 'us_join_request_approved', r.person.uid, { requestId: request.id, employeeId: r.person.employeeId, emailed });
+    res.status(201).json({ success: true, employee: r.person, emailed });
 });
 
 router.post('/team-import/join-requests/:id/reject', PEOPLE_WRITE, requireUsOrg, async (req, res) => {

@@ -168,7 +168,7 @@ router.get('/esign/requests', requirePermission('compliance.view'), requireUsOrg
 router.get('/esign/reminders', manage, requireUsOrg, async (req, res) => {
     const snap = await rawCollection('sign_requests').where('orgId', '==', req.orgId).get();
     const rows = E.remindersDue(snap.docs.map((d) => ({ id: d.id, ...d.data() })), S.nowIso(), { everyDays: Number(req.query.everyDays) || 3, soonDays: Number(req.query.soonDays) || 3 });
-    res.json({ success: true, count: rows.length, data: rows });
+    res.json({ success: true, count: rows.length, data: rows, emailReady: N.emailReady() });
 });
 
 router.get('/esign/requests/:id', requirePermission('compliance.view'), requireUsOrg, async (req, res) => {

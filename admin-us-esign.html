@@ -60,7 +60,8 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     </section>
     <section class="card" id="dueCard" hidden>
       <h2>Waiting too long: who to remind <span id="dueCount"></span></h2>
-      <p class="hint"><b>What a reminder does today:</b> this system does not send email or text messages. "Log a reminder" only writes down, on the document's history, that you reminded the person, and takes them off this list for 3 days. You still have to contact them yourself. If they lost their link, press "New link" and send them the new one.</p>
+      <p class="hint" id="dueMailOn" hidden><b>What a reminder does:</b> it emails the person a fresh signing link (the earlier one stops working), notes it on the document's history, and takes them off this list for 3 days. Up to 3 reminders also go out on their own. Text messages are not sent.</p>
+      <p class="hint" id="dueMailOff"><b>What a reminder does today:</b> email is not set up, so "Log a reminder" only writes down, on the document's history, that you reminded the person, and takes them off this list for 3 days. You still have to contact them yourself. If they lost their link, press "New link" and send them the new one.</p>
       <table><thead><tr><th>Document</th><th>Signer</th><th>Last contact</th><th>Time left to sign</th><th></th></tr></thead><tbody id="dueRows"></tbody></table>
     </section>
     <section class="card">
@@ -187,6 +188,7 @@ async function loadDue() {
   if (!canManage) { $('dueCard').hidden = true; return; }
   const r = await req('GET', '/esign/reminders');
   $('dueCard').hidden = false; $('dueCount').textContent = r.count ? `(${r.count})` : '';
+  $('dueMailOn').hidden = r.emailReady !== true; $('dueMailOff').hidden = r.emailReady === true;
   const days = (n) => `${n} day${n === 1 ? '' : 's'}`;
   $('dueRows').innerHTML = r.data.map((x) => `<tr><td><b>${esc(x.templateName)}</b></td><td>${esc(x.signerName)}<br><span class="hint">${esc(x.signerType)}</span></td><td>${x.daysSinceContact <= 0 ? 'today' : `${esc(days(x.daysSinceContact))} ago`}</td><td>${x.daysLeft <= 0 ? '<span class="tag badTag">runs out today</span>' : `${esc(days(x.daysLeft))}${x.expiringSoon ? ' <span class="tag warnTag">soon</span>' : ''}`}</td><td><button class="ghost" data-rremind="${esc(x.id)}">Log a reminder</button> <button class="ghost" data-rresend="${esc(x.id)}" data-name="${esc(x.signerName)}">New link</button></td></tr>`).join('') || '<tr><td colspan="5" class="hint">Nobody needs a reminder right now.</td></tr>';
 }
