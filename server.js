@@ -300,6 +300,7 @@ app.use("/api/us", require("./routes/us-reports"));
 app.use("/api/us", require("./routes/us-vault"));
 app.use("/api/us", require("./routes/us-compliance"));
 app.use("/api/us", require("./routes/us-billing"));
+app.use("/api/us", require("./routes/us-company-data"));
 app.use("/api/us", require("./routes/us-privacy"));
 app.use("/api/us", require("./routes/us-audit"));
 app.use("/api/us", require("./routes/us-retention"));

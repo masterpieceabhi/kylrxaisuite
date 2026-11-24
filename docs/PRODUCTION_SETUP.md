@@ -60,8 +60,8 @@ Same as staging step 6, with `app.onnhr.com` pointing at the tunnel of `onnhr-pr
 **Check:** https://app.onnhr.com/api/health says healthy from your phone.
 
 ## 6. Backups and a real restore
-1. Google Cloud > Firestore > Disaster recovery > Backups: daily, keep 14 weeks (or
-   `gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=14w --project=onnhr-prod`).
+1. Google Cloud > Firestore > Disaster recovery > Backups: daily, keep 5 weeks, so a deleted company is gone from backups within 35 days as the DPA promises (or
+   `gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=5w --project=onnhr-prod`).
 2. Compute Engine > Snapshots: daily schedule on the server disk, keep 14 days.
 3. **Restore once**: restore yesterday's backup into a spare database (`restore-test`), open two records, delete it.
 **Check:** a dated note of the restore in the launch checklist.

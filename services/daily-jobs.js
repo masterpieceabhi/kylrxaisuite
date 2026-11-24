@@ -65,6 +65,8 @@ function summary(run) {
     if (b) parts.push(b.skipped ? `no backup (${b.skipped})` : b.error ? `backup failed (${b.error})` : `backup of ${b.documents} documents made, ${b.pruned} old ${b.pruned === 1 ? 'backup' : 'backups'} removed`);
     const m = run.reminders;
     if (m) parts.push(m.skipped ? `no reminders (${m.skipped})` : m.error ? `reminders failed (${m.error})` : `${m.emails} reminder ${m.emails === 1 ? 'email' : 'emails'} sent${m.errors && m.errors.length ? `, ${m.errors.length} ${m.errors.length === 1 ? 'company' : 'companies'} failed` : ''}`);
+    const c = run.closures;
+    if (c && (c.error || c.deleted || c.reminded || (c.errors && c.errors.length) || c.skipped)) parts.push(c.error ? `closed-company step failed (${c.error})` : `${c.deleted} closed ${c.deleted === 1 ? 'company' : 'companies'} deleted, ${c.reminded} reminded${c.skipped ? ` (${c.skipped})` : ''}${c.errors && c.errors.length ? `, ${c.errors.length} failed` : ''}`);
     return parts.join('; ');
 }
 
@@ -111,8 +113,13 @@ function create(deps) {
             try { const m = await deps.reminders(); run.reminders = { emails: m.emails || 0, companies: m.companies || 0, errors: (m.errors || []).slice(0, 10), ...(m.skipped ? { skipped: m.skipped } : {}) }; } catch (e) { run.reminders = { error: String((e && e.message) || e).slice(0, 200) }; }
         }
 
+        // closed companies: the reminder 3 days before, then deletion and the written confirmation (services/company-data.js)
+        if (deps.closures) {
+            try { const c = await deps.closures(); run.closures = { reminded: c.reminded || 0, deleted: c.deleted || 0, errors: (c.errors || []).slice(0, 10), ...(c.skipped ? { skipped: c.skipped } : {}) }; } catch (e) { run.closures = { error: String((e && e.message) || e).slice(0, 200) }; }
+        }
+
         run.finishedAt = new Date().toISOString();
-        run.ok = !(run.retention && run.retention.error) && !(run.backup && run.backup.error) && !(run.retention && run.retention.failed);
+        run.ok = !(run.retention && run.retention.error) && !(run.backup && run.backup.error) && !(run.retention && run.retention.failed) && !(run.closures && (run.closures.error || (run.closures.errors && run.closures.errors.length)));
         run.summary = summary(run);
         deps.log(run.ok ? 'info' : 'error', `[DailyJobs] ${run.day}: ${run.summary}`);
         try { await deps.saveRun(run); } catch (e) { deps.log('error', `[DailyJobs] could not record the run: ${e.message}`); }
@@ -157,6 +164,7 @@ function realDeps() {
         },
         retention: ({ dryRun }) => require('./retention-jobs').runAllOrgs({ dryRun, actor: 'daily-job' }),
         reminders: () => require('./email-reminders').runAll(),
+        closures: () => require('./company-data').runDue(),
         async backup({ outRoot, now }) {
             const B = require('../scripts/backup');
             const c = B.connect();

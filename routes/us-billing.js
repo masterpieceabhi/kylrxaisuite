@@ -62,9 +62,34 @@ router.post('/billing/payment-method', ...guard, async (req, res) => {
     } catch (e) { fail(res, e); }
 });
 
-/** Placeholder for the provider's hosted "update card" page (Stripe customer portal / setup session) */
+/**
+ * The provider's hosted card page (Stripe Checkout in setup mode): the card is typed on Stripe's page, never on ours.
+ * Returns { url } to open; url is null in practice mode, where the page offers test cards instead.
+ */
+const appUrl = (req) => String(process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+router.post('/billing/card-session', ...guard, async (req, res) => {
+    try {
+        const base = `${appUrl(req)}/admin-us-owner.html`;
+        const r = await S.startCardSession(req.orgId, { successUrl: `${base}?card=done&session={CHECKOUT_SESSION_ID}#bill`, cancelUrl: `${base}?card=cancelled#bill` });
+        res.json({ success: true, url: r.url, provider: require('../services/billing-stripe').getProvider().name });
+    } catch (e) { fail(res, e); }
+});
+
+router.post('/billing/card-session/finish', ...guard, async (req, res) => {
+    try {
+        const pm = await S.finishCardSession(req.orgId, String(req.body.sessionId || '').slice(0, 250));
+        audit(req.orgId, req, 'billing_payment_method_updated', req.orgId, { brand: pm.brand, last4: pm.last4, via: 'card_page' });
+        res.json({ success: true, paymentMethod: pm, billing: await S.summary(req.orgId) });
+    } catch (e) { fail(res, e); }
+});
+
+/** Kept for older pages: same as POST /billing/card-session. */
 router.get('/billing/payment-method-link', ...guard, async (req, res) => {
-    res.json({ success: true, url: null, provider: require('../services/billing-stripe').getProvider().name, note: 'Placeholder: with the live provider this returns a one-time hosted page for updating the card. In mock mode use POST /billing/payment-method with a test token.' });
+    try {
+        const base = `${appUrl(req)}/admin-us-owner.html`;
+        const r = await S.startCardSession(req.orgId, { successUrl: `${base}?card=done&session={CHECKOUT_SESSION_ID}#bill`, cancelUrl: `${base}?card=cancelled#bill` });
+        res.json({ success: true, url: r.url, provider: require('../services/billing-stripe').getProvider().name });
+    } catch (e) { fail(res, e); }
 });
 
 router.post('/billing/cancel', ...guard, async (req, res) => {

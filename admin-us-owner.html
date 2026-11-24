@@ -37,6 +37,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     <button data-tab="log" class="on">Activity log</button>
     <button data-tab="roles">Roles</button>
     <button data-tab="bill">Plan and billing</button>
+    <button data-tab="data">Your data</button>
   </div>
 
   <div id="tab-log" class="pane on">
@@ -83,7 +84,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
       <h2>Payment method</h2>
       <p id="bCard"></p>
       <div class="row" id="bTestRow"><button class="ghost" data-pm="pm_card_visa">Use a test card that works</button><button class="ghost" data-pm="pm_card_chargeDeclined">Use a test card that is declined</button></div>
-      <p class="hint" id="bLive" hidden>Card entry on the payment provider's own page is not connected yet.</p>
+      <div class="row" id="bLive" hidden><button id="bAddCard">Add or change card</button><span class="hint">Opens Stripe's secure card page. Onn HR never sees or keeps the card number.</span></div>
       <div class="row"><label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="bContractors"> Count contractors in the number of people billed</label></div>
     </section>
     <section class="card">
@@ -92,8 +93,26 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px
     </section>
     <section class="card" id="bCancelCard" hidden>
       <h2>Cancel the subscription</h2>
-      <p class="hint">After cancelling, the account becomes read-only at the end of the paid period. Your data is kept.</p>
+      <p class="hint">After cancelling, the account becomes read-only at the end of the paid period. Your data is kept. To delete everything instead, use <a href="#data" data-go="data">Your data</a>.</p>
       <div class="row"><button class="no" id="bCancel">Cancel subscription</button></div>
+    </section>
+  </div>
+
+  <div id="tab-data" class="pane">
+    <section class="card">
+      <h2>Download all your company's data</h2>
+      <p>One ZIP file with every record (people, hours, time off, documents, reviews, settings, the activity log) as JSON files, and every uploaded file and signed form.</p>
+      <p class="hint">Left out on purpose: sign-in secrets, and Social Security, bank and document numbers, which are stored encrypted. The file holds personal information: keep it safe. Making it is recorded in the activity log.</p>
+      <div class="row"><button id="dExport">Download everything</button><span class="hint" id="dExportNote"></span></div>
+    </section>
+    <section class="card">
+      <h2>Close the account and delete the data</h2>
+      <div id="dClosed"></div>
+      <div id="dAsk">
+        <p>Billing stops now. Thirty days later we delete everything: people, hours, time off, documents, files and everyone's sign-in. You get an email reminder 3 days before, and a written confirmation after.</p>
+        <p class="hint">Until then you can keep using the account, download your data, or undo this. Backups that still hold the data expire within 35 days after deletion.</p>
+        <div class="row"><label>Type the company name to confirm<input id="dName" autocomplete="off" style="min-width:260px"></label><button class="no" id="dClose">Close the account</button></div>
+      </div>
     </section>
   </div>
 </main>
@@ -143,7 +162,7 @@ async function loadRoles() {
 function planPrice(p, interval) { const base = `${cents(p.baseFeeCents)} a month plus ${cents(p.perEmployeeCents)} for each person`; return interval === 'annual' ? `${base}, ${p.annualDiscountPct}% off when paid yearly` : base; }
 async function loadBilling() {
   billing = (await req('GET', '/billing')).billing; const b = billing; const practice = !b.provider || b.provider === 'mock';
-  $('bMode').hidden = !practice; $('bTestRow').hidden = !practice; $('bLive').hidden = practice;
+  $('bMode').hidden = !practice; $('bTestRow').hidden = !practice; $('bLive').hidden = practice || !b.subscribed;
   const ST = { trial: ['free trial', 'blueTag'], active: ['active', 'good'], past_due: ['payment failed', 'badTag'], suspended: ['suspended: read-only', 'badTag'], cancelled: ['cancelled', 'grey'], none: ['no plan yet', 'grey'] };
   const [st, cls] = ST[b.state] || [b.state, 'grey'];
   $('bNow').innerHTML = b.subscribed ? `<p><b>${esc(b.plan ? b.plan.name : '')}</b> <span class="tag ${cls}">${esc(st)}</span> ${b.readOnly ? '<span class="tag badTag">the account is read-only</span>' : ''}</p><p>${b.trialEndsAt && b.state === 'trial' ? `Free trial until ${esc(when(b.trialEndsAt, false))}. ` : ''}Paid ${b.interval === 'annual' ? 'yearly' : 'monthly'}. Current period: ${esc(when(b.currentPeriodStart, false))} to ${esc(when(b.currentPeriodEnd, false))}.${b.graceEndsAt ? ` Pay by ${esc(when(b.graceEndsAt, false))} to keep full access.` : ''}</p><p>${esc(b.usage.billable ?? '')} people billed${b.usage.estimateNextCents !== null ? `. Next bill is about <b>${cents(b.usage.estimateNextCents)}</b> before tax` : ''}.${b.creditCents ? ` Credit on account: ${cents(b.creditCents)}.` : ''}</p>` : '<p class="hint">You have not chosen a plan yet. Pick one below to start the free trial.</p>';
@@ -161,6 +180,40 @@ $('bContractors').addEventListener('change', async () => { try { await req('PUT'
 $('bCancel').addEventListener('click', async () => {
   if (window.prompt('Type CANCEL to cancel the subscription.') !== 'CANCEL') return;
   try { await req('POST', '/billing/cancel', { confirm: 'CANCEL' }); await loadBilling(); say('Subscription cancelled.'); } catch (err) { say(err.message, false); }
+});
+
+$('bAddCard').addEventListener('click', async () => {
+  try { const r = await req('POST', '/billing/card-session', {}); if (!r.url) { say('There is no card page in practice mode. Use a test card.', false); return; } window.location.assign(r.url); } catch (err) { say(err.message, false); }
+});
+/** Back from Stripe's card page: save the card it collected. */
+async function cardReturn() {
+  const q = new URLSearchParams(location.search); const card = q.get('card'); if (!card) return;
+  if (history.replaceState) history.replaceState(null, '', `${location.pathname}#bill`);
+  if (card === 'cancelled') { say('No card was saved.', false); return; }
+  try { const r = await req('POST', '/billing/card-session/finish', { sessionId: q.get('session') || '' }); say(`Card saved: ${words(r.paymentMethod.brand || 'card')} ending ${r.paymentMethod.last4 || ''}.`); await loadBilling(); } catch (err) { say(err.message, false); }
+}
+
+// ----------------------------------------------------------------------- data
+async function loadData() {
+  const c = (await req('GET', '/company/closure')).closure;
+  const on = c.state === 'scheduled';
+  $('dAsk').hidden = on;
+  $('dClosed').innerHTML = on ? `<div class="warn"><b>This account will be deleted on ${esc(when(`${c.deleteOn}T12:00:00Z`, false))}.</b> Billing has stopped. Download your data before then.</div><div class="row"><button id="dKeep">Keep my account</button></div>` : '';
+}
+$('dExport').addEventListener('click', async () => {
+  const b = $('dExport'); b.disabled = true; $('dExportNote').textContent = 'Putting it together. This can take a minute.';
+  try { await saveFile(await req('GET', '/company/export', null, true), `onnhr-data-${new Date().toISOString().slice(0, 10)}.zip`); $('dExportNote').textContent = 'Downloaded.'; }
+  catch (err) { $('dExportNote').textContent = ''; say(err.message.includes('429') ? 'A download was just made. Wait two minutes, then try again.' : err.message, false); }
+  finally { b.disabled = false; }
+});
+$('dClose').addEventListener('click', async () => {
+  const name = $('dName').value.trim(); if (!name) { say('Type the company name first.', false); return; }
+  if (!window.confirm('Close the account? Everything is deleted in 30 days unless you undo it before then.')) return;
+  try { const r = await req('POST', '/company/closure', { companyName: name }); $('dName').value = ''; say(`Done. The account will be deleted on ${when(`${r.closure.deleteOn}T12:00:00Z`, false)}. We emailed you the details.`); await loadData(); await loadBilling().catch(() => {}); } catch (err) { say(err.message, false); }
+});
+document.addEventListener('click', async (e) => {
+  if (e.target.id === 'dKeep') { try { await req('DELETE', '/company/closure'); say('Your account will not be deleted. Choose a plan in Plan and billing to keep using it.'); await loadData(); } catch (err) { say(err.message, false); } }
+  const go = e.target.closest('[data-go]'); if (go) { e.preventDefault(); document.querySelector(`[data-tab="${go.dataset.go}"]`).click(); }
 });
 
 // --------------------------------------------------------------------- clicks
@@ -194,7 +247,8 @@ onAuthStateChanged(auth, async (user) => {
   user.getIdToken().then((token) => fetch('/api/support/grants', { headers: { Authorization: `Bearer ${token}` } })).then((res) => { if (res.status === 200) $('supportLink').hidden = false; }).catch(() => {});
   const step =async (fn, tab) => { try { await fn(); } catch (err) { if (err.status === 403 && tab) { document.querySelector(`[data-tab=${tab}]`).hidden = true; $(`tab-${tab}`).innerHTML = ''; } else say(err.message, false); } };
   await step(async () => { const a = (await req('GET', '/audit/actions')).data; $('lAction').innerHTML = '<option value="">Any action</option>' + a.map((x) => `<option value="${esc(x.key)}">${esc(x.label)}</option>`).join(''); await loadLog(false); }, 'log');
-  await step(loadRoles, 'roles'); await step(loadBilling, 'bill');
+  await step(loadRoles, 'roles'); await step(loadBilling, 'bill'); await step(loadData, 'data');
+  await cardReturn();
   // a link like admin-us-owner.html#roles opens that tab (the Security page links here)
   const wanted = document.querySelector(`[data-tab="${CSS.escape(location.hash.slice(1))}"]`); if (location.hash && wanted && !wanted.hidden) wanted.click();
   const first = [...document.querySelectorAll('[data-tab]')].find((b) => !b.hidden); if (first && document.querySelector('[data-tab].on').hidden) first.click();

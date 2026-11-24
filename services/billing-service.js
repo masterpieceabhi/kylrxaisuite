@@ -125,9 +125,29 @@ async function setPaymentMethod(orgId, token) {
     if (!a || !a.providerCustomerId) throw Object.assign(new Error('Start a subscription first'), { statusCode: 409 });
     let pm;
     try { pm = await getProvider().attachPaymentMethod(a.providerCustomerId, token); } catch (e) { throw Object.assign(new Error(e.message), { statusCode: 400 }); }
-    await saveAccount(orgId, { paymentMethod: { brand: pm.brand, last4: pm.last4 }, paymentMethodUpdatedAt: nowIso() });
-    await logEvent(orgId, 'payment_method_updated', { brand: pm.brand, last4: pm.last4 });
-    return { brand: pm.brand, last4: pm.last4 };
+    await saveAccount(orgId, { paymentMethod: { brand: pm.brand || null, last4: pm.last4 || null }, providerPaymentMethodId: pm.id || null, paymentMethodUpdatedAt: nowIso() });
+    await logEvent(orgId, 'payment_method_updated', { brand: pm.brand || null, last4: pm.last4 || null });
+    return { brand: pm.brand || null, last4: pm.last4 || null };
+}
+
+/**
+ * Starts the provider's hosted card page (Stripe Checkout, setup mode). Returns { url } to send the owner to, or
+ * { url: null } in practice mode, where the page offers test cards instead.
+ */
+async function startCardSession(orgId, { successUrl, cancelUrl }) {
+    const a = await getAccount(orgId);
+    if (!a || !a.providerCustomerId) throw Object.assign(new Error('Choose a plan first'), { statusCode: 409 });
+    const s = await getProvider().createCardSession({ customerId: a.providerCustomerId, orgId, successUrl, cancelUrl });
+    if (s.id) await logEvent(orgId, 'card_page_opened', { sessionId: s.id });
+    return { url: s.url || null };
+}
+
+/** After the hosted card page: saves the card it collected as this company's card. */
+async function finishCardSession(orgId, sessionId) {
+    const a = await getAccount(orgId);
+    if (!a || !a.providerCustomerId) throw Object.assign(new Error('Choose a plan first'), { statusCode: 409 });
+    const r = await getProvider().finishCardSession({ sessionId, customerId: a.providerCustomerId, orgId });
+    return setPaymentMethod(orgId, r.paymentMethodId);
 }
 
 async function nextInvoiceNumber(orgId) {
@@ -169,7 +189,10 @@ async function chargeInvoice(orgId, invoiceId, dunning, todayIso) {
     const inv = iSnap.data();
     if (inv.status === 'paid') return { invoice: { id: invoiceId, ...inv }, paid: true, already: true };
     const account = await getAccount(orgId);
-    const attempt = await getProvider().createPaymentIntent({ customerId: account.providerCustomerId, amountCents: inv.totalCents, invoiceId: inv.providerInvoiceId });
+    const attempt = await getProvider().createPaymentIntent({
+        customerId: account.providerCustomerId, amountCents: inv.totalCents, invoiceId: inv.providerInvoiceId || invoiceId,
+        paymentMethodId: account.providerPaymentMethodId || null, attempt: (inv.attempts || 0) + 1, description: `Onn HR ${inv.number || ''}`.trim()
+    });
     const paid = attempt.status === 'succeeded';
     const patch = { attempts: (inv.attempts || 0) + 1, lastAttemptAt: nowIso(), paymentIntentId: attempt.id, lastFailureReason: paid ? null : (attempt.failureReason || 'failed') };
     if (paid) { patch.status = 'paid'; patch.paidAt = nowIso(); } else patch.status = 'open';
@@ -313,6 +336,9 @@ async function handleWebhookEvent(evt) {
                 const next = R.nextState(acct, { type: paid ? 'payment_succeeded' : 'payment_failed' }, nowIso(), dunning);
                 await saveAccount(orgId, { state: next.state, firstFailedAt: next.firstFailedAt || null, graceEndsAt: next.graceEndsAt || null, dunningAttempts: next.dunningAttempts || 0 });
                 handled = true;
+            } else if (evt.type === 'checkout.session.completed' && obj.mode === 'setup' && obj.metadata && obj.metadata.purpose === 'onnhr_card') {
+                // the owner closed the tab before coming back: save the card from here instead
+                if (obj.customer === acct.providerCustomerId) { await finishCardSession(orgId, obj.id); handled = true; }
             } else if (evt.type === 'customer.subscription.deleted') {
                 await saveAccount(orgId, { state: 'cancelled', cancelledAt: nowIso() }); handled = true;
             }
@@ -390,6 +416,7 @@ async function platformSummary() {
 }
 
 module.exports = {
+    startCardSession, finishCardSession,
     loadPlans, savePlans, getAccount, saveAccount, getBillingState, readOnlyGuard, headcountFor, subscribe, setPaymentMethod, changePlan, cancel,
     createInvoice, chargeInvoice, runCycle, handleWebhookEvent, summary, renderInvoiceHtml, platformSummary, planById, logEvent, invoices, events, accounts
 };
