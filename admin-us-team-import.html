@@ -109,11 +109,18 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
   <section class="card" id="joinCard" hidden>
     <h2>Company join link</h2>
     <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name and email, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. <span class="mailOn" hidden>We email you and your HR administrators when someone asks, and email the person once you approve them.</span><span class="mailOff">Email is not set up, so check the waiting list yourself.</span></p>
-    <div class="row end noprint"><label>Works for (days, 1 to <span id="maxDays">30</span>)<input type="number" id="joinDays" min="1" max="30" value="7" style="width:110px"></label><label>Note for yourself (optional)<input id="joinLabel" maxlength="60" placeholder="Kitchen staff, November"></label><button type="button" id="joinNew">Make a join link</button></div>
+    <p class="hint noprint"><b>Fastest, with everyone in the room</b> (a team meeting, the start of a shift): choose "Let them in right away", show the QR code on your screen, and everyone scans it. Each person types their own name and email and is in at once, so you type nothing and approve nobody. The link works for a few hours and for as many people as you say.</p>
+    <div class="row noprint" style="margin-top:0;gap:18px">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="radio" name="joinMode" id="joinAsk" value="ask" checked> Ask me first (I approve each person)</label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="radio" name="joinMode" id="joinOpen" value="open"> Let them in right away</label>
+    </div>
+    <div class="row end noprint" id="openOpts" hidden><label>Works for (hours, 1 to <span id="openMaxHours">24</span>)<input type="number" id="openHours" min="1" max="24" value="2" style="width:110px"></label><label>Lets in up to (people, 1 to <span id="openMaxPeople">100</span>)<input type="number" id="openPeople" min="1" max="100" value="30" style="width:110px"></label></div>
+    <p class="hint noprint" id="openWarn" hidden>Anyone who scans the code while it works gets in as an employee (never a manager or administrator), so show it only to your team and turn it off when everyone is in. You can still remove anyone afterwards.</p>
+    <div class="row end noprint"><label id="joinDaysBox">Works for (days, 1 to <span id="maxDays">30</span>)<input type="number" id="joinDays" min="1" max="30" value="7" style="width:110px"></label><label>Note for yourself (optional)<input id="joinLabel" maxlength="60" placeholder="Kitchen staff, November"></label><button type="button" id="joinNew">Make a join link</button></div>
     <div id="joinFresh" hidden>
       <div class="warn noprint" style="margin-top:12px"><b>Copy this link now.</b> For safety we keep only a fingerprint of it, so it cannot be shown again. You can make another one at any time.</div>
       <div class="qr"><div id="joinQr"></div><div><p><b id="joinCompany">Join our team</b></p><p>Scan the code with your phone camera, or open:</p><p><code class="link" id="joinUrl" style="max-width:520px;white-space:normal;overflow-wrap:anywhere"></code></p>
-        <p class="noprint"><button type="button" class="ghost" id="joinCopy">Copy link</button> <button type="button" class="ghost" id="joinPrint">Print this</button></p><p class="hint" id="joinUntil"></p></div></div>
+        <p class="noprint"><button type="button" class="ghost" id="joinCopy">Copy link</button> <button type="button" class="ghost" id="joinPrint">Print this</button> <button type="button" class="ghost" id="joinBig">Show it big</button></p><p class="hint" id="joinLive" hidden></p><p class="hint" id="joinUntil"></p></div></div>
     </div>
     <h3 class="noprint">Your join links</h3>
     <table class="noprint"><thead><tr><th>Made</th><th>Note</th><th>Works until</th><th>Requests</th><th>Status</th><th></th></tr></thead><tbody id="joinRows"></tbody></table>
@@ -122,9 +129,10 @@ dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:34
 
   <section class="card" id="waitCard" hidden>
     <h2>Waiting for your approval <span class="tag wait" id="waitCount" hidden></span></h2>
-    <p class="hint">Approve only people you know work here. An approved person becomes an employee (never a manager or administrator) and can sign in: on the sign-in page they type their email, press "No PIN, or forgot it?", use the code sent to them and choose a PIN. Rejecting removes the request.</p>
+    <p class="hint">Approve only people you know work here. An approved person becomes an employee (never a manager or administrator) and can sign in: on the sign-in page they type their email, press "Forgot password or PIN?", use the code sent to them and choose a PIN. Rejecting removes the request. This list updates by itself while the page is open.</p>
     <div class="row end" style="margin-top:0"><label>First day of work for people you approve<input type="date" id="approveStart"></label></div>
-    <table style="margin-top:10px"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Asked on</th><th></th></tr></thead><tbody id="waitRows"></tbody></table>
+    <div class="row" id="waitBulk" hidden style="margin-top:10px"><button type="button" id="approvePicked" disabled>Approve the ones I ticked</button><span class="hint" id="pickedCount"></span></div>
+    <table style="margin-top:10px"><thead><tr><th style="width:28px"><input type="checkbox" id="pickAll" title="Tick everybody"></th><th>Name</th><th>Email</th><th>Phone</th><th>Asked on</th><th></th></tr></thead><tbody id="waitRows"></tbody></table>
     <p class="hint" id="waitEmpty" hidden>Nobody is waiting.</p>
   </section>
 
@@ -382,43 +390,93 @@ $('quickBtn').addEventListener('click', async () => {
 
 // ---------------------------------------------------------------------------------------- company join link
 let companyName = '';
+let freshLinkId = null; // the link made on this page just now (its QR code is on screen)
 async function loadJoinLinks() {
   const r = await api('GET', '/join-links');
   const label = { active: ['ok', 'Working'], expired: ['off', 'Ended'], revoked: ['off', 'Turned off'], used: ['off', 'Used'] };
-  $('joinRows').innerHTML = r.data.map((l) => `<tr><td>${esc(when(l.createdAt))}</td><td>${esc(l.label)}</td><td>${esc(when(l.expiresAt))}</td><td>${Number(l.requests) || 0}</td><td><span class="tag ${label[l.state][0]}">${label[l.state][1]}</span></td><td>${l.state === 'active' ? `<button type="button" class="danger small" data-off="${esc(l.id)}">Turn off</button>` : ''}</td></tr>`).join('');
+  $('joinRows').innerHTML = r.data.map((l) => `<tr><td>${esc(when(l.createdAt))}</td><td>${esc(l.label)}</td><td>${esc(when(l.expiresAt))}</td><td>${l.open ? `${Number(l.joined) || 0} of ${Number(l.maxPeople) || 0} let in` : Number(l.requests) || 0}</td><td>${l.open ? '<span class="tag wait">Lets people in</span> ' : ''}<span class="tag ${label[l.state][0]}">${label[l.state][1]}</span></td><td>${l.state === 'active' ? `<button type="button" class="danger small" data-off="${esc(l.id)}">Turn off</button>` : ''}</td></tr>`).join('');
   $('joinEmpty').hidden = r.data.length > 0;
+  // While an open link's QR code is on screen: how many are in so far
+  const fresh = freshLinkId && r.data.find((l) => l.id === freshLinkId);
+  $('joinLive').hidden = !(fresh && fresh.open);
+  if (fresh && fresh.open) $('joinLive').textContent = fresh.state === 'active' ? `${Number(fresh.joined) || 0} of ${Number(fresh.maxPeople) || 0} people are in so far. This updates by itself.` : `This link has stopped working. ${Number(fresh.joined) || 0} people came in with it.`;
 }
+const openMode = () => $('joinOpen').checked;
+function paintJoinMode() { $('openOpts').hidden = !openMode(); $('openWarn').hidden = !openMode(); $('joinDaysBox').hidden = openMode(); }
+document.querySelectorAll('input[name=joinMode]').forEach((el) => el.addEventListener('change', paintJoinMode));
 $('joinNew').addEventListener('click', async () => {
   say('');
   try {
-    const r = await api('POST', '/join-links', { days: Number($('joinDays').value), label: $('joinLabel').value });
+    const body = openMode() ? { open: true, hours: Number($('openHours').value), maxPeople: Number($('openPeople').value), label: $('joinLabel').value } : { days: Number($('joinDays').value), label: $('joinLabel').value };
+    const r = await api('POST', '/join-links', body);
     const url = joinUrl(r.token);
-    $('joinUrl').textContent = url; $('joinFresh').hidden = false; $('joinUntil').textContent = `Works until ${when(r.link.expiresAt)}. People who ask to join show up under "Waiting for your approval".`;
+    freshLinkId = r.link.id;
+    $('joinUrl').textContent = url; $('joinFresh').hidden = false;
+    $('joinUntil').textContent = r.link.open ? `Works until ${when(r.link.expiresAt)}, for up to ${r.link.maxPeople} people. Each one is in as soon as they send the form, and shows up under "Sign-in help".` : `Works until ${when(r.link.expiresAt)}. People who ask to join show up under "Waiting for your approval".`;
     $('joinCompany').textContent = companyName ? `Join ${companyName}` : 'Join our team';
     const svg = window.QrMini ? window.QrMini.svg(url, { size: 220 }) : null;
     $('joinQr').innerHTML = svg || '<p class="hint">This link is too long to draw as a QR code. Share the link itself.</p>';
-    $('joinLabel').value = ''; await loadJoinLinks(); say('Join link made. Copy it now: it cannot be shown again.');
+    $('joinLabel').value = ''; await loadJoinLinks();
+    say(r.link.open ? 'Open link made. Press "Show it big" and let everyone scan it. It cannot be shown again after you leave this page.' : 'Join link made. Copy it now: it cannot be shown again.');
   } catch (e) { say(e.message, false); }
 });
 $('joinCopy').addEventListener('click', () => copyText($('joinUrl').textContent));
 $('joinPrint').addEventListener('click', () => window.print());
+$('joinBig').addEventListener('click', () => showQr($('joinCompany').textContent, $('joinUrl').textContent));
 $('joinRows').addEventListener('click', async (ev) => {
   const b = ev.target.closest('[data-off]'); if (!b) return;
   if (!window.confirm('Turn this join link off? Nobody will be able to use it any more. People already waiting stay on the list.')) return;
   try { await api('DELETE', `/join-links/${encodeURIComponent(b.dataset.off)}`); await loadJoinLinks(); say('The link is turned off.'); } catch (e) { say(e.message, false); }
 });
 
+let MAX_AT_ONCE = 50;
+const picked = new Set();
+function paintPicked() {
+  const n = picked.size;
+  $('approvePicked').disabled = n === 0;
+  $('approvePicked').textContent = n ? `Approve the ${n} I ticked` : 'Approve the ones I ticked';
+  $('pickedCount').textContent = n > MAX_AT_ONCE ? `You can approve up to ${MAX_AT_ONCE} at a time.` : '';
+  const boxes = [...document.querySelectorAll('#waitRows [data-pick]')];
+  $('pickAll').checked = boxes.length > 0 && boxes.every((b) => b.checked);
+}
 async function loadRequests() {
   const r = await api('GET', '/join-requests');
   const waiting = r.data.filter((x) => x.status === 'waiting');
+  [...picked].forEach((id) => { if (!waiting.some((x) => x.id === id)) picked.delete(id); }); // ticks survive the refresh
   $('waitCount').hidden = waiting.length === 0; $('waitCount').textContent = `${waiting.length} waiting`;
-  $('waitRows').innerHTML = waiting.map((x) => `<tr><td>${esc(x.firstName)} ${esc(x.lastName)}</td><td>${esc(x.email)}</td><td>${esc(x.phone)}</td><td>${esc(when(x.createdAt))}</td><td style="white-space:nowrap"><button type="button" class="small" data-yes="${esc(x.id)}">Approve</button> <button type="button" class="danger small" data-no="${esc(x.id)}" data-name="${esc(x.firstName)} ${esc(x.lastName)}">Reject</button></td></tr>`).join('');
+  $('waitBulk').hidden = waiting.length < 2;
+  $('waitRows').innerHTML = waiting.map((x) => `<tr><td><input type="checkbox" data-pick="${esc(x.id)}" ${picked.has(x.id) ? 'checked' : ''} aria-label="Tick ${esc(x.firstName)} ${esc(x.lastName)}"></td><td>${esc(x.firstName)} ${esc(x.lastName)}</td><td>${esc(x.email)}</td><td>${esc(x.phone)}</td><td>${esc(when(x.createdAt))}</td><td style="white-space:nowrap"><button type="button" class="small" data-yes="${esc(x.id)}">Approve</button> <button type="button" class="danger small" data-no="${esc(x.id)}" data-name="${esc(x.firstName)} ${esc(x.lastName)}">Reject</button></td></tr>`).join('');
   $('waitEmpty').hidden = waiting.length > 0;
+  paintPicked();
 }
+$('waitRows').addEventListener('change', (ev) => {
+  const b = ev.target.closest('[data-pick]'); if (!b) return;
+  if (b.checked) picked.add(b.dataset.pick); else picked.delete(b.dataset.pick);
+  paintPicked();
+});
+$('pickAll').addEventListener('change', () => {
+  document.querySelectorAll('#waitRows [data-pick]').forEach((b) => { b.checked = $('pickAll').checked; if (b.checked) picked.add(b.dataset.pick); else picked.delete(b.dataset.pick); });
+  paintPicked();
+});
+let busy = false;
+$('approvePicked').addEventListener('click', async () => {
+  const ids = [...picked].slice(0, MAX_AT_ONCE); if (!ids.length) return;
+  if (!window.confirm(`Approve ${ids.length} ${ids.length === 1 ? 'person' : 'people'}? Each one becomes an employee and can sign in.`)) return;
+  busy = true; $('approvePicked').disabled = true;
+  try {
+    const r = await api('POST', '/join-requests/approve-many', { ids, startDate: $('approveStart').value || today() });
+    ids.forEach((id) => picked.delete(id));
+    const told = r.emailed === r.approved ? ' We emailed each of them how to sign in.' : (r.emailed ? ` We emailed ${r.emailed} of them how to sign in; tell the others: email, then "Forgot password or PIN?" on the sign-in page.` : ' Tell them they can sign in now: email, then "Forgot password or PIN?" on the sign-in page.');
+    const failed = (r.failed || []).length ? ` ${r.failed.length} could not be approved: ${r.failed.map((f) => f.error).filter((v, i, a) => a.indexOf(v) === i).join(' ')}` : '';
+    say(`${r.approved} approved.${told}${failed}`, !failed);
+  } catch (e) { say(e.message, false); }
+  busy = false;
+  await loadRequests(); await loadAccess();
+});
 $('waitRows').addEventListener('click', async (ev) => {
   const yes = ev.target.closest('[data-yes]'); const no = ev.target.closest('[data-no]');
   try {
-    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(r.emailed ? `${r.employee.name} is approved (${r.employee.employeeId}). We emailed them how to sign in.` : `${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then \"No PIN, or forgot it?\" on the sign-in page.`); }
+    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(r.emailed ? `${r.employee.name} is approved (${r.employee.employeeId}). We emailed them how to sign in.` : `${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then "Forgot password or PIN?" on the sign-in page.`); }
     else if (no) { if (!window.confirm(`Reject the request from ${no.dataset.name}?`)) return; await api('POST', `/join-requests/${encodeURIComponent(no.dataset.no)}/reject`); say('Request rejected.'); } else return;
     await loadRequests(); await loadAccess();
   } catch (e) { say(e.message, false); if (yes) yes.disabled = false; }
@@ -454,6 +512,9 @@ onAuthStateChanged(auth, async (user) => {
     const f = await api('GET', '/fields');
     FIELDS = f.fields; LABEL = Object.fromEntries(FIELDS.map((x) => [x.key, x.label]));
     $('maxRows').textContent = f.maxRows; $('maxDays').textContent = f.joinLinkMaxDays; $('joinDays').max = f.joinLinkMaxDays;
+    if (f.openLinkMaxHours) { $('openMaxHours').textContent = f.openLinkMaxHours; $('openHours').max = f.openLinkMaxHours; }
+    if (f.openLinkMaxPeople) { $('openMaxPeople').textContent = f.openLinkMaxPeople; $('openPeople').max = f.openLinkMaxPeople; }
+    if (f.maxApproveAtOnce) MAX_AT_ONCE = f.maxApproveAtOnce;
     MAIL = f.emailReady === true;
     document.querySelectorAll('.mailOn').forEach((el) => { el.hidden = !MAIL; }); document.querySelectorAll('.mailOff').forEach((el) => { el.hidden = MAIL; });
     document.querySelectorAll('.linkDays').forEach((el) => { el.textContent = f.setupLinkDays; });
@@ -462,6 +523,19 @@ onAuthStateChanged(auth, async (user) => {
     if (new URLSearchParams(location.search).get('welcome')) $('welcomeCard').hidden = false;
     try { const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json(); companyName = (org && (org.name || org.displayName || (org.profile && org.profile.name))) || ''; } catch (_) {}
     await Promise.all([loadJoinLinks(), loadRequests(), loadAccess()]);
+    // New requests and open-link arrivals show up by themselves while this page is in front (every 15 seconds)
+    let refreshing = false;
+    setInterval(async () => {
+      if (document.hidden || busy || refreshing) return;
+      refreshing = true;
+      const before = Number($('waitCount').hidden ? 0 : parseInt($('waitCount').textContent, 10)) || 0;
+      try {
+        await Promise.all([loadRequests(), loadJoinLinks()]);
+        const now = Number($('waitCount').hidden ? 0 : parseInt($('waitCount').textContent, 10)) || 0;
+        if (freshLinkId || now !== before) await loadAccess();
+      } catch (_) {}
+      refreshing = false;
+    }, 15000);
   } catch (e) {
     $('blocked').hidden = false;
     $('blockedText').textContent = e.status === 403 ? 'You do not have permission to add people. Ask the owner or an HR administrator.' : (e.status === 409 ? 'This page is for US companies. Your organization\'s country is not set to United States.' : e.message);

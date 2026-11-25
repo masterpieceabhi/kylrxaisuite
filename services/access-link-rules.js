@@ -1,9 +1,11 @@
 /**
  * Set-up links, company join links and password rules for US companies (pure, no I/O).
  *
- * There is no mail service, so nothing here is ever emailed: HR copies a link or shows a QR code.
+ * HR copies a link or shows a QR code; set-up links are also emailed when email is set up (team-invite-emails.js).
  *   - personal set-up link: one person, one use, 7 days. The person chooses their own password with it.
  *   - company join link: anyone who has it may ASK to join. They can do nothing until HR approves them.
+ *   - open join link (for a team meeting or the start of a shift): the first N people who use it are let in at once,
+ *     as plain employees. It works for a few hours only, so a photo of the QR code is of little use later.
  * A link is a random 32-byte token. Only its SHA-256 hash is stored, so a copy of the database cannot be used to sign in,
  * and a link cannot be shown a second time (HR makes a new one instead).
  */
@@ -15,6 +17,11 @@ const JOIN_LINK_MAX_DAYS = 30;
 const JOIN_LINK_DEFAULT_DAYS = 7;
 const MAX_ACTIVE_JOIN_LINKS = 5;
 const MAX_WAITING_REQUESTS = 200;
+const OPEN_LINK_MAX_HOURS = 24;
+const OPEN_LINK_DEFAULT_HOURS = 2;
+const OPEN_LINK_MAX_PEOPLE = 100;
+const OPEN_LINK_DEFAULT_PEOPLE = 30;
+const MAX_APPROVE_AT_ONCE = 50;
 const DAY_MS = 86400000;
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/; // 32 bytes in URL-safe base64
 
@@ -34,6 +41,24 @@ function expiryFor(kind, days, now = new Date()) {
     const n = days === undefined || days === null || days === '' ? JOIN_LINK_DEFAULT_DAYS : Number(days);
     if (!Number.isInteger(n) || n < 1 || n > JOIN_LINK_MAX_DAYS) return { error: `Choose how long the link works: 1 to ${JOIN_LINK_MAX_DAYS} days` };
     return { expiresAt: new Date(now.getTime() + n * DAY_MS).toISOString(), days: n };
+}
+
+/** An open join link: 1 to 24 whole hours, and 1 to 100 people. Returns { expiresAt, hours, maxPeople } or { error }. */
+function openLinkFor(hours, maxPeople, now = new Date()) {
+    const h = hours === undefined || hours === null || hours === '' ? OPEN_LINK_DEFAULT_HOURS : Number(hours);
+    if (!Number.isInteger(h) || h < 1 || h > OPEN_LINK_MAX_HOURS) return { error: `Choose how long the open link works: 1 to ${OPEN_LINK_MAX_HOURS} hours` };
+    const n = maxPeople === undefined || maxPeople === null || maxPeople === '' ? OPEN_LINK_DEFAULT_PEOPLE : Number(maxPeople);
+    if (!Number.isInteger(n) || n < 1 || n > OPEN_LINK_MAX_PEOPLE) return { error: `Choose how many people it lets in: 1 to ${OPEN_LINK_MAX_PEOPLE}` };
+    return { expiresAt: new Date(now.getTime() + h * 3600000).toISOString(), hours: h, maxPeople: n };
+}
+
+/** A list of request ids to approve together: unique, well formed, at most 50. Returns { ids } or { error }. */
+function approveIds(input) {
+    if (!Array.isArray(input) || !input.length) return { error: 'Choose at least one person to approve' };
+    const ids = [...new Set(input.map(String))];
+    if (ids.length > MAX_APPROVE_AT_ONCE) return { error: `Approve at most ${MAX_APPROVE_AT_ONCE} people at a time` };
+    if (ids.some((id) => !/^[A-Za-z0-9]{10,40}$/.test(id))) return { error: 'Request not found' };
+    return { ids };
 }
 
 /** 'active' | 'used' | 'revoked' | 'expired' for a stored link */
@@ -133,6 +158,7 @@ function mustChangeBlocks(user, decodedToken, originalUrl) {
 }
 
 module.exports = {
+    OPEN_LINK_MAX_HOURS, OPEN_LINK_DEFAULT_HOURS, OPEN_LINK_MAX_PEOPLE, OPEN_LINK_DEFAULT_PEOPLE, MAX_APPROVE_AT_ONCE, openLinkFor, approveIds,
     SETUP_LINK_DAYS, JOIN_LINK_MAX_DAYS, JOIN_LINK_DEFAULT_DAYS, MAX_ACTIVE_JOIN_LINKS, MAX_WAITING_REQUESTS, PASSWORD_MIN, PASSWORD_MAX, PASSWORD_RULES_TEXT, PASSWORD_CHANGE_PATHS,
     hashToken, newToken, tokenLooksRight, expiryFor, linkState, passwordProblem, roleRank, mayResetAccess, accessStatus, validateJoinRequest,
     pathAllowedBeforePasswordChange, mustChangeBlocks

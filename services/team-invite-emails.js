@@ -44,13 +44,14 @@ function joinRequestNotice({ to, requesterName, company, env }) {
     };
 }
 
-function joinApprovedEmail({ name, email, company, env }) {
+/** open: the person came in through an open join link (let in at once), not approved by hand */
+function joinApprovedEmail({ name, email, company, env, open = false }) {
     if (!email) return null;
     const who = clip(company, 120) || 'Your employer';
     return {
         to: email,
-        subject: `You're in: ${who} approved you on Onn HR`.slice(0, 180),
-        text: `Hi ${N.firstName({ name })},\n\n${who} approved your request to join. You can sign in now:\n${appUrl(env)}/login.html\n\nType your email, press "No PIN, or forgot it?", enter the code we send you, and choose a PIN.\n\n${sign(clip(company, 120))}`
+        subject: (open ? `You're in: you joined ${who} on Onn HR` : `You're in: ${who} approved you on Onn HR`).slice(0, 180),
+        text: `Hi ${N.firstName({ name })},\n\n${open ? `You joined ${who} on Onn HR.` : `${who} approved your request to join.`} You can sign in now:\n${appUrl(env)}/login.html\n\nType your email, press "Forgot password or PIN?", enter the code we send you, and choose a PIN.\n\n${sign(clip(company, 120))}${open ? '\nIf you did not do this, you can ignore this email.' : ''}`
     };
 }
 
@@ -86,7 +87,7 @@ async function sendApproved(orgId, person, { env = process.env, send, org } = {}
     if (!N.emailReady(env)) return 0;
     try {
         const o = org || (await loadOrg(orgId));
-        return await N.sendNow(orgId, [joinApprovedEmail({ name: person.name, email: person.email, company: N.companyName(o), env })], { env, send, org: o });
+        return await N.sendNow(orgId, [joinApprovedEmail({ name: person.name, email: person.email, company: N.companyName(o), env, open: person.open === true })], { env, send, org: o });
     } catch (_) { return 0; }
 }
 

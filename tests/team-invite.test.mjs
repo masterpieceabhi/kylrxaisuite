@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const R = require('../services/team-import-rules.js');
 const M = require('../services/team-invite-emails.js');
+const L = require('../services/access-link-rules.js');
 
 const VCF = [
   'BEGIN:VCARD', 'VERSION:3.0', 'N:Lopez;Maria;;;', 'FN:Maria Lopez', 'EMAIL;TYPE=INTERNET;TYPE=HOME:maria@example.com', 'TEL;TYPE=HOME:414-555-0100', 'TEL;TYPE=CELL:414-555-0199', 'PHOTO;ENCODING=b:AAAA', 'END:VCARD',
@@ -67,7 +68,30 @@ test('join request notice: owner and HR only, the name but no contact details; a
   const a = M.joinApprovedEmail({ name: 'Joe Lee', email: 'joe@x.com', company: 'Taco Spot', env: {} });
   assert.equal(a.to, 'joe@x.com');
   assert.ok(a.text.includes('https://app.onnhr.com/login.html'));
-  assert.match(a.text, /No PIN, or forgot it\?/);
+  assert.match(a.text, /press "Forgot password or PIN\?"/, 'the name of the link on the sign-in page');
+  const o = M.joinApprovedEmail({ name: 'Joe Lee', email: 'joe@x.com', company: 'Taco Spot', env: {}, open: true });
+  assert.match(o.subject, /^You're in: you joined Taco Spot/);
+  assert.match(o.text, /If you did not do this/);
+});
+
+test('open join link rules: a few hours, a set number of people; approving many at once is capped', () => {
+  const now = new Date('2026-11-24T12:00:00Z');
+  const d = L.openLinkFor(undefined, undefined, now);
+  assert.equal(d.hours, 2); assert.equal(d.maxPeople, 30); assert.equal(d.expiresAt, '2026-11-24T14:00:00.000Z');
+  assert.equal(L.openLinkFor(24, 100, now).expiresAt, '2026-11-25T12:00:00.000Z');
+  for (const [h, n] of [[0, 5], [25, 5], [1.5, 5], [2, 0], [2, 101], ['x', 5]]) assert.ok(L.openLinkFor(h, n, now).error, `${h} hours, ${n} people`);
+  assert.deepEqual(L.approveIds(['abcdefghij1', 'abcdefghij1', 'abcdefghij2']).ids, ['abcdefghij1', 'abcdefghij2']);
+  assert.ok(L.approveIds([]).error); assert.ok(L.approveIds('x').error); assert.ok(L.approveIds(['../x']).error);
+  assert.match(L.approveIds(Array.from({ length: 51 }, (_, i) => `abcdefghij${i}`)).error, /at most 50/);
+});
+
+test('nothing tells people to press a link the sign-in page does not have', async () => {
+  const fs = await import('node:fs');
+  const login = fs.readFileSync(new URL('../login.html', import.meta.url), 'utf8');
+  assert.ok(login.includes('Forgot password or PIN?'));
+  for (const f of ['../join.html', '../admin-us-team-import.html', '../services/team-invite-emails.js']) {
+    assert.ok(!fs.readFileSync(new URL(f, import.meta.url), 'utf8').includes('No PIN, or forgot it'), f);
+  }
 });
 
 test('sending: each link to its own person; nothing goes out when email is off for the server or the company', async () => {

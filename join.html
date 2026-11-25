@@ -66,6 +66,12 @@ a.link{color:var(--blue);font-weight:700}
     <p><a class="link" href="login.html" data-t="toLogin"></a></p>
   </section>
 
+  <section class="card" id="ready" hidden>
+    <h2 data-t="readyT"></h2><p data-t="readyP"></p>
+    <p><button class="go" type="button" id="readyGo" data-t="readyGo"></button></p>
+    <p class="hint" data-t="readyP2"></p>
+  </section>
+
   <section class="card" id="done" hidden>
     <h2 data-t="doneT"></h2><p data-t="doneP"></p>
     <p><a class="link" href="login.html" data-t="toLogin"></a></p>
@@ -82,14 +88,18 @@ const T = {
     pw: 'Choose a PIN', pw2: 'Type the PIN again', show: 'Show the PIN', setupGo: 'Save my PIN', rules: '4 to 6 digits. Not one digit repeated, and not a run like 1234.',
     joinP: 'Fill this in to ask to join. Your employer has to approve you before you can sign in.', first: 'First name', last: 'Last name', email: 'Your email', emailHint: 'You will sign in with this email.', phone: 'Mobile phone (optional)', joinGo: 'Ask to join',
     joinNote: 'If your employer already gave you a personal link, use that one instead.',
-    waitT: 'Your request was sent', waitP: 'You are waiting for approval. Nothing more to do right now.', waitP2: 'No email will be sent. Your employer will tell you when you are approved. Then go to the sign-in page, type your email and press "No PIN, or forgot it?" to get a sign-in code.',
+    waitT: 'Your request was sent', waitP: 'You are waiting for approval. Nothing more to do right now.', waitP2: 'You will get an email when you are approved (or your employer will tell you). Then go to the sign-in page, type your email and press "Forgot password or PIN?" to get a sign-in code.',
+    openP: 'Fill this in to join. You are in as soon as you send it.', openGo: 'Join now',
+    readyT: 'You are in', readyP: 'Sign in now with your email. Press "Forgot password or PIN?", type the code we send you, and choose a PIN.', readyGo: 'Sign in now', readyP2: 'Next time, sign in with your email and your PIN.',
     doneT: 'Your PIN is saved', doneP: 'Taking you to your new hire paperwork...', noMatch: 'The two PINs are not the same.', need: 'Please fill in every field.', fail: 'Something went wrong. Try again.', signInFail: 'Your PIN is saved. Sign in with your email and new PIN.' },
   es: { title: 'Configure su acceso', loading: 'Revisando su enlace...', deadT: 'Este enlace ya no funciona', deadP: 'Puede que ya se haya usado, que lo hayan desactivado o que sea muy antiguo. Pida un enlace nuevo a su empleador.', toLogin: 'Ir a la página de acceso',
     hello: 'Bienvenido/a, {n}', helloJoin: 'Únase a {c}', setupP: '{c} le agregó. Elija un PIN para terminar. Lo usará con su correo para entrar.', yourEmail: 'Su correo de acceso:',
     pw: 'Elija un PIN', pw2: 'Escriba el PIN otra vez', show: 'Mostrar el PIN', setupGo: 'Guardar mi PIN', rules: 'De 4 a 6 dígitos. No un solo dígito repetido, ni una serie como 1234.',
     joinP: 'Llene esto para pedir unirse. Su empleador tiene que aprobarle antes de que pueda entrar.', first: 'Nombre', last: 'Apellido', email: 'Su correo electrónico', emailHint: 'Entrará con este correo.', phone: 'Teléfono celular (opcional)', joinGo: 'Pedir unirme',
     joinNote: 'Si su empleador ya le dio un enlace personal, use ese enlace.',
-    waitT: 'Su solicitud fue enviada', waitP: 'Está esperando aprobación. No tiene que hacer nada más por ahora.', waitP2: 'No se enviará ningún correo. Su empleador le avisará cuando esté aprobado/a. Después vaya a la página de acceso, escriba su correo y oprima "No PIN, or forgot it?" para recibir un código.',
+    waitT: 'Su solicitud fue enviada', waitP: 'Está esperando aprobación. No tiene que hacer nada más por ahora.', waitP2: 'Recibirá un correo cuando esté aprobado/a (o su empleador le avisará). Después vaya a la página de acceso, escriba su correo y oprima "Forgot password or PIN?" para recibir un código.',
+    openP: 'Llene esto para unirse. Queda dentro en cuanto lo envíe.', openGo: 'Unirme ahora',
+    readyT: 'Ya está dentro', readyP: 'Entre ahora con su correo. Oprima "Forgot password or PIN?", escriba el código que le enviamos y elija un PIN.', readyGo: 'Entrar ahora', readyP2: 'La próxima vez, entre con su correo y su PIN.',
     doneT: 'Su PIN quedó guardado', doneP: 'Le llevamos a sus papeles de nuevo empleado...', noMatch: 'Los dos PIN no son iguales.', need: 'Por favor llene todos los campos.', fail: 'Algo salió mal. Intente de nuevo.', signInFail: 'Su PIN quedó guardado. Entre con su correo y su nuevo PIN.' }
 };
 // Server messages (English) that a person may see while typing, in Spanish
@@ -123,7 +133,7 @@ function paint() {
 }
 document.querySelectorAll('.lang button').forEach((b) => b.addEventListener('click', () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); }));
 
-const show = (id) => ['loading', 'dead', 'setup', 'join', 'waiting', 'done'].forEach((x) => { $(x).hidden = x !== id; });
+const show = (id) => ['loading', 'dead', 'setup', 'join', 'waiting', 'ready', 'done'].forEach((x) => { $(x).hidden = x !== id; });
 
 async function post(path, body) {
   const res = await fetch(`/api/auth/team/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
@@ -161,19 +171,30 @@ $('join').addEventListener('submit', async (ev) => {
   if (!v.firstName || !v.lastName || !v.email) return say(tr('need'));
   $('jGo').disabled = true;
   try {
-    await post('join/request', { token, ...v });
+    const r = await post('join/request', { token, ...v });
     $('join').reset(); history.replaceState(null, '', location.pathname);
-    show('waiting');
+    if (r.status === 'ready') { joinedEmail = v.email; show('ready'); } else show('waiting');
   } catch (e) {
     if (e.status === 404) show('dead'); else say(e.message);
     $('jGo').disabled = false;
   }
 });
 
+// "Sign in now": the sign-in page fills in the email it finds in this cookie (login.js rememberEmail uses the same one)
+let joinedEmail = '';
+$('readyGo').addEventListener('click', () => {
+  if (joinedEmail) document.cookie = `onnhr_email=${encodeURIComponent(joinedEmail)}; Max-Age=${365 * 86400}; Path=/; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+  window.location.href = 'login.html';
+});
+
 paint();
 (async () => {
   if (!mode || !/^[A-Za-z0-9_-]{43}$/.test(token)) return show('dead');
-  try { info = await post(`${mode}/info`, { token }); paint(); show(mode); } catch (e) { if (e.status === 404) show('dead'); else { show('dead'); say(e.message); } }
+  try {
+    info = await post(`${mode}/info`, { token });
+    if (mode === 'join' && info.open) { $('join').querySelector('[data-t=joinP]').dataset.t = 'openP'; $('jGo').dataset.t = 'openGo'; } // an open link: no waiting
+    paint(); show(mode);
+  } catch (e) { if (e.status === 404) show('dead'); else { show('dead'); say(e.message); } }
 })();
 </script>
 </body>

@@ -362,21 +362,27 @@ async function listAccess(orgId) {
 // ------------------------------------------------------------------------------------------- company join link
 
 function publicLink(l) {
-    return { id: l.id, label: l.data.label || '', createdAt: l.data.createdAt, expiresAt: l.data.expiresAt, state: L.linkState(l.data), requests: Number(l.data.requests || 0) };
+    const open = l.data.open === true;
+    return { id: l.id, label: l.data.label || '', createdAt: l.data.createdAt, expiresAt: l.data.expiresAt, state: L.linkState(l.data), requests: Number(l.data.requests || 0),
+        open, ...(open ? { maxPeople: Number(l.data.maxPeople || 0), joined: Number(l.data.joined || 0) } : {}) };
 }
 
 async function listJoinLinks(orgId) {
     return (await linksFor(orgId, 'join')).slice(0, 50).map(publicLink);
 }
 
-/** A new company join link. The token is returned once; only its hash is stored. */
-async function createJoinLink(orgId, actorId, days, label) {
-    const exp = L.expiryFor('join', days);
+/**
+ * A new company join link. The token is returned once; only its hash is stored.
+ * open = { hours, maxPeople } makes an open link: the first maxPeople people who use it are let in without waiting.
+ */
+async function createJoinLink(orgId, actorId, days, label, open = null) {
+    const exp = open ? L.openLinkFor(open.hours, open.maxPeople) : L.expiryFor('join', days);
     if (exp.error) return { ok: false, status: 400, error: exp.error };
     const active = (await linksFor(orgId, 'join')).filter((l) => L.linkState(l.data) === 'active');
     if (active.length >= L.MAX_ACTIVE_JOIN_LINKS) return { ok: false, status: 409, error: `You already have ${L.MAX_ACTIVE_JOIN_LINKS} working join links. Turn one off first.` };
     const { token, hash } = L.newToken();
-    const data = { orgId, kind: 'join', label: String(label || '').replace(/[<>]/g, '').trim().slice(0, 60), createdAt: nowIso(), createdBy: actorId || null, expiresAt: exp.expiresAt, revokedAt: null, requests: 0 };
+    const data = { orgId, kind: 'join', label: String(label || '').replace(/[<>]/g, '').trim().slice(0, 60), createdAt: nowIso(), createdBy: actorId || null, expiresAt: exp.expiresAt, revokedAt: null, requests: 0,
+        ...(open ? { open: true, maxPeople: exp.maxPeople, joined: 0 } : {}) };
     await rawCollection(LINKS).doc(hash).set(data);
     return { ok: true, token, link: publicLink({ id: hash, data }) };
 }
@@ -394,7 +400,8 @@ async function revokeJoinLink(orgId, id, actorId) {
 async function joinInfo(token) {
     const link = await findActiveLink(token, 'join');
     if (!link) return null;
-    return { link, info: { company: await orgName(link.data.orgId), expiresAt: link.data.expiresAt } };
+    const open = link.data.open === true && Number(link.data.joined || 0) < Number(link.data.maxPeople || 0);
+    return { link, info: { company: await orgName(link.data.orgId), expiresAt: link.data.expiresAt, open } };
 }
 
 async function requestsOf(orgId) {
@@ -422,11 +429,34 @@ async function submitJoinRequest(token, value, password, ip) {
     try {
         const ref = await rawCollection(JOIN_REQUESTS).add({ orgId, linkId: found.link.id, uid, firstName: value.firstName, lastName: value.lastName, email: value.email, phone: value.phone || '', passwordHash, status: 'waiting', createdAt: nowIso(), ip: ip || null });
         await found.link.ref.set({ requests: admin.firestore.FieldValue.increment(1) }, { merge: true }).catch(() => {});
-        return { ok: true, orgId, created: true, requestId: ref.id };
+        const out = { ok: true, orgId, created: true, requestId: ref.id, open: found.link.data.open === true };
+        if (out.open && await claimOpenPlace(found.link.ref, orgId)) {
+            // No signed-in user here, so the approval runs as the link's own company (as completeSetup does)
+            const r = await runWithTenant(orgId, async () => {
+                const request = await getJoinRequest(orgId, ref.id);
+                return request ? approveJoinRequest(orgId, request, `join-link:${found.link.id.slice(0, 12)}`) : { ok: false };
+            }).catch(() => ({ ok: false }));
+            if (r.ok) Object.assign(out, { approved: true, person: r.person });
+            else await releaseOpenPlace(found.link.ref); // stays waiting for HR, and the place is given back
+        }
+        return out;
     } catch (error) {
         await admin.auth().deleteUser(uid).catch(() => {});
         throw error;
     }
+}
+
+/** Takes one place on an open link, if one is left (a transaction, so two people at once cannot both take the last one) */
+async function claimOpenPlace(ref, orgId) {
+    return runWithTenant(orgId, () => admin.firestore().runTransaction(async (tx) => {
+        const s = await tx.get(ref); const d = (exists(s) && s.data()) || {};
+        if (d.open !== true || L.linkState(d) !== 'active' || Number(d.joined || 0) >= Number(d.maxPeople || 0)) return false;
+        tx.set(ref, { joined: Number(d.joined || 0) + 1, orgId }, { merge: true });
+        return true;
+    })).catch(() => false);
+}
+async function releaseOpenPlace(ref) {
+    await ref.set({ joined: admin.firestore.FieldValue.increment(-1) }, { merge: true }).catch(() => {});
 }
 
 async function listJoinRequests(orgId) {
@@ -455,6 +485,19 @@ async function approveJoinRequest(orgId, request, actorId, { startDate, jobTitle
     return { ok: true, person };
 }
 
+/** HR approves several requests at once. Each one is done on its own: one that fails does not stop the others. */
+async function approveJoinRequests(orgId, ids, actorId, options = {}) {
+    const approved = []; const failed = [];
+    for (const id of ids) {
+        const request = await getJoinRequest(orgId, id);
+        if (!request) { failed.push({ id, error: 'Request not found' }); continue; }
+        const r = await approveJoinRequest(orgId, request, actorId, options);
+        if (r.ok) approved.push({ id, request, person: r.person });
+        else failed.push({ id, error: r.error || (r.errors || []).join(' ') || 'Could not approve' });
+    }
+    return { approved, failed };
+}
+
 /** HR rejects: the switched-off login is removed (only if it never became a person) and the stored password hash is dropped */
 async function rejectJoinRequest(orgId, request, actorId) {
     if (request.data.status !== 'waiting') return { ok: false, status: 409, error: 'This request was already decided' };
@@ -467,5 +510,5 @@ async function rejectJoinRequest(orgId, request, actorId) {
 module.exports = {
     ALLOWED_ROLES, LINKS, JOIN_REQUESTS, temporaryPassword, allocateEmployeeIds, validatePerson, emailTaken, createPerson,
     createSetupLink, revokeSetupLinks, setupInfo, completeSetup, completeSetupWithPin, unknownPassword, reissueAccess, changeOwnPassword, listAccess,
-    listJoinLinks, createJoinLink, revokeJoinLink, joinInfo, submitJoinRequest, listJoinRequests, getJoinRequest, approveJoinRequest, rejectJoinRequest
+    listJoinLinks, createJoinLink, revokeJoinLink, joinInfo, submitJoinRequest, listJoinRequests, getJoinRequest, approveJoinRequest, approveJoinRequests, rejectJoinRequest
 };

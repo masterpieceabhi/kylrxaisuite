@@ -32,7 +32,7 @@ const ROUTES = [
     ['get', '/team-import/fields'], ['post', '/team-import/analyze'], ['post', '/team-import/check'], ['post', '/team-import/create'],
     ['get', '/team-import/access'], ['post', '/team-import/people/:id/reissue'],
     ['get', '/team-import/join-links'], ['post', '/team-import/join-links'], ['delete', '/team-import/join-links/:id'],
-    ['get', '/team-import/join-requests'], ['post', '/team-import/join-requests/:id/approve'], ['post', '/team-import/join-requests/:id/reject']
+    ['get', '/team-import/join-requests'], ['post', '/team-import/join-requests/:id/approve'], ['post', '/team-import/join-requests/:id/reject'], ['post', '/team-import/join-requests/approve-many']
 ];
 
 for (const [method, path] of ROUTES) {

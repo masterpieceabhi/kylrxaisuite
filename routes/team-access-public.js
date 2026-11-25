@@ -92,7 +92,8 @@ router.post('/team/join/info', lookLimiter, async (req, res) => {
 router.post('/team/join/request', actLimiter, async (req, res) => {
     noStore(res);
     const b = req.body || {};
-    if (!(await svc.joinInfo(b.token))) return res.status(404).json({ success: false, error: DEAD_LINK });
+    const linkInfo = await svc.joinInfo(b.token);
+    if (!linkInfo) return res.status(404).json({ success: false, error: DEAD_LINK });
     const { errors, value } = L.validateJoinRequest(b);
     // A password is no longer asked for. One that is sent is still checked; without one the account gets a password
     // nobody knows, and the person signs in with a code and chooses a PIN once they are approved.
@@ -102,13 +103,20 @@ router.post('/team/join/request', actLimiter, async (req, res) => {
     if (errors.length) return res.status(400).json({ success: false, errors });
     const r = await svc.submitJoinRequest(b.token, value, sentPassword ? b.password : svc.unknownPassword(), req.ip);
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.status === 404 ? DEAD_LINK : r.error });
+    const Mail = require('../services/team-invite-emails');
     if (r.created) {
         auditFor(r.orgId, req, 'us_join_request_received', r.requestId);
         // Not awaited: the answer must take the same time whether or not a request was stored
-        require('../services/team-invite-emails').notifyJoinRequest(r.orgId, `${value.firstName} ${value.lastName}`).catch(() => {});
+        if (r.approved) {
+            auditFor(r.orgId, req, 'us_join_open_link_joined', r.person && r.person.uid, { requestId: r.requestId, employeeId: r.person && r.person.employeeId });
+            Mail.sendApproved(r.orgId, { name: `${value.firstName} ${value.lastName}`, email: value.email, open: true }).catch(() => {});
+        } else Mail.notifyJoinRequest(r.orgId, `${value.firstName} ${value.lastName}`).catch(() => {});
     }
-    // The same answer whether or not a request was stored (an email that already has an account stores nothing)
-    res.status(202).json({ success: true, status: 'waiting_for_approval' });
+    // The same answer whether or not a request was stored (an email that already has an account stores nothing): on an
+    // open link with places left it is "ready" (they sign in with their email and a code), otherwise "waiting".
+    // (Letting someone in takes a little longer than storing nothing; open links last a few hours at most.)
+    const ready = r.created ? r.approved === true : linkInfo.info.open === true;
+    res.status(202).json({ success: true, status: ready ? 'ready' : 'waiting_for_approval' });
 });
 
 // ---------------------------------------------------------------------------------------------- signed-in person

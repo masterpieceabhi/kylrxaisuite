@@ -111,7 +111,7 @@ router.post('/employees/bulk', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
 
 /** The fields a column can be matched to, and the limits (for the page) */
 router.get('/team-import/fields', PEOPLE_WRITE, requireUsOrg, (req, res) => {
-    res.json({ success: true, fields: R.FIELDS, maxRows: R.MAX_ROWS, passwordRules: L.PASSWORD_RULES_TEXT, setupLinkDays: L.SETUP_LINK_DAYS, joinLinkMaxDays: L.JOIN_LINK_MAX_DAYS, emailReady: emailReady() });
+    res.json({ success: true, fields: R.FIELDS, maxRows: R.MAX_ROWS, passwordRules: L.PASSWORD_RULES_TEXT, setupLinkDays: L.SETUP_LINK_DAYS, joinLinkMaxDays: L.JOIN_LINK_MAX_DAYS, openLinkMaxHours: L.OPEN_LINK_MAX_HOURS, openLinkMaxPeople: L.OPEN_LINK_MAX_PEOPLE, maxApproveAtOnce: L.MAX_APPROVE_AT_ONCE, emailReady: emailReady() });
 });
 
 /** Reads the sheet (rows of cells from a file, or pasted text) and guesses what each column is. Stores nothing. */
@@ -286,9 +286,12 @@ router.get('/team-import/join-links', PEOPLE_WRITE, requireUsOrg, async (req, re
 
 /** A new join link. The link itself is in this answer only: the server keeps a hash and cannot show it again. */
 router.post('/team-import/join-links', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
-    const r = await svc.createJoinLink(req.orgId, req.user.id, req.body && req.body.days, req.body && req.body.label);
+    const b = req.body || {};
+    // open: true makes an open link (for a team meeting): the first maxPeople people are let in at once, for a few hours
+    const open = b.open === true ? { hours: b.hours, maxPeople: b.maxPeople } : null;
+    const r = await svc.createJoinLink(req.orgId, req.user.id, b.days, b.label, open);
     if (!r.ok) return res.status(r.status).json({ success: false, error: r.error });
-    audit(req.orgId, req, 'us_join_link_created', r.link.id.slice(0, 12), { expiresAt: r.link.expiresAt });
+    audit(req.orgId, req, 'us_join_link_created', r.link.id.slice(0, 12), { expiresAt: r.link.expiresAt, open: r.link.open, maxPeople: r.link.maxPeople || null });
     res.set('Cache-Control', 'no-store');
     res.status(201).json({ success: true, token: r.token, link: r.link });
 });
@@ -303,6 +306,22 @@ router.delete('/team-import/join-links/:id', PEOPLE_WRITE, requireUsOrg, async (
 router.get('/team-import/join-requests', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
     const data = await svc.listJoinRequests(req.orgId);
     res.json({ success: true, waiting: data.filter((r) => r.status === 'waiting').length, data });
+});
+
+/** Approve several waiting people at once (at most 50). Each is approved on its own; the answer says which did not work. */
+router.post('/team-import/join-requests/approve-many', PEOPLE_WRITE, requireUsOrg, async (req, res) => {
+    const b = req.body || {};
+    const picked = L.approveIds(b.ids);
+    if (picked.error) return res.status(400).json({ success: false, error: picked.error });
+    const r = await svc.approveJoinRequests(req.orgId, picked.ids, req.user.id, { startDate: b.startDate });
+    let emailed = 0;
+    for (const a of r.approved) {
+        const sent = (await Mail.sendApproved(req.orgId, { name: `${a.request.data.firstName} ${a.request.data.lastName}`, email: a.request.data.email })) > 0;
+        if (sent) emailed += 1;
+        audit(req.orgId, req, 'us_join_request_approved', a.person.uid, { requestId: a.id, employeeId: a.person.employeeId, emailed: sent, together: true });
+    }
+    res.status(r.approved.length ? 201 : 409).json({ success: r.approved.length > 0, approved: r.approved.length, emailed, failed: r.failed,
+        ...(r.approved.length ? {} : { error: (r.failed[0] && r.failed[0].error) || 'Nobody was approved' }) });
 });
 
 /** Approve: the person becomes an employee (never a higher role) and can sign in with the password they chose */
