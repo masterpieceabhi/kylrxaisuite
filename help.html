@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Help | Onn HR</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc}
+*{box-sizing:border-box}body{margin:0;font:17px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{padding:16px;background:#fff;border-bottom:1px solid var(--line)}header div{max-width:720px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-size:22px}h2{margin:0 0 6px;font-size:19px}
+main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+details{border-top:1px solid var(--line);padding:10px 0}details:first-of-type{border-top:0}
+summary{cursor:pointer;font-weight:600}summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+details p,details ol,details ul{margin:8px 0 0}li{margin:2px 0}
+a{color:var(--blue)}.hint{color:var(--muted);font-size:15px}
+.lang button{padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:15px;cursor:pointer}.lang button.on{background:#0f172a;color:#fff;border-color:#0f172a}
+code{background:#f1f5f9;padding:1px 5px;border-radius:5px;overflow-wrap:anywhere}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><div><h1 id="title">Help</h1><span class="lang"><button type="button" data-l="en" class="on">English</button> <button type="button" data-l="es">Español</button></span></div></header>
+<main>
+
+<!-- ======================================================= English -->
+<div data-lang="en">
+  <section class="card">
+    <h2>Signing in</h2>
+    <details><summary>How do I sign in?</summary>
+      <p>Type your <b>email or mobile number</b>, then your <b>PIN or password</b>. A right one signs you straight in.</p>
+      <p>If you are an owner, HR or payroll person, the first time on a new phone or computer you also type a one-time code. After that, that device signs you in with your PIN alone.</p></details>
+    <details><summary>I forgot my PIN or password</summary>
+      <p>Press <b>Forgot password or PIN?</b> on the sign-in page. We send you a code by email, text or WhatsApp (the way you chose in My details). Type the code, or tap the one-tap link in the message, then choose a new PIN.</p></details>
+    <details><summary>The code did not arrive</summary>
+      <ul><li>Check your spam or junk folder.</li><li>Press <b>Didn't get it? Send it another way</b> under the code box.</li><li>Codes by text or WhatsApp go only to the mobile number in your My details. Ask HR if it is wrong.</li><li>A code works for 10 minutes and only once.</li></ul></details>
+    <details><summary>Set up an authenticator app (recommended for owners, HR and payroll)</summary>
+      <ol><li>Install Google Authenticator or Microsoft Authenticator on your phone.</li><li>Open <a href="my-profile.html">My details</a> &gt; Authenticator app &gt; <b>Set up</b>.</li><li>Scan the QR code with the app, type the 6-digit code it shows, press <b>Turn on</b>.</li></ol>
+      <p>Next time a code is needed, press <b>Use my authenticator app</b>. Lost your phone? Ask HR or the owner to switch it off for you.</p></details>
+    <details><summary>"That did not work. Try again"</summary>
+      <p>The email, number, PIN or password did not match. After 5 tries sign-in stops for 15 minutes; use <b>Forgot password or PIN?</b> to get in with a code instead.</p></details>
+  </section>
+
+  <section class="card">
+    <h2>Everyday</h2>
+    <details><summary>Clock in and out</summary>
+      <p>Open <a href="punch.html">Clock in</a>. Your phone may ask to use your location and camera, if your company uses them; allow it, or ask HR why it is needed. Forgot to clock out? Ask for a fix in <a href="timesheet.html">My hours</a>.</p></details>
+    <details><summary>Send my hours</summary>
+      <p>Open <a href="timesheet.html">My hours</a>, check the week, press <b>Send my hours for approval</b>. You get an email when it is approved or sent back.</p></details>
+    <details><summary>Ask for time off</summary>
+      <p>Open <a href="leave.html">Time off</a>, choose the days and the kind of time off, send. Your balance is shown there.</p></details>
+    <details><summary>Change my phone, address or bank account</summary>
+      <p>Open <a href="my-profile.html">My details</a>. Phone and preferred name save at once; legal name, address and bank go to HR to check first. The "Still missing" box at the top shows what is left.</p></details>
+    <details><summary>Documents to sign and company policies</summary>
+      <p>Open <a href="my-documents.html">My documents</a> to sign, and <a href="my-policies.html">Company policies</a> to read and confirm.</p></details>
+  </section>
+
+  <section class="card">
+    <h2>Managers</h2>
+    <details><summary>Approve hours and time off</summary>
+      <p>Open <a href="admin-us-time.html">Time</a> for hours and <a href="admin-us-leave.html">Time off</a> for requests. You see only the people who report to you, and you cannot approve your own requests.</p></details>
+  </section>
+
+  <section class="card">
+    <h2>Owners and HR</h2>
+    <details><summary>First set-up</summary>
+      <p>Home shows <b>Getting started</b> with each step: company details and EIN, work location, pay schedule, team, time off policy, handbook and Gusto. Each step ticks itself off when done.</p></details>
+    <details><summary>Add people</summary>
+      <p><a href="admin-us-team-import.html">Add your team</a>: paste a list from a spreadsheet, type names and emails, or share a join link or QR code. Each person gets a set-up link to choose a PIN and fill in their own forms.</p></details>
+    <details><summary>Payroll with Gusto</summary>
+      <p>Onn HR does not run payroll. Connect your own Gusto account on <a href="admin-us-payroll.html">Payroll</a>, match your people, and approved hours go to Gusto. Run and approve payroll in Gusto.</p></details>
+    <details><summary>Security settings</summary>
+      <p><a href="admin-us-security.html">Security and sign-in</a>: who must type a code on a new device, single sign-on, and support access (our support team sees your data only if you allow it, read-only, for a few hours).</p></details>
+  </section>
+</div>
+
+<!-- ======================================================= Español -->
+<div data-lang="es" hidden>
+  <section class="card">
+    <h2>Entrar</h2>
+    <details><summary>¿Cómo entro?</summary>
+      <p>Escriba su <b>correo o número de celular</b> y luego su <b>PIN o contraseña</b>. Si es correcto, entra de inmediato.</p>
+      <p>Si es dueño, de Recursos Humanos o de nómina, la primera vez en un teléfono o computadora nuevo también escribe un código de una sola vez. Después, ese dispositivo entra solo con su PIN.</p></details>
+    <details><summary>Olvidé mi PIN o contraseña</summary>
+      <p>Presione <b>Forgot password or PIN?</b> en la página de entrada. Le enviamos un código por correo, mensaje de texto o WhatsApp. Escriba el código, o toque el enlace del mensaje, y elija un PIN nuevo.</p></details>
+    <details><summary>No llegó el código</summary>
+      <ul><li>Revise la carpeta de spam o correo no deseado.</li><li>Presione <b>Didn't get it? Send it another way</b>.</li><li>Los códigos por texto o WhatsApp van solo al celular que está en Mis datos.</li><li>Un código sirve 10 minutos y una sola vez.</li></ul></details>
+  </section>
+  <section class="card">
+    <h2>Todos los días</h2>
+    <details><summary>Marcar entrada y salida</summary><p>Abra <a href="punch.html">Marcar</a>. Si su empresa lo usa, el teléfono puede pedir su ubicación y cámara.</p></details>
+    <details><summary>Enviar mis horas</summary><p>Abra <a href="timesheet.html">Mis horas</a>, revise la semana y presione enviar.</p></details>
+    <details><summary>Pedir tiempo libre</summary><p>Abra <a href="leave.html">Tiempo libre</a>, elija los días y envíe.</p></details>
+    <details><summary>Cambiar teléfono, dirección o banco</summary><p>Abra <a href="my-profile.html">Mis datos</a>. El nombre legal, la dirección y el banco los revisa Recursos Humanos.</p></details>
+  </section>
+</div>
+
+<section class="card">
+  <h2 id="moreTitle">Still stuck?</h2>
+  <p id="moreText">Email <code>support@promptaiusa.com</code> with what you were doing and what the page said. Never send your PIN, password, Social Security number or bank details by email.</p>
+  <p class="hint"><a href="us-home.html" id="backLink">Back to Onn HR</a></p>
+</section>
+</main>
+<script>
+(function () {
+  var T = { en: { title: 'Help', more: 'Still stuck?', moreText: 'Email support@promptaiusa.com with what you were doing and what the page said. Never send your PIN, password, Social Security number or bank details by email.', back: 'Back to Onn HR' },
+            es: { title: 'Ayuda', more: '¿Todavía necesita ayuda?', moreText: 'Escriba a support@promptaiusa.com con lo que estaba haciendo y lo que decía la página. Nunca envíe su PIN, contraseña, número de Seguro Social ni datos de banco por correo.', back: 'Volver a Onn HR' } };
+  function set(l) {
+    document.documentElement.lang = l;
+    document.querySelectorAll('[data-lang]').forEach(function (d) { d.hidden = d.getAttribute('data-lang') !== l; });
+    document.querySelectorAll('.lang button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-l') === l); });
+    document.getElementById('title').textContent = T[l].title; document.getElementById('moreTitle').textContent = T[l].more;
+    document.getElementById('moreText').innerHTML = T[l].moreText.replace('support@promptaiusa.com', '<code>support@promptaiusa.com</code>');
+    document.getElementById('backLink').textContent = T[l].back;
+    try { localStorage.setItem('kylrx_lang', l); } catch (e) {}
+  }
+  document.querySelectorAll('.lang button').forEach(function (b) { b.addEventListener('click', function () { set(b.getAttribute('data-l')); }); });
+  var l = 'en'; try { l = localStorage.getItem('kylrx_lang') || ((navigator.language || '').toLowerCase().indexOf('es') === 0 ? 'es' : 'en'); } catch (e) {}
+  set(T[l] ? l : 'en');
+})();
+</script>
+</body>
+</html>

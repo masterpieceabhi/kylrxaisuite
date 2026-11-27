@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Onn HR">
+<title>Onn HR</title>
+<defs>
+<linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6A9AFF"/><stop offset="1" stop-color="#1236B8"/></linearGradient>
+<radialGradient id="lhd" cx="35%" cy="28%" r="85%"><stop offset="0" stop-color="#FFFFFF"/><stop offset="0.55" stop-color="#EAF1FF"/><stop offset="1" stop-color="#A9C3F5"/></radialGradient>
+<filter id="lgl" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/></filter>
+<clipPath id="lcp"><rect width="120" height="120" rx="28"/></clipPath>
+</defs>
+<g clip-path="url(#lcp)">
+<rect width="120" height="120" fill="url(#lbg)"/>
+<ellipse cx="50" cy="118" rx="32" ry="24" fill="url(#lhd)"/>
+<line x1="90" y1="78" x2="107" y2="20" stroke="#BFD6FF" stroke-width="12" stroke-linecap="round" filter="url(#lgl)" opacity="0.9"/>
+<line x1="90" y1="78" x2="107" y2="20" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+<path d="M62 98 Q 76 98 86 88" fill="none" stroke="#DCE8FF" stroke-width="10" stroke-linecap="round"/>
+<rect x="78" y="75" width="24" height="5.5" rx="2.5" transform="rotate(16 90 78)" fill="#0F2E9E"/>
+<line x1="89" y1="80" x2="85" y2="92" stroke="#0F2E9E" stroke-width="5" stroke-linecap="round"/>
+<circle cx="86" cy="88" r="6.5" fill="url(#lhd)"/>
+<circle cx="50" cy="62" r="30" fill="url(#lhd)"/>
+<ellipse cx="40" cy="46" rx="11" ry="6" fill="#FFFFFF" opacity="0.7"/>
+<g transform="rotate(-4 50 57)"><rect x="19" y="52" width="62" height="11" rx="5.5" fill="#0F2E9E"/><circle cx="50" cy="57.5" r="2" fill="#FFFFFF"/></g>
+<path d="M80 56 Q 94 52 98 64" fill="none" stroke="#0F2E9E" stroke-width="4" stroke-linecap="round"/>
+<ellipse cx="40" cy="73" rx="4" ry="5.5" fill="#0B0B0F"/><ellipse cx="60" cy="73" rx="4" ry="5.5" fill="#0B0B0F"/>
+<circle cx="41.5" cy="71" r="1.6" fill="#FFFFFF"/><circle cx="61.5" cy="71" r="1.6" fill="#FFFFFF"/>
+<path d="M44 83 q6 5 12 0" fill="none" stroke="#0B0B0F" stroke-width="2.4" stroke-linecap="round"/>
+<circle cx="32" cy="82" r="3.5" fill="#FF9DB0" opacity="0.7"/><circle cx="68" cy="82" r="3.5" fill="#FF9DB0" opacity="0.7"/>
+</g>
+</svg>

@@ -1,7 +1,9 @@
-const admin = require("firebase-admin");
+const admin = require("./firebase-admin");
 require('dotenv').config();
 
 let serviceAccount;
+// Set when a key was named in the settings but could not be read. The server must then stop, never carry on without one.
+let keyProblem = null;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   // Load from Host Environment Variable (Raw JSON or base64 encoded)
@@ -14,7 +16,8 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
       serviceAccount = JSON.parse(decoded);
     }
   } catch (error) {
-    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", error);
+    console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT env var:", error.message);
+    keyProblem = "FIREBASE_SERVICE_ACCOUNT is set but is not a readable key (JSON or base64 JSON)";
   }
 } else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
   // Load from a key file path (relative paths resolve from the project root)
@@ -23,6 +26,7 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     serviceAccount = require(keyPath);
   } catch (error) {
     console.error("Failed to load FIREBASE_SERVICE_ACCOUNT_PATH key file:", error.message);
+    keyProblem = "FIREBASE_SERVICE_ACCOUNT_PATH is set but the key file could not be loaded";
   }
 } else {
   // Check optional local file fallback if explicitly present
@@ -37,10 +41,13 @@ let db;
 let messaging;
 let rawCollection = null;
 
-if (serviceAccount) {
+// Local emulator mode (npm run emulators): the Admin SDK talks to the emulators, no key needed
+const useEmulator = !serviceAccount && !!process.env.FIRESTORE_EMULATOR_HOST;
+
+if (serviceAccount || useEmulator) {
   if (!admin.apps.length) {
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+      ...(serviceAccount ? { credential: admin.credential.cert(serviceAccount) } : { projectId: process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || 'kylrxai' } /* emulator only: which pretend project to use */),
       storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "kylrxai.firebasestorage.app"
     });
     console.log("Firebase Admin SDK initialized successfully!");
@@ -53,9 +60,58 @@ if (serviceAccount) {
   rawCollection = require('./tenant').installTenantScoping(db);
   messaging = admin.messaging();
 } else {
+  // What follows is a pretend database held in memory, with a pretend sign-in check that accepts ANY token as a
+  // super admin. It exists for local work and unit tests. It must never serve real requests, so the server refuses
+  // to start with it when a key was configured but is broken (a typo in the setting must not open the door), and
+  // whenever this is a production server.
+  if (keyProblem) throw new Error(`Firebase is not configured: ${keyProblem}. Fix the key; the server will not start without it.`);
+  if (process.env.NODE_ENV === 'production') throw new Error('Firebase is not configured: set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH. A production server will not start without a database.');
   console.log("Firebase Backend: Active in local connected development mode (kylrxai).");
   
   const _firestoreStore = new Map();
+
+  // FieldValue markers (delete, serverTimestamp, increment, arrayUnion, arrayRemove) are applied as the real database
+  // applies them, instead of being stored as objects. Data without any marker is stored exactly as before.
+  const markerOf = (v) => (v && typeof v === 'object' && v.constructor && /Transform$/.test(v.constructor.name) ? v.constructor.name : null);
+  const isPlainObject = (v) => v !== null && typeof v === 'object' && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+  const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const hasMarker = (v) => Boolean(markerOf(v)) || (isPlainObject(v) && Object.values(v).some(hasMarker));
+  const REMOVE = Symbol('remove');
+  function applyMarkers(v, cur) {
+    switch (markerOf(v)) {
+      case 'DeleteTransform': return REMOVE;
+      case 'ServerTimestampTransform': return require('firebase-admin/firestore').Timestamp.now();
+      case 'NumericIncrementTransform': return (Number(cur) || 0) + Number(v.operand);
+      case 'ArrayUnionTransform': { const a = Array.isArray(cur) ? cur.slice() : []; for (const e of v.elements) if (!a.some((x) => sameValue(x, e))) a.push(e); return a; }
+      case 'ArrayRemoveTransform': return (Array.isArray(cur) ? cur : []).filter((x) => !v.elements.some((e) => sameValue(x, e)));
+      default: break;
+    }
+    if (isPlainObject(v) && hasMarker(v)) {
+      const out = {};
+      for (const [k, x] of Object.entries(v)) { const r = applyMarkers(x, isPlainObject(cur) ? cur[k] : undefined); if (r !== REMOVE) out[k] = r; }
+      return out;
+    }
+    return v;
+  }
+  /** `data` laid over `existing` (as { ...existing, ...data }), with any markers in it applied. dotted: "a.b" keys of update() reach into nested maps for markers. */
+  function overlay(existing, data, dotted = false) {
+    if (!hasMarker(data)) return { ...existing, ...data };
+    const out = { ...existing };
+    for (const [k, v] of Object.entries(data || {})) {
+      let holder = out; let key = k;
+      if (dotted && markerOf(v) && k.includes('.') && !(k in out)) {
+        const parts = k.split('.'); key = parts.pop();
+        for (const part of parts) {
+          if (!isPlainObject(holder[part])) { if (markerOf(v) === 'DeleteTransform') { holder = null; break; } holder[part] = {}; } else holder[part] = { ...holder[part] };
+          holder = holder[part];
+        }
+        if (!holder) continue;
+      }
+      const r = applyMarkers(v, holder[key]);
+      if (r === REMOVE) delete holder[key]; else holder[key] = r;
+    }
+    return out;
+  }
 
   function getCollectionData(name) {
     if (!_firestoreStore.has(name)) {
@@ -161,14 +217,14 @@ if (serviceAccount) {
           set: async function(data, opts = {}) {
             const colMap = getCollectionData(collectionName);
             const existing = colMap.get(docId) || {};
-            const merged = opts.merge ? { ...existing, ...data, id: docId } : { ...data, id: docId };
+            const merged = opts.merge ? { ...overlay(existing, data), id: docId } : { ...overlay({}, data), id: docId };
             colMap.set(docId, merged);
             return { id: docId };
           },
           update: async function(data) {
             const colMap = getCollectionData(collectionName);
             const existing = colMap.get(docId) || { id: docId };
-            colMap.set(docId, { ...existing, ...data });
+            colMap.set(docId, overlay(existing, data, true));
             return { id: docId };
           },
           delete: async function() {
@@ -181,7 +237,7 @@ if (serviceAccount) {
       add: async function(data) {
         const colMap = getCollectionData(collectionName);
         const id = data.id || `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-        colMap.set(id, { ...data, id });
+        colMap.set(id, { ...overlay({}, data), id });
         return { id };
       }
     };
@@ -193,21 +249,11 @@ if (serviceAccount) {
     }
   };
 
-  admin.firestore = function() {
-    return db;
-  };
-
-  admin.auth = function() {
-    return {
-      verifyIdToken: async function(token) {
-        return {
-          uid: 'superadmin_dev',
-          email: 'superadmin@kylrx.ai',
-          role: 'super_admin'
-        };
-      }
-    };
-  };
+  // admin.firestore() and admin.auth() are deliberately left as the real SDK's here (they fail with "no app"). This
+  // file used to replace them with this pretend database and a sign-in check that accepted any token as a super
+  // admin, but firebase-admin 13 silently ignored both assignments, so they never took effect and the tests rely on
+  // that: a token that is not ours must be refused even on the in-memory database. Since 2026-11-20 `admin` is
+  // config/firebase-admin.js, where such an assignment would take effect, so they are gone. Use `db` instead.
 
   messaging = {
     send: async () => ({ success: true })

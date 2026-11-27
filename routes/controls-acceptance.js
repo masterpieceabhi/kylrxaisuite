@@ -1,9 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const controlsAcceptanceService = require('../services/controls-acceptance-service');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
 
 router.use(verifyToken);
+
+// Every call works on the caller's own company (decisions, sign-offs, and the template and bulk engines it checks)
+router.use((req, res, next) => {
+    const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+    if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+    req.controls = controlsAcceptanceService.forOrg(orgId);
+    next();
+});
 
 /**
  * 4.1 Common Platform Requirements Overview & Telemetry
@@ -11,7 +19,7 @@ router.use(verifyToken);
  */
 router.get('/platform-controls', (req, res) => {
     try {
-        const summary = controlsAcceptanceService.getPlatformRequirementsSummary();
+        const summary = req.controls.getPlatformRequirementsSummary();
         res.json({
             success: true,
             data: summary
@@ -27,7 +35,7 @@ router.get('/platform-controls', (req, res) => {
  */
 router.get('/criteria-matrix', async (req, res) => {
     try {
-        const results = await controlsAcceptanceService.verifyAcceptanceCriteria();
+        const results = await req.controls.verifyAcceptanceCriteria();
         res.json({
             success: true,
             data: results
@@ -43,7 +51,7 @@ router.get('/criteria-matrix', async (req, res) => {
  */
 router.get('/decisions', (req, res) => {
     try {
-        const decisions = controlsAcceptanceService.getAllClientDecisions();
+        const decisions = req.controls.getAllClientDecisions();
         res.json({
             success: true,
             data: decisions
@@ -58,7 +66,7 @@ router.get('/decisions', (req, res) => {
  */
 router.get('/decisions/:id', (req, res) => {
     try {
-        const decision = controlsAcceptanceService.getClientDecisionById(req.params.id);
+        const decision = req.controls.getClientDecisionById(req.params.id);
         if (!decision) {
             return res.status(404).json({ success: false, error: `Decision '${req.params.id}' not found.` });
         }
@@ -71,7 +79,7 @@ router.get('/decisions/:id', (req, res) => {
 /**
  * POST /api/controls-acceptance/decisions/:id
  */
-router.post('/decisions/:id', (req, res) => {
+router.post('/decisions/:id', authorize(ADMIN_HR_ROLES), (req, res) => {
     try {
         const actor = req.body.actor || {
             id: req.headers['x-user-id'] || 'client-rep-1',
@@ -80,7 +88,7 @@ router.post('/decisions/:id', (req, res) => {
             organization: req.body.organization || 'Client Organization'
         };
 
-        const updated = controlsAcceptanceService.recordClientDecision(req.params.id, req.body, actor);
+        const updated = req.controls.recordClientDecision(req.params.id, req.body, actor);
         res.json({
             success: true,
             message: `Decision '${req.params.id}' confirmed successfully.`,
@@ -94,7 +102,7 @@ router.post('/decisions/:id', (req, res) => {
 /**
  * POST /api/controls-acceptance/decisions/batch-confirm
  */
-router.post('/decisions/batch-confirm', (req, res) => {
+router.post('/decisions/batch-confirm', authorize(ADMIN_HR_ROLES), (req, res) => {
     try {
         const actor = req.body.actor || {
             id: req.headers['x-user-id'] || 'client-rep-batch',
@@ -102,7 +110,7 @@ router.post('/decisions/batch-confirm', (req, res) => {
             role: 'client_executive'
         };
 
-        const confirmed = controlsAcceptanceService.batchConfirmAllRecommendations(actor);
+        const confirmed = req.controls.batchConfirmAllRecommendations(actor);
         res.json({
             success: true,
             message: `All ${confirmed.length} recommendations batch-confirmed successfully.`,
@@ -119,7 +127,7 @@ router.post('/decisions/batch-confirm', (req, res) => {
  */
 router.get('/delivery-roadmap', (req, res) => {
     try {
-        const roadmap = controlsAcceptanceService.getDeliveryRoadmap();
+        const roadmap = req.controls.getDeliveryRoadmap();
         res.json({
             success: true,
             data: roadmap
@@ -133,9 +141,9 @@ router.get('/delivery-roadmap', (req, res) => {
  * POST /api/controls-acceptance/sign-off
  * Records formal client approval and generates tamper-evident certificate
  */
-router.post('/sign-off', (req, res) => {
+router.post('/sign-off', authorize(ADMIN_HR_ROLES), (req, res) => {
     try {
-        const approvalRecord = controlsAcceptanceService.recordClientApproval(req.body);
+        const approvalRecord = req.controls.recordClientApproval(req.body);
         res.status(201).json({
             success: true,
             message: 'Formal client scope sign-off successfully registered and sealed.',
@@ -151,8 +159,8 @@ router.post('/sign-off', (req, res) => {
  */
 router.get('/sign-off/status', (req, res) => {
     try {
-        const latest = controlsAcceptanceService.getLatestSignOff();
-        const all = controlsAcceptanceService.getAllSignOffRecords();
+        const latest = req.controls.getLatestSignOff();
+        const all = req.controls.getAllSignOffRecords();
         res.json({
             success: true,
             data: {

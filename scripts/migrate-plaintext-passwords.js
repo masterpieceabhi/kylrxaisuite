@@ -11,6 +11,27 @@ const logger = require('../utils/logger');
 
 const SALT_ROUNDS = 12;
 
+/** Firestore's "remove this field" marker: from the admin object in use, else straight from the SDK package */
+function deleteMarker(targetAdmin) {
+    const fv = targetAdmin && targetAdmin.firestore && targetAdmin.firestore.FieldValue;
+    if (fv && typeof fv.delete === 'function') return fv.delete();
+    try { return require('firebase-admin/firestore').FieldValue.delete(); } catch (_) { return null; }
+}
+
+/**
+ * Writes `updates` and removes the plaintext tempPassword field, then reads the record back to prove it is gone.
+ * Throws when the field cannot be removed or is still stored: a leftover temporary password must never pass silently.
+ */
+async function updateAndRemoveTempPassword(ref, updates, targetAdmin) {
+    const marker = deleteMarker(targetAdmin);
+    if (!marker) throw new Error('tempPassword cannot be removed: FieldValue.delete() is not available');
+    await ref.update({ ...updates, tempPassword: marker });
+    if (typeof ref.get !== 'function') return;
+    const after = await ref.get();
+    const data = after && typeof after.data === 'function' ? after.data() : null;
+    if (data && data.tempPassword !== undefined) throw new Error('tempPassword is still stored after the update: this database did not remove the field');
+}
+
 async function migratePlaintextPasswords(options = {}) {
     const targetDb = options.db || db;
     const targetAdmin = options.admin || admin;
@@ -52,25 +73,15 @@ async function migratePlaintextPasswords(options = {}) {
                         : new Date().toISOString()
                 };
 
-                // Remove legacy plaintext tempPassword field if present
-                if (data.tempPassword !== undefined) {
-                    if (targetAdmin && targetAdmin.firestore && targetAdmin.firestore.FieldValue) {
-                        updates.tempPassword = targetAdmin.firestore.FieldValue.delete();
-                    } else {
-                        delete updates.tempPassword;
-                    }
-                }
-
-                await (doc.ref ? doc.ref.update(updates) : targetDb.collection('users').doc(docId).update(updates));
+                // Remove legacy plaintext tempPassword field if present (checked afterwards; an error here is reported, not skipped)
+                const ref = doc.ref || targetDb.collection('users').doc(docId);
+                if (data.tempPassword !== undefined) await updateAndRemoveTempPassword(ref, updates, targetAdmin);
+                else await ref.update(updates);
                 migratedCount++;
                 logger.info(`[Migration] Migrated user ${email} (${docId}) to bcrypt hash and forced password reset.`);
             } else if (data.tempPassword !== undefined) {
                 // Password was already hashed, but clean up stale tempPassword field
-                const updates = {};
-                if (targetAdmin && targetAdmin.firestore && targetAdmin.firestore.FieldValue) {
-                    updates.tempPassword = targetAdmin.firestore.FieldValue.delete();
-                }
-                await (doc.ref ? doc.ref.update(updates) : targetDb.collection('users').doc(docId).update(updates));
+                await updateAndRemoveTempPassword(doc.ref || targetDb.collection('users').doc(docId), {}, targetAdmin);
                 migratedCount++;
                 logger.info(`[Migration] Removed stale tempPassword from already-hashed user ${email} (${docId}).`);
             } else {

@@ -5,6 +5,7 @@ const { sendEmail } = require('../utils/email');
 const buRulesService = require('../services/bu-employee-type-rules-service');
 const employeeProfileService = require('../services/employee-profile-service');
 const managerAssignmentService = require('../services/manager-assignment-service');
+const { allocateEmployeeIds } = require('../services/us-people-service');
 
 /**
  * Helper to get next sequential ID for departments
@@ -105,7 +106,17 @@ exports.createEmployee = async (req, res, next) => {
         }
 
         // 2. Generate ID and Password
-        const employeeId = generateEmployeeId(deptCode);
+        // Sequential, atomic IDs (EMP0001, EMP0002, ...) per company, same counter the setup wizard uses
+        const callerOrgId = req.user && req.user.orgId;
+        let employeeId;
+        if (callerOrgId) {
+            try {
+                [employeeId] = await allocateEmployeeIds(callerOrgId, 1);
+            } catch (idErr) {
+                console.warn('[AdminController] Sequential ID allocation failed, using fallback:', idErr.message);
+            }
+        }
+        if (!employeeId) employeeId = generateEmployeeId(deptCode);
         const finalPassword = password || generateSecurePassword(name);
 
         // 3. Create or Update Firebase Auth User (with timeout race)
@@ -215,7 +226,8 @@ exports.createEmployee = async (req, res, next) => {
             email,
             phone: phone || '',
             address: req.body.address || '',
-            tempPassword: finalPassword, // Storing for admin visibility
+            // The temporary password is returned once in the response and emailed; it is never stored
+            ...(callerOrgId ? { orgId: callerOrgId } : {}),
             departmentId: departmentId || '',
             departmentName: deptName,
             departmentCode: deptCode,
@@ -283,6 +295,11 @@ exports.triggerEmailInvite = async (req, res, next) => {
         if (!userDoc.exists) return res.status(404).json({ success: false, message: 'User not found' });
         
         const data = userDoc.data();
+        if (req.user && req.user.orgId && data.orgId && data.orgId !== req.user.orgId) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+        // Passwords are not stored, so issue a fresh temporary password and send that
+        const inviteTempPassword = generateSecurePassword(data.name || 'User');
         const role = data.role || 'employee';
         const roleTitle = (role === 'manager') ? 'Manager' : (role === 'hrms' ? 'HRMS Administrator' : (role === 'superadmin' ? 'Super Admin' : (role === 'hradmin' ? 'HR Admin' : 'Employee')));
         const portalPage = 'login.html';
@@ -306,7 +323,7 @@ exports.triggerEmailInvite = async (req, res, next) => {
                         <p style="margin: 6px 0;"><strong>Employee ID:</strong> <code>${data.employeeId || id}</code></p>
                         <p style="margin: 6px 0;"><strong>Official Email:</strong> ${data.email}</p>
                         <p style="margin: 6px 0;"><strong>Role:</strong> ${roleTitle}</p>
-                        <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <code style="background-color: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-family: monospace;">${data.tempPassword || data.password || 'TemporaryPass@2026!'}</code></p>
+                        <p style="margin: 6px 0;"><strong>Temporary Password:</strong> <code style="background-color: #e2e8f0; color: #0f172a; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-family: monospace;">${inviteTempPassword}</code></p>
                     </div>
 
                     <div style="text-align: center; margin: 24px 0;">
@@ -319,8 +336,12 @@ exports.triggerEmailInvite = async (req, res, next) => {
             `
         });
 
+        // Change the login password only after the email went out, so a failed send never locks the person out
+        await admin.auth().updateUser(id, { password: inviteTempPassword });
         await db.collection('users').doc(id).update({
             invite_status: 'sent',
+            must_change_password: true,
+            is_temporary_password: true,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -371,15 +392,14 @@ exports.updateEmployee = async (req, res, next) => {
         }
 
         // 2. Clean up data for Firestore
-        const tempPassword = updateData.password; // Keep track for visibility
         delete updateData.employeeId;
         delete updateData.uid;
         delete updateData.createdAt;
-        delete updateData.password; // Don't store plain password, store in tempPassword field
+        delete updateData.password; // Never store a plain password
+        delete updateData.tempPassword;
 
         await db.collection('users').doc(id).update({
             ...updateData,
-            ...(tempPassword ? { tempPassword } : {}),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
@@ -1015,7 +1035,7 @@ exports.getOrgChart = async (req, res, next) => {
  */
 exports.getBuRules = async (req, res, next) => {
     try {
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         
         // 1. Try fetching from Firestore organizations/{orgId}/business_units
         try {
@@ -1055,7 +1075,7 @@ exports.getBuRules = async (req, res, next) => {
  */
 exports.saveBuRule = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const actor = req.user?.name || req.user?.email || 'Super Admin';
 
         const rawCode = req.body.businessUnitCode || req.body.Business_Unit_Code || req.body.code;
@@ -1143,7 +1163,7 @@ exports.updateBusinessUnit = async (req, res, next) => {
 exports.toggleBusinessUnitStatus = async (req, res, next) => {
     try {
         const buCode = req.params.code.toUpperCase();
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const buRef = db.collection('organizations').doc(orgId).collection('business_units').doc(buCode);
         const snap = await buRef.get();
 
@@ -1181,7 +1201,7 @@ exports.toggleBusinessUnitStatus = async (req, res, next) => {
 exports.deleteBusinessUnit = async (req, res, next) => {
     try {
         const buCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         await db.collection('organizations').doc(orgId).collection('business_units').doc(buCode).delete();
         const ruleId = `rule_${buCode.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
@@ -1209,7 +1229,7 @@ exports.deleteBusinessUnit = async (req, res, next) => {
  */
 exports.getCostCenters = async (req, res, next) => {
     try {
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const activeOnly = req.query.active === 'true';
 
         let query = db.collection('organizations').doc(orgId).collection('cost_centers');
@@ -1239,7 +1259,7 @@ exports.getCostCenters = async (req, res, next) => {
  */
 exports.createCostCenter = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const rawCode = req.body.costCenterCode || req.body.Cost_Center_Code || req.body.code;
         const rawName = req.body.costCenterName || req.body.Cost_Center_Name || req.body.name;
         const rawOwnerId = req.body.ownerEmployeeId || req.body.Owner_Employee_ID || req.body['Owner Employee ID'] || '';
@@ -1293,7 +1313,7 @@ exports.createCostCenter = async (req, res, next) => {
 exports.updateCostCenter = async (req, res, next) => {
     try {
         const costCenterCode = req.params.code.toUpperCase();
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const ccRef = db.collection('organizations').doc(orgId).collection('cost_centers').doc(costCenterCode);
         const updateData = {
@@ -1320,7 +1340,7 @@ exports.updateCostCenter = async (req, res, next) => {
 exports.toggleCostCenterStatus = async (req, res, next) => {
     try {
         const costCenterCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const ccRef = db.collection('organizations').doc(orgId).collection('cost_centers').doc(costCenterCode);
         const snap = await ccRef.get();
@@ -1353,7 +1373,7 @@ exports.toggleCostCenterStatus = async (req, res, next) => {
 exports.deleteCostCenter = async (req, res, next) => {
     try {
         const costCenterCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         await db.collection('organizations').doc(orgId).collection('cost_centers').doc(costCenterCode).delete();
 
@@ -1372,7 +1392,7 @@ exports.deleteCostCenter = async (req, res, next) => {
  */
 exports.bulkImportCostCenters = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const costCenters = req.body.costCenters || req.body.records || [];
 
         if (!Array.isArray(costCenters) || costCenters.length === 0) {
@@ -1422,7 +1442,7 @@ exports.bulkImportCostCenters = async (req, res, next) => {
  */
 exports.getSubDepartments = async (req, res, next) => {
     try {
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const activeOnly = req.query.active === 'true';
         const departmentCode = req.query.departmentCode ? String(req.query.departmentCode).trim().toUpperCase() : null;
         const costCenterCode = req.query.costCenterCode ? String(req.query.costCenterCode).trim().toUpperCase() : null;
@@ -1470,7 +1490,7 @@ exports.getSubDepartments = async (req, res, next) => {
  */
 exports.createSubDepartment = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const rawCode = req.body.subDepartmentCode || req.body['Sub-Department_Code'] || req.body.code;
         const rawName = req.body.subDepartmentName || req.body['Sub-Department_Name'] || req.body.name;
         const rawHead = req.body.headEmployeeId || req.body['Sub-Department_Head_Employee_ID'] || req.body.headId || '';
@@ -1606,7 +1626,7 @@ exports.createSubDepartment = async (req, res, next) => {
 exports.updateSubDepartment = async (req, res, next) => {
     try {
         const subDepartmentCode = req.params.code.toUpperCase();
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const subRef = db.collection('organizations').doc(orgId).collection('sub_departments').doc(subDepartmentCode);
         const updateData = {
@@ -1633,7 +1653,7 @@ exports.updateSubDepartment = async (req, res, next) => {
 exports.toggleSubDepartmentStatus = async (req, res, next) => {
     try {
         const subDepartmentCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const subRef = db.collection('organizations').doc(orgId).collection('sub_departments').doc(subDepartmentCode);
         const snap = await subRef.get();
@@ -1666,7 +1686,7 @@ exports.toggleSubDepartmentStatus = async (req, res, next) => {
 exports.deleteSubDepartment = async (req, res, next) => {
     try {
         const subDepartmentCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         await db.collection('organizations').doc(orgId).collection('sub_departments').doc(subDepartmentCode).delete();
 
@@ -1685,7 +1705,7 @@ exports.deleteSubDepartment = async (req, res, next) => {
  */
 exports.bulkImportSubDepartments = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const subDepartments = req.body.subDepartments || req.body.records || [];
 
         if (!Array.isArray(subDepartments) || subDepartments.length === 0) {
@@ -1739,7 +1759,7 @@ exports.bulkImportSubDepartments = async (req, res, next) => {
 exports.propagateDepartmentHeadUpdate = async (req, res, next) => {
     try {
         const departmentCode = req.params.code.toUpperCase();
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const newHeadEmployeeId = String(req.body.newHeadEmployeeId || req.body.headEmployeeId || '').trim().toUpperCase();
         const newHeadEmployeeName = req.body.newHeadEmployeeName || req.body.headEmployeeName || '';
 
@@ -1875,7 +1895,7 @@ const DEFAULT_ENTERPRISE_SHIFTS = [
  */
 exports.getShifts = async (req, res, next) => {
     try {
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const snapshot = await db.collection('organizations').doc(orgId).collection('shifts').get();
 
         if (snapshot.empty) {
@@ -1910,7 +1930,7 @@ exports.getShifts = async (req, res, next) => {
  */
 exports.createShift = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const rawCode = req.body.shiftCode || req.body['Shift_Code'] || req.body.code;
         const rawName = req.body.shiftName || req.body['Shift_Name'] || req.body.name;
 
@@ -1982,7 +2002,7 @@ exports.createShift = async (req, res, next) => {
 exports.updateShift = async (req, res, next) => {
     try {
         const shiftCode = req.params.code.toUpperCase();
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const updateData = { ...req.body };
         delete updateData.shiftCode;
@@ -2009,7 +2029,7 @@ exports.updateShift = async (req, res, next) => {
 exports.toggleShiftStatus = async (req, res, next) => {
     try {
         const shiftCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         const shiftRef = db.collection('organizations').doc(orgId).collection('shifts').doc(shiftCode);
         const snap = await shiftRef.get();
@@ -2042,7 +2062,7 @@ exports.toggleShiftStatus = async (req, res, next) => {
 exports.deleteShift = async (req, res, next) => {
     try {
         const shiftCode = req.params.code.toUpperCase();
-        const orgId = req.query.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
 
         await db.collection('organizations').doc(orgId).collection('shifts').doc(shiftCode).delete();
 
@@ -2061,7 +2081,7 @@ exports.deleteShift = async (req, res, next) => {
  */
 exports.bulkImportShifts = async (req, res, next) => {
     try {
-        const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+        const orgId = getPolicyOrgId(req);
         const shifts = req.body.shifts || req.body.records || [];
 
         if (!Array.isArray(shifts) || shifts.length === 0) {
@@ -2122,7 +2142,7 @@ exports.calculatePunchAttendance = async (req, res, next) => {
         // Resolve shift policy
         let policy = shift;
         if (!policy && shiftCode) {
-            const orgId = req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+            const orgId = getPolicyOrgId(req);
             const snap = await db.collection('organizations').doc(orgId).collection('shifts').doc(shiftCode.toUpperCase()).get();
             if (snap.exists) {
                 policy = snap.data();
@@ -2283,7 +2303,11 @@ const DEFAULT_ATTENDANCE_POLICIES = [
 ];
 
 function getPolicyOrgId(req) {
-    return req.query.orgId || req.body.orgId || req.headers['x-org-id'] || 'org_kylrx';
+    // The signed-in company always wins (a caller must not read another company's policies by passing an orgId).
+    // req.body is undefined on GET requests in Express 5, so it is read defensively.
+    // Only the signed-in company: an orgId in the query, body or an x-org-id header is ignored (it let one company read and
+    // write another's business units, cost centers and shifts). A login without a company gets a name that matches nothing.
+    return (req.user && req.user.orgId) || req.tenantOrgId || 'org_none';
 }
 
 function calculateDistanceMeters(lat1, lon1, lat2, lon2) {

@@ -29,13 +29,34 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware.js');
 import {
-  globalUnifiedStatutoryOrchestrator,
+  UnifiedStatutoryOrchestrator,
   STATUTORY_RULE_VERSIONS,
 } from '../services/unified-statutory-orchestration-service.mjs';
+
+// One orchestrator per company: staging batches, shared exceptions and execution manifests are the company's own.
+// (The server-wide instance that listens to payroll_runs is not used by these routes.)
+const orgOrchestrators = new Map();
+export function orchestratorFor(orgId) {
+  if (!orgId) throw new Error('A company is required for compliance orchestration.');
+  if (!orgOrchestrators.has(orgId)) {
+    let firestoreDb = null;
+    try { firestoreDb = require('../config/firebase.js').db || null; } catch { firestoreDb = null; }
+    orgOrchestrators.set(orgId, new UnifiedStatutoryOrchestrator({ orgId, firestoreDb, listen: false }));
+  }
+  return orgOrchestrators.get(orgId);
+}
 
 const router = Router();
 router.use(verifyToken);
 router.use(authorize(ADMIN_HR_ROLES));
+
+// Every call works on the caller's own company orchestrator
+router.use((req, res, next) => {
+  const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+  if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+  req.orchestrator = orchestratorFor(orgId);
+  next();
+});
 
 const sanitizeId = (id) => (id || '').replace(/[^a-zA-Z0-9_-]/g, '');
 
@@ -46,14 +67,14 @@ const sanitizeId = (id) => (id || '').replace(/[^a-zA-Z0-9_-]/g, '');
 router.post('/orchestrate', async (req, res) => {
   try {
     const payload = req.body || {};
-    const manifest = await globalUnifiedStatutoryOrchestrator.orchestratePayrollRun(payload, {
+    const manifest = await req.orchestrator.orchestratePayrollRun(payload, {
       triggered_by: req.user?.id || req.body?.triggered_by || 'api-user',
     });
 
     const isRaw = req.query.raw === 'true' || req.headers['x-privileged-export'] === 'true';
     const responseData = isRaw
       ? manifest
-      : globalUnifiedStatutoryOrchestrator.maskForUiPresentation(manifest);
+      : req.orchestrator.maskForUiPresentation(manifest);
 
     return res.status(200).json({
       success: true,
@@ -77,7 +98,7 @@ router.get('/staging/:source_payroll_id', (req, res) => {
     const sourcePayrollId = sanitizeId(req.params.source_payroll_id);
     const isRaw = req.query.raw === 'true' || req.headers['x-privileged-export'] === 'true';
 
-    const stagingData = globalUnifiedStatutoryOrchestrator.getStagingRecords(sourcePayrollId, {
+    const stagingData = req.orchestrator.getStagingRecords(sourcePayrollId, {
       mask: !isRaw,
     });
 
@@ -99,7 +120,7 @@ router.get('/exceptions', (req, res) => {
     const { scheme, source_payroll_id, unresolved_only, raw } = req.query;
     const isRaw = raw === 'true' || req.headers['x-privileged-export'] === 'true';
 
-    const exceptions = globalUnifiedStatutoryOrchestrator.getSharedExceptions(
+    const exceptions = req.orchestrator.getSharedExceptions(
       {
         scheme,
         source_payroll_id: source_payroll_id ? sanitizeId(source_payroll_id) : undefined,
@@ -124,7 +145,7 @@ router.get('/exceptions', (req, res) => {
 router.get('/audit-manifest/:id', (req, res) => {
   try {
     const id = sanitizeId(req.params.id);
-    const manifest = globalUnifiedStatutoryOrchestrator.executionManifests.get(id);
+    const manifest = req.orchestrator.executionManifests.get(id);
 
     if (!manifest) {
       return res.status(404).json({
@@ -136,7 +157,7 @@ router.get('/audit-manifest/:id', (req, res) => {
     const isRaw = req.query.raw === 'true' || req.headers['x-privileged-export'] === 'true';
     const responseData = isRaw
       ? manifest
-      : globalUnifiedStatutoryOrchestrator.maskForUiPresentation(manifest);
+      : req.orchestrator.maskForUiPresentation(manifest);
 
     return res.status(200).json({
       success: true,
@@ -154,7 +175,7 @@ router.get('/audit-manifest/:id', (req, res) => {
 router.post('/exceptions/:id/resolve', async (req, res) => {
   try {
     const exceptionId = req.params.id;
-    const result = await globalUnifiedStatutoryOrchestrator.resolveSharedException(exceptionId, req.body);
+    const result = await req.orchestrator.resolveSharedException(exceptionId, req.body);
 
     if (!result.success) {
       return res.status(404).json({

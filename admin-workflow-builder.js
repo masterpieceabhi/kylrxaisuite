@@ -943,7 +943,7 @@ function renderConfigPanel() {
                     <span class="preset-chip" onclick="setPresetValue('Engineering')">Engineering</span>
                     <span class="preset-chip" onclick="setPresetValue('Sales')">Sales</span>
                     <span class="preset-chip" onclick="setPresetValue('5')">5%</span>
-                    <span class="preset-chip" onclick="setPresetValue('2000000')">₹20L</span>
+                    <span class="preset-chip" onclick="setPresetValue('2000000')">${window.KylrxFmt ? KylrxFmt.moneyCompact(2000000) : '₹20L'}</span>
                     <span class="preset-chip" onclick="setPresetValue('3')">3 Days</span>
                     <span class="preset-chip" onclick="setPresetValue('Full-Time')">Full-Time</span>
                 </div>
@@ -1191,7 +1191,7 @@ function renderConfigPanel() {
                     </label>
                     <label class="field-checkbox-item">
                         <input type="checkbox" onchange="toggleFormField('tax', this.checked)" ${activeFields.includes('tax') ? 'checked' : ''} />
-                        <span>PF UAN & Tax Declaration (Form 12B)</span>
+                        <span>${(window.KylrxFmt && KylrxFmt.code() !== 'IN') ? 'Federal W-4 & State Tax Withholding Form' : 'PF UAN & Tax Declaration (Form 12B)'}</span>
                     </label>
                     <label class="field-checkbox-item">
                         <input type="checkbox" onchange="toggleFormField('assets', this.checked)" ${activeFields.includes('assets') ? 'checked' : ''} />
@@ -1799,7 +1799,7 @@ function renderSelectedEmployeeCard(emp) {
         <div><span class="emp-stat-label">Employee:</span> <span class="emp-stat-val">${emp.name}</span></div>
         <div><span class="emp-stat-label">Role:</span> <span class="emp-stat-val">${emp.role}</span></div>
         <div><span class="emp-stat-label">Department:</span> <span class="emp-stat-val">${emp.department}</span></div>
-        <div><span class="emp-stat-label">CTC:</span> <span class="emp-stat-val">₹${(emp.ctc || 0).toLocaleString()}</span></div>
+        <div><span class="emp-stat-label">CTC:</span> <span class="emp-stat-val">${window.KylrxFmt ? KylrxFmt.money(emp.ctc || 0, { decimals: 0 }) : '₹' + (emp.ctc || 0).toLocaleString()}</span></div>
         <div><span class="emp-stat-label">Tenure:</span> <span class="emp-stat-val">${emp.tenureMonths || 0} months</span></div>
         <div><span class="emp-stat-label">Days Absent:</span> <span class="emp-stat-val">${emp.daysAbsent || 0} days</span></div>
     `;

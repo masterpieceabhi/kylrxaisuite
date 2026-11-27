@@ -1,5 +1,5 @@
 /**
- * Kylrx AI - Manager Portal Navigation & Isolation Guard
+ * Onn HR - Manager Portal Navigation & Isolation Guard
  * Enforces strict boundary isolation: prevents any navigation from Manager Command Center
  * to Admin, HRMS, or Employee portal pages.
  */

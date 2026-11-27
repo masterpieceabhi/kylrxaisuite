@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manager Command Center | Kylrx AI</title>
+    <title>Manager Command Center | Onn HR</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -236,6 +236,7 @@
         }
     </style>
     <link rel="stylesheet" href="sidebar-lock.css">
+<script src="country-format.js"></script>
 </head>
 <body>
     
@@ -371,8 +372,8 @@
                 <aside class="sidebar" id="sidebar">
             <!-- Brand Header matching Admin Console -->
             <a href="manager-dashboard.html" class="logo" id="brandLogoLink">
-                <img src="logo.jpg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
-                <span class="logo-text">Kylrx <span style="color: var(--primary, #2563eb);">AI</span></span>
+                <img src="onnhr-logo.svg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
+                <span class="logo-text">Onn <span style="color: var(--primary, #2563eb);">HR</span></span>
             </a>
 
             <!-- Top Department Card (Zero-Collision Flex Layout) -->
@@ -1548,7 +1549,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem;">
                             <div>
                                 <div style="font-weight:800; font-size:0.9rem;">${r.employeeName || 'Team Member'}</div>
-                                <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Time unknown'}</div>
+                                <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">${r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Time unknown'}</div>
                             </div>
                             <span style="background:#fef3c7; color:#d97706; font-size:0.7rem; font-weight:800; padding:4px 10px; border-radius:100px;">Pending</span>
                         </div>

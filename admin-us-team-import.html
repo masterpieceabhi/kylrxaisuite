@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<title>Add your team | Onn HR</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c;--warn:#92400e}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);gap:12px;flex-wrap:wrap}
+header a{color:var(--blue);text-decoration:none;font-weight:600}
+main{max-width:1200px;margin:0 auto;padding:24px;display:grid;gap:20px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px}
+h1{margin:0;font-size:20px}h2{margin:0 0 8px;font-size:16px}h3{margin:14px 0 6px;font-size:14px}p{margin:6px 0}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+input,select,textarea{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;color:var(--ink);background:#fff}
+textarea{width:100%;min-height:120px;font-family:ui-monospace,Consolas,monospace;font-size:13px}
+button{padding:8px 14px;border:0;border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:#eef2ff;color:var(--blue)}button.danger{background:#fee2e2;color:var(--bad)}button:disabled{opacity:.5;cursor:default}button.small{padding:4px 10px;font-size:12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;color:var(--muted);white-space:nowrap}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;max-height:560px;overflow-y:auto}.scroll table th{position:sticky;top:0;background:#fff;z-index:1}
+.grid td input{width:100%;min-width:110px;padding:5px 7px;border-radius:6px}.grid td.bad input{border-color:var(--bad);background:#fef2f2}.grid tr.skip td{opacity:.45}.grid td.prob{min-width:240px;color:var(--bad);font-size:12px}.grid td.prob .note{color:var(--muted)}
+.tag{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}.tag.ok{background:#dcfce7;color:var(--ok)}.tag.no{background:#fee2e2;color:var(--bad)}.tag.wait{background:#fef3c7;color:var(--warn)}.tag.off{background:#e2e8f0;color:#334155}
+#msg{padding:10px 14px;border-radius:8px;display:none;position:sticky;top:8px;z-index:5}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.row.end{align-items:flex-end}.hint{color:var(--muted);font-size:12px}
+.warn{background:#fffbeb;border:1px solid #fde68a;color:var(--warn);border-radius:8px;padding:10px 12px}
+.ask{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px;margin-top:12px}.ask label,.pick label{display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--ink);font-weight:400;margin:6px 0}
+.welcome{background:#eff6ff;border-color:#bfdbfe}.ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:10px}.ways a{display:block;background:#fff;border:1px solid #bfdbfe;border-radius:10px;padding:12px;color:var(--ink);text-decoration:none}.ways b{color:var(--blue)}
+code.link{display:inline-block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 6px;font-size:12px}
+.qr{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:12px}.qr svg{border:1px solid var(--line);border-radius:8px}
+dialog{border:1px solid var(--line);border-radius:12px;padding:18px;max-width:340px;text-align:center}dialog::backdrop{background:rgba(15,23,42,.4)}
+[hidden]{display:none!important}
+@media print{header,.card:not(#joinCard),#msg,.noprint{display:none!important}#joinCard{border:0}}
+</style>
+</head>
+<body>
+<header><h1>Add your team</h1><div><a href="admin-us-people.html">US People</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a> &nbsp;|&nbsp; <a href="us-home.html">Home</a></div></header>
+<main>
+  <div id="msg" role="status"></div>
+  <div class="card" id="blocked" hidden><h2>Not available</h2><p id="blockedText">This page is for US companies.</p></div>
+
+  <section class="card welcome" id="welcomeCard" hidden>
+    <h2>Welcome. First step: add your team</h2>
+    <p>Pick whichever is least typing for you. You can use more than one, and come back any time.</p>
+    <div class="ways">
+      <a href="#importCard"><b>Paste or upload a list</b><br>Copy the rows from Excel, Google Sheets or your old payroll tool. We work out the columns.</a>
+      <a href="#quickCard"><b>Type names and emails</b><br>One person per line. Each one gets a personal link to choose their own PIN.</a>
+      <a href="#joinCard"><b>Share one join link</b><br>Post a link or QR code. People ask to join and you approve them.</a>
+    </div>
+    <p class="hint mailOn" hidden>Set-up links are emailed to each person. You can also copy a link or show its QR code.</p>
+    <p class="hint mailOff">Email is not set up, so nothing is emailed: you copy each link or show the QR code yourself.</p>
+  </section>
+
+  <section class="card" id="importCard" hidden>
+    <h2>1. Bring in your list</h2>
+    <p class="hint">Copy the rows in Excel or Google Sheets (with the header row) and paste them here, or choose a CSV or Excel file. Exports from payroll tools work as they are: you do not need to rename columns. At most <span id="maxRows">500</span> people at a time.</p>
+    <textarea id="pasteBox" placeholder="Paste here. For example:&#10;First Name&#9;Last Name&#9;Email&#9;Hire Date&#9;Job Title&#10;Maria&#9;Lopez&#9;maria@example.com&#9;1/17/2025&#9;Cook" spellcheck="false"></textarea>
+    <div class="row"><button type="button" id="readPaste">Read what I pasted</button><span class="hint">or</span><input type="file" id="fileIn" accept=".csv,.tsv,.txt,.xlsx,.xls,.vcf,text/vcard,text/x-vcard"><span class="hint" id="fileNote"></span></div>
+    <div class="row"><button type="button" class="ghost" id="pickContacts" hidden>Pick from my phone's contacts</button><span class="hint" id="contactsHint">From your phone's contacts: export them as a .vcf file (iPhone: Contacts, select, Export; Android: Contacts, Fix and manage, Export) and choose that file above. Only names, emails and phone numbers are read.</span></div>
+  </section>
+
+  <section class="card" id="mapCard" hidden>
+    <h2>2. Check the columns</h2>
+    <p class="hint" id="mapNote"></p>
+    <div class="scroll"><table><thead><tr><th>Your column</th><th>Example from your list</th><th>What it is</th><th></th></tr></thead><tbody id="mapRows"></tbody></table></div>
+    <div class="row"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="hasHeader"> The first row holds column names, not a person</label></div>
+    <div class="ask" id="ssnAsk" hidden>
+      <b>This list has Social Security numbers (<span id="ssnCols"></span>). Do you want to import them?</b>
+      <label><input type="radio" name="ssnChoice" value="leave"> <span><b>No, leave them out.</b> Each person types their own number when they fill in their paperwork. Nothing from that column is sent or saved.</span></label>
+      <label><input type="radio" name="ssnChoice" value="import"> <span><b>Yes, import them.</b> They are stored encrypted; afterwards only the last 4 digits are shown, and every full reveal is logged.</span></label>
+      <p class="hint">Choose one to continue.</p>
+    </div>
+    <div class="row end"><label>First day of work for rows that have none (optional)<input type="date" id="defStart"></label><button type="button" id="checkBtn">Check the rows</button><button type="button" class="ghost" id="startOver">Start over</button></div>
+  </section>
+
+  <section class="card" id="gridCard" hidden>
+    <h2>3. Fix the rows, then add them</h2>
+    <p id="gridSummary"></p>
+    <div class="row" style="margin-top:0"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="onlyBad"> Show only rows with problems</label>
+      <span class="hint">Fill every empty cell of</span><select id="fillField"></select><input id="fillValue" placeholder="value" style="width:150px"><button type="button" class="ghost small" id="fillBtn">Fill</button>
+      <button type="button" class="ghost" id="recheck">Check again</button></div>
+    <div class="scroll" style="margin-top:12px"><table class="grid"><thead id="gridHead"></thead><tbody id="gridRows"></tbody></table></div>
+    <p class="hint">Type in a cell to fix it, then press "Check again". Tick "Skip" to leave a row out. Dates can be typed like 1/17/2025; money like $18.50.</p>
+    <div class="pick" id="accessPick">
+      <h3>How should these people sign in the first time?</h3>
+      <label><input type="radio" name="access" value="link" checked> <span><b>A personal set-up link for each person (recommended).</b> Each person opens their link, chooses their own PIN and is signed in. Nobody else ever sees it. A link works once and for <span class="linkDays">7</span> days.</span></label>
+      <label style="display:none"><input type="radio" name="access" value="password"> <span><b>A temporary password for each person.</b> You hand it over; the person must choose a new password right after their first sign-in.</span></label>
+    </div>
+    <label class="mailOn" hidden style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400;margin-top:10px"><input type="checkbox" id="mailLinks" checked> Email each person their set-up link</label>
+    <div class="row"><button type="button" id="createBtn" disabled>Add people</button><span class="hint" id="createNote"></span></div>
+  </section>
+
+  <section class="card" id="handCard" hidden>
+    <h2>Hand these out</h2>
+    <div class="warn"><b>These are shown once.</b> Links marked "Emailed" are already in that person's inbox. Give the others to the person yourself (text message, chat, in person, or let them scan the QR code). Anyone holding a link can get into that person's account, so give each one only to its owner. If one gets lost, make a new one under "Sign-in help" below.</div>
+    <div class="scroll" style="margin-top:12px"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Give them this</th><th></th></tr></thead><tbody id="handRows"></tbody></table></div>
+    <div class="row"><button type="button" class="ghost" id="copyAll">Copy the whole list</button><button type="button" class="ghost" id="dlAll">Download as a file</button><span class="hint">A downloaded file holds the same secrets. Delete it when you are done.</span></div>
+  </section>
+
+  <section class="card" id="quickCard" hidden>
+    <h2>Quick add: just names and emails</h2>
+    <p class="hint">One person per line, like <b>Maria Lopez, maria@example.com</b>. Each person gets a personal set-up link and fills in their own address, tax form and bank details after signing in.</p>
+    <textarea id="quickBox" style="min-height:90px" placeholder="Maria Lopez, maria@example.com&#10;Joe Lee, joe@example.com" spellcheck="false"></textarea>
+    <div class="row end"><label>First day of work<input type="date" id="quickStart"></label><label class="mailOn" hidden style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="quickMail" checked> Email them their links</label><button type="button" id="quickBtn">Add them and make set-up links</button></div>
+    <div id="quickOut" class="hint" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card" id="joinCard" hidden>
+    <h2>Company join link</h2>
+    <p class="hint noprint">One link (or QR code) for everybody: put it on the break-room wall or in your group chat. A person who opens it types their name and email, and then <b>waits for your approval</b> below. Until you approve them they cannot sign in or see anything. <span class="mailOn" hidden>We email you and your HR administrators when someone asks, and email the person once you approve them.</span><span class="mailOff">Email is not set up, so check the waiting list yourself.</span></p>
+    <p class="hint noprint"><b>Fastest, with everyone in the room</b> (a team meeting, the start of a shift): choose "Let them in right away", show the QR code on your screen, and everyone scans it. Each person types their own name and email and is in at once, so you type nothing and approve nobody. The link works for a few hours and for as many people as you say.</p>
+    <div class="row noprint" style="margin-top:0;gap:18px">
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="radio" name="joinMode" id="joinAsk" value="ask" checked> Ask me first (I approve each person)</label>
+      <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="radio" name="joinMode" id="joinOpen" value="open"> Let them in right away</label>
+    </div>
+    <div class="row end noprint" id="openOpts" hidden><label>Works for (hours, 1 to <span id="openMaxHours">24</span>)<input type="number" id="openHours" min="1" max="24" value="2" style="width:110px"></label><label>Lets in up to (people, 1 to <span id="openMaxPeople">100</span>)<input type="number" id="openPeople" min="1" max="100" value="30" style="width:110px"></label></div>
+    <p class="hint noprint" id="openWarn" hidden>Anyone who scans the code while it works gets in as an employee (never a manager or administrator), so show it only to your team and turn it off when everyone is in. You can still remove anyone afterwards.</p>
+    <div class="row end noprint"><label id="joinDaysBox">Works for (days, 1 to <span id="maxDays">30</span>)<input type="number" id="joinDays" min="1" max="30" value="7" style="width:110px"></label><label>Note for yourself (optional)<input id="joinLabel" maxlength="60" placeholder="Kitchen staff, November"></label><button type="button" id="joinNew">Make a join link</button></div>
+    <div id="joinFresh" hidden>
+      <div class="warn noprint" style="margin-top:12px"><b>Copy this link now.</b> For safety we keep only a fingerprint of it, so it cannot be shown again. You can make another one at any time.</div>
+      <div class="qr"><div id="joinQr"></div><div><p><b id="joinCompany">Join our team</b></p><p>Scan the code with your phone camera, or open:</p><p><code class="link" id="joinUrl" style="max-width:520px;white-space:normal;overflow-wrap:anywhere"></code></p>
+        <p class="noprint"><button type="button" class="ghost" id="joinCopy">Copy link</button> <button type="button" class="ghost" id="joinPrint">Print this</button> <button type="button" class="ghost" id="joinBig">Show it big</button></p><p class="hint" id="joinLive" hidden></p><p class="hint" id="joinUntil"></p></div></div>
+    </div>
+    <h3 class="noprint">Your join links</h3>
+    <table class="noprint"><thead><tr><th>Made</th><th>Note</th><th>Works until</th><th>Requests</th><th>Status</th><th></th></tr></thead><tbody id="joinRows"></tbody></table>
+    <p class="hint noprint" id="joinEmpty" hidden>No join links yet.</p>
+  </section>
+
+  <section class="card" id="waitCard" hidden>
+    <h2>Waiting for your approval <span class="tag wait" id="waitCount" hidden></span></h2>
+    <p class="hint">Approve only people you know work here. An approved person becomes an employee (never a manager or administrator) and can sign in: on the sign-in page they type their email, press "Forgot password or PIN?", use the code sent to them and choose a PIN. Rejecting removes the request. This list updates by itself while the page is open.</p>
+    <div class="row end" style="margin-top:0"><label>First day of work for people you approve<input type="date" id="approveStart"></label></div>
+    <div class="row" id="waitBulk" hidden style="margin-top:10px"><button type="button" id="approvePicked" disabled>Approve the ones I ticked</button><span class="hint" id="pickedCount"></span></div>
+    <table style="margin-top:10px"><thead><tr><th style="width:28px"><input type="checkbox" id="pickAll" title="Tick everybody"></th><th>Name</th><th>Email</th><th>Phone</th><th>Asked on</th><th></th></tr></thead><tbody id="waitRows"></tbody></table>
+    <p class="hint" id="waitEmpty" hidden>Nobody is waiting.</p>
+  </section>
+
+  <section class="card" id="helpCard" hidden>
+    <h2>Sign-in help</h2>
+    <p class="hint">Someone lost their set-up link? Give them a new one here; the old link stops working at once. Someone who forgot their PIN does not need you: the sign-in page sends them a code. You cannot do this for someone with a higher role than yours, or for yourself.</p>
+    <div class="row" style="margin-top:0"><input id="helpFind" placeholder="Find by name or email" style="width:260px"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink);font-weight:400"><input type="checkbox" id="helpPending"> Only people who have not finished setting up</label></div>
+    <div class="scroll" style="margin-top:10px;max-height:380px"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Sign-in</th><th></th></tr></thead><tbody id="helpRows"></tbody></table></div>
+    <p class="hint" id="helpEmpty" hidden>Nobody matches.</p>
+  </section>
+</main>
+
+<dialog id="qrDialog"><p><b id="qrName"></b></p><div id="qrBox"></div><p class="hint" id="qrHint">Let the person scan this with their phone camera.</p><button type="button" id="qrClose">Close</button></dialog>
+
+<script src="utils/xlsx.full.min.js"></script>
+<script src="qr-mini.js"></script>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function say(text, ok = true) { const m = $('msg'); m.textContent = text; m.className = text ? (ok ? 'ok' : 'err') : ''; }
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const when = (isoText) => (isoText ? new Date(isoText).toLocaleDateString('en-US', { dateStyle: 'medium' }) : '');
+
+async function api(method, path, body) {
+  const res = await fetch(`/api/us/team-import${path}`, { method, cache: 'no-store', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) { const e = new Error((json.errors && json.errors.join(' ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`); e.status = res.status; throw e; }
+  return json;
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); } catch (_) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  say('Copied.');
+}
+const setupUrl = (token) => `${location.origin}/join.html#s=${token}`;
+let MAIL = false; // email is set up on the server: set-up links can be emailed
+function mailedNote(s) {
+  const n = s.emailed || 0; const rest = s.created - n;
+  if (!n) return 'Now hand out what is listed under "Hand these out".';
+  return rest > 0 ? `${n} set-up ${n === 1 ? 'link was' : 'links were'} emailed. Hand out the other ${rest} yourself (see "Hand these out").` : `Everyone's set-up link was emailed. They are also listed under "Hand these out".`;
+}
+/** A contacts file can carry photos that make it huge: only the text lines we read are sent */
+function vcfText(text) {
+  const keep = []; let skipping = false;
+  for (const line of String(text).replace(/\r\n?/g, '\n').split('\n')) {
+    const qp = !skipping && keep.length && /=$/.test(keep[keep.length - 1]) && /QUOTED-PRINTABLE/i.test(keep.slice(-5).join(' '));
+    if (/^[ \t]/.test(line) || qp) { if (!skipping) keep.push(line); continue; }
+    skipping = !/^(BEGIN|END|VERSION|N|FN|EMAIL|TEL|item\d+\.(EMAIL|TEL))[;:]/i.test(line);
+    if (!skipping) keep.push(line);
+  }
+  return keep.join('\n');
+}
+const joinUrl = (token) => `${location.origin}/join.html#c=${token}`;
+function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+const csvCell = (v) => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+
+let FIELDS = []; let LABEL = {};
+let sheet = null;      // { rows, hasHeader, columns, ssnColumns }
+let people = [];       // one object per person: { field: text }
+let results = [];      // the server's findings, same order as people
+let skipped = new Set();
+const handouts = [];   // { employeeId, name, email, kind: 'link' | 'password', value }
+
+// ------------------------------------------------------------------------------------------- 1. read the list
+async function analyze(body) {
+  say('');
+  try {
+    const r = await api('POST', '/analyze', body);
+    sheet = r; showMapping();
+  } catch (e) { say(e.message, false); }
+}
+if (navigator.contacts && typeof navigator.contacts.select === 'function') {
+  $('pickContacts').hidden = false; $('contactsHint').textContent = 'Choose the people who work for you. Only their names, emails and phone numbers are read.';
+  $('pickContacts').addEventListener('click', async () => {
+    try { const list = await navigator.contacts.select(['name', 'email', 'tel'], { multiple: true }); if (list && list.length) await analyze({ contacts: list }); }
+    catch (e) { say('Could not open your contacts. Export them as a .vcf file and choose that file instead.', false); }
+  });
+}
+$('readPaste').addEventListener('click', () => { const text = $('pasteBox').value; if (!text.trim()) return say('Paste your rows into the box first.', false); analyze({ text }); });
+$('fileIn').addEventListener('change', async (ev) => {
+  const file = ev.target.files[0]; if (!file) return;
+  try {
+    if (/\.vcf$/i.test(file.name) || /vcard/i.test(file.type)) { $('fileNote').textContent = 'Phone contacts: tick "Skip" for anyone who does not work for you.'; await analyze({ text: vcfText(await file.text()) }); }
+    else if (/\.(csv|tsv|txt)$/i.test(file.name)) { await analyze({ text: await file.text() }); } else {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false, blankrows: false });
+      $('fileNote').textContent = wb.SheetNames.length > 1 ? `Only the first sheet ("${wb.SheetNames[0]}") is read.` : '';
+      await analyze({ rows });
+    }
+  } catch (e) { say('Could not read that file. Save it as CSV or Excel and try again, or copy the rows and paste them.', false); }
+  ev.target.value = '';
+});
+
+// --------------------------------------------------------------------------------------- 2. check the columns
+function showMapping() {
+  const opts = (sel) => `<option value="ignore">Do not import</option>${FIELDS.map((f) => `<option value="${esc(f.key)}"${f.key === sel ? ' selected' : ''}>${esc(f.label)}</option>`).join('')}`;
+  $('mapRows').innerHTML = sheet.columns.map((c) => `<tr><td><b>${esc(c.header)}</b></td><td>${sheet.ssnColumns.includes(c.index) ? '<span class="hint">(hidden)</span>' : esc(c.sample)}</td><td><select data-col="${c.index}">${opts(c.field)}</select></td><td>${c.field === 'ignore' ? '<span class="hint">Not recognized. Choose what it is, or leave it out.</span>' : (c.why === 'content' ? '<span class="hint">Guessed from what is in the column</span>' : '')}</td></tr>`).join('');
+  $('hasHeader').checked = sheet.hasHeader;
+  $('mapNote').textContent = `${sheet.rowCount} ${sheet.rowCount === 1 ? 'person' : 'people'} found. We guessed what each of your columns is. Change any that are wrong.`;
+  const ssn = sheet.ssnColumns.length > 0;
+  $('ssnAsk').hidden = !ssn; $('ssnCols').textContent = sheet.ssnColumns.map((i) => `column "${sheet.columns[i].header}"`).join(', ');
+  document.querySelectorAll('input[name=ssnChoice]').forEach((r) => { r.checked = false; });
+  $('mapCard').hidden = false; $('gridCard').hidden = true; refreshCheckBtn();
+  $('mapCard').scrollIntoView({ behavior: 'smooth' });
+}
+const mapping = () => [...$('mapRows').querySelectorAll('select')].map((s) => s.value);
+const ssnChoice = () => { const r = document.querySelector('input[name=ssnChoice]:checked'); return r ? r.value : null; };
+function refreshCheckBtn() { $('checkBtn').disabled = mapping().includes('ssn') && !ssnChoice(); }
+$('mapRows').addEventListener('change', () => {
+  // a column the user marks as SSN gets the same question
+  const hasSsn = mapping().includes('ssn') || sheet.ssnColumns.length > 0;
+  $('ssnAsk').hidden = !hasSsn; if (hasSsn && !$('ssnCols').textContent) $('ssnCols').textContent = 'the column you marked';
+  refreshCheckBtn();
+});
+document.querySelectorAll('input[name=ssnChoice]').forEach((r) => r.addEventListener('change', refreshCheckBtn));
+$('hasHeader').addEventListener('change', () => analyze({ rows: sheet.rows, headerRow: $('hasHeader').checked }));
+$('startOver').addEventListener('click', () => { sheet = null; people = []; results = []; skipped = new Set(); $('mapCard').hidden = true; $('gridCard').hidden = true; $('pasteBox').value = ''; say(''); $('importCard').scrollIntoView({ behavior: 'smooth' }); });
+
+const options = () => ({ ssn: ssnChoice() === 'import' ? 'import' : 'leave', defaultStartDate: $('defStart').value || '' });
+
+$('checkBtn').addEventListener('click', async () => {
+  say('');
+  const map = mapping(); const keepSsn = ssnChoice() === 'import';
+  // SSN columns the user did not agree to import never leave this page
+  const drop = new Set(map.map((f, i) => (f === 'ssn' && !keepSsn ? i : -1)).filter((i) => i >= 0));
+  sheet.ssnColumns.forEach((i) => { if (!(map[i] === 'ssn' && keepSsn)) drop.add(i); });
+  const rows = sheet.rows.map((r, n) => r.map((c, i) => (drop.has(i) && !(n === 0 && sheet.hasHeader) ? '' : c)));
+  const sendMap = map.map((f, i) => (drop.has(i) ? 'ignore' : f));
+  $('checkBtn').disabled = true;
+  try {
+    const r = await api('POST', '/check', { rows, mapping: sendMap, hasHeader: sheet.hasHeader, options: options() });
+    people = r.people; skipped = new Set(); takeResults(r, true);
+    $('gridCard').hidden = false; $('gridCard').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { say(e.message, false); }
+  refreshCheckBtn();
+});
+
+// ------------------------------------------------------------------------------------------ 3. fix the rows
+/** Keeps the tidy values the server made (dates as 2025-01-17, states as TX ...) so the cells show what will be saved */
+function takeResults(r, adopt) {
+  results = r.results;
+  if (adopt) people = people.map((p, i) => { const v = { ...results[i].values }; if (p.ssn) v.ssn = p.ssn; else delete v.ssn; return v; });
+  drawGrid();
+}
+function shownFields() {
+  const used = new Set(['first_name', 'last_name', 'email', 'start_date']);
+  people.forEach((p) => Object.keys(p).forEach((k) => { if (String(p[k] ?? '') !== '') used.add(k); }));
+  results.forEach((r) => r.problems.forEach((p) => { if (p.field) used.add(p.field); }));
+  used.delete('full_name');
+  return FIELDS.filter((f) => used.has(f.key));
+}
+function drawGrid() {
+  const fields = shownFields(); const onlyBad = $('onlyBad').checked;
+  $('gridHead').innerHTML = `<tr><th>Skip</th><th>#</th>${fields.map((f) => `<th>${esc(f.label)}${f.required ? ' *' : ''}</th>`).join('')}<th>Problems</th></tr>`;
+  $('gridRows').innerHTML = people.map((p, i) => {
+    const res = results[i] || { problems: [], notes: [], ok: false };
+    if (onlyBad && res.ok && !skipped.has(i)) return '';
+    const badFields = new Set(res.problems.map((x) => x.field));
+    const cells = fields.map((f) => {
+      if (f.key === 'ssn') return `<td class="${badFields.has('ssn') ? 'bad' : ''}">${p.ssn ? `<span class="hint">${esc(res.values && res.values.ssn ? res.values.ssn : 'hidden')}</span> <button type="button" class="ghost small" data-clear="${i}">Remove</button>` : ''}</td>`;
+      return `<td class="${badFields.has(f.key) ? 'bad' : ''}"><input data-i="${i}" data-f="${esc(f.key)}" value="${esc(p[f.key] ?? '')}" aria-label="${esc(f.label)}, row ${i + 1}"></td>`;
+    }).join('');
+    const probs = res.problems.map((x) => `<div>${esc(x.field && LABEL[x.field] ? `${LABEL[x.field]}: ` : '')}${esc(x.message)}</div>`).join('') + (res.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join('');
+    return `<tr class="${skipped.has(i) ? 'skip' : ''}"><td><input type="checkbox" data-skip="${i}"${skipped.has(i) ? ' checked' : ''} aria-label="Skip row ${i + 1}"></td><td>${i + 1}</td>${cells}<td class="prob">${res.ok ? '<span class="tag ok">Ready</span>' : ''}${probs}</td></tr>`;
+  }).join('');
+  $('fillField').innerHTML = FIELDS.filter((f) => !['first_name', 'last_name', 'full_name', 'email', 'ssn', 'employee_number', 'phone'].includes(f.key)).map((f) => `<option value="${esc(f.key)}">${esc(f.label)}</option>`).join('');
+  summary();
+}
+let dirty = false;
+function summary() {
+  const live = people.map((_, i) => i).filter((i) => !skipped.has(i));
+  const good = live.filter((i) => results[i] && results[i].ok).length; const bad = live.length - good;
+  $('gridSummary').innerHTML = `<b>${good}</b> ready to add, <b>${bad}</b> with problems${skipped.size ? `, ${skipped.size} skipped` : ''}.${dirty ? ' <span class="tag wait">You changed something: press "Check again"</span>' : ''}`;
+  $('createBtn').disabled = dirty || good === 0;
+  $('createBtn').textContent = good ? `Add ${good} ${good === 1 ? 'person' : 'people'}` : 'Add people';
+  $('createNote').textContent = bad && good ? `The ${bad} with problems stay here so you can fix them afterwards.` : '';
+}
+$('gridRows').addEventListener('input', (ev) => { const el = ev.target; if (!el.dataset.f) return; const i = Number(el.dataset.i); if (el.value.trim() === '') delete people[i][el.dataset.f]; else people[i][el.dataset.f] = el.value; dirty = true; summary(); });
+$('gridRows').addEventListener('change', (ev) => { const el = ev.target; if (el.dataset.skip === undefined) return; const i = Number(el.dataset.skip); if (el.checked) skipped.add(i); else skipped.delete(i); el.closest('tr').classList.toggle('skip', el.checked); summary(); });
+$('gridRows').addEventListener('click', (ev) => { const b = ev.target.closest('[data-clear]'); if (!b) return; delete people[Number(b.dataset.clear)].ssn; dirty = true; drawGrid(); });
+$('onlyBad').addEventListener('change', drawGrid);
+$('fillBtn').addEventListener('click', () => { const f = $('fillField').value; const v = $('fillValue').value.trim(); if (!f || !v) return; let n = 0; people.forEach((p, i) => { if (!skipped.has(i) && !p[f]) { p[f] = v; n += 1; } }); if (n) dirty = true; drawGrid(); say(n ? `Filled ${n} empty ${n === 1 ? 'cell' : 'cells'}. Press "Check again".` : 'There were no empty cells in that column.'); });
+async function recheck() {
+  say('');
+  try { const r = await api('POST', '/check', { people, options: options() }); dirty = false; takeResults(r, true); } catch (e) { say(e.message, false); }
+}
+$('recheck').addEventListener('click', recheck);
+
+$('createBtn').addEventListener('click', async () => {
+  const access = document.querySelector('input[name=access]:checked').value;
+  const idx = people.map((_, i) => i).filter((i) => !skipped.has(i) && results[i] && results[i].ok);
+  if (!idx.length) return;
+  if (!window.confirm(`Add ${idx.length} ${idx.length === 1 ? 'person' : 'people'} now?`)) return;
+  $('createBtn').disabled = true; say('Adding people. This can take a minute for a long list...');
+  try {
+    const r = await api('POST', '/create', { people: idx.map((i) => people[i]), options: { ...options(), access, email: MAIL && $('mailLinks').checked } });
+    const done = new Set();
+    r.results.forEach((x, n) => {
+      if (x.status === 'created') { done.add(idx[n]); handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: access, value: access === 'link' ? setupUrl(x.setupToken) : x.temporaryPassword, emailed: Boolean(x.emailed) }); } else { results[idx[n]] = { ...results[idx[n]], ok: false, problems: x.problems || [] }; }
+    });
+    // created rows leave the grid; the rest stay to be fixed
+    const keep = people.map((_, i) => i).filter((i) => !done.has(i));
+    const newSkipped = new Set(); keep.forEach((old, n) => { if (skipped.has(old)) newSkipped.add(n); });
+    people = keep.map((i) => people[i]); results = keep.map((i) => results[i]); skipped = newSkipped;
+    drawHandouts(); drawGrid();
+    if (!people.length) { $('gridCard').hidden = true; $('mapCard').hidden = true; $('pasteBox').value = ''; }
+    say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added.${r.summary.ssnStored ? ` ${r.summary.ssnStored} Social Security ${r.summary.ssnStored === 1 ? 'number was' : 'numbers were'} stored encrypted.` : ''} ${mailedNote(r.summary)}`);
+    $('handCard').scrollIntoView({ behavior: 'smooth' });
+    loadAccess().catch(() => {});
+  } catch (e) { say(e.message, false); summary(); }
+});
+
+// --------------------------------------------------------------------------------------- hand out the links
+function drawHandouts() {
+  $('handCard').hidden = handouts.length === 0;
+  $('handRows').innerHTML = handouts.map((h, i) => `<tr><td>${esc(h.employeeId || '')}</td><td>${esc(h.name)}</td><td>${esc(h.email)}</td><td>${h.emailed ? '<span class="tag ok">Emailed</span> ' : ''}${h.kind === 'link' ? `<span class="hint">Set-up link</span> <code class="link">${esc(h.value)}</code>` : `<span class="hint">Temporary password</span> <code class="link">${esc(h.value)}</code>`}</td><td style="white-space:nowrap"><button type="button" class="ghost small" data-copy="${i}">Copy</button>${h.kind === 'link' ? ` <button type="button" class="ghost small" data-qr="${i}">QR code</button>` : ''}</td></tr>`).join('');
+}
+function showQr(title, text) {
+  const svg = window.QrMini ? window.QrMini.svg(text, { size: 260 }) : null;
+  $('qrName').textContent = title;
+  $('qrBox').innerHTML = svg || ''; $('qrHint').textContent = svg ? 'Let the person scan this with their phone camera.' : 'This link is too long to draw as a QR code. Copy the link instead.';
+  $('qrDialog').showModal();
+}
+$('qrClose').addEventListener('click', () => $('qrDialog').close());
+$('handRows').addEventListener('click', (ev) => {
+  const c = ev.target.closest('[data-copy]'); if (c) return copyText(handouts[Number(c.dataset.copy)].value);
+  const q = ev.target.closest('[data-qr]'); if (q) { const h = handouts[Number(q.dataset.qr)]; showQr(h.name, h.value); }
+});
+const handoutLines = (sep, cellFn) => [['employee_id', 'name', 'email', 'what', 'value', 'emailed'].join(sep), ...handouts.map((h) => [h.employeeId, h.name, h.email, h.kind === 'link' ? 'set-up link' : 'temporary password', h.value, h.emailed ? 'yes' : 'no'].map(cellFn).join(sep))].join('\n');
+$('copyAll').addEventListener('click', () => copyText(handoutLines('\t', (v) => String(v ?? ''))));
+$('dlAll').addEventListener('click', () => download('new-people-sign-in.csv', handoutLines(',', csvCell)));
+
+// ------------------------------------------------------------------------------------------------ quick add
+$('quickBtn').addEventListener('click', async () => {
+  say(''); $('quickOut').textContent = '';
+  const lines = $('quickBox').value.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return say('Type at least one person: name, then email.', false);
+  const list = lines.map((line) => { const m = /([^\s<>,;]+@[^\s<>,;]+)/.exec(line); const name = line.replace(m ? m[0] : '', ' ').replace(/[<>;\t]/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s+/g, ' '); const p = {}; if (name) p.full_name = name; if (m) p.email = m[1]; return p; });
+  $('quickBtn').disabled = true;
+  try {
+    const r = await api('POST', '/create', { people: list, options: { access: 'link', ssn: 'leave', defaultStartDate: $('quickStart').value || today(), email: MAIL && $('quickMail').checked } });
+    const left = [];
+    r.results.forEach((x, n) => {
+      if (x.status === 'created') handouts.push({ employeeId: x.employeeId, name: x.name, email: x.email, kind: 'link', value: setupUrl(x.setupToken), emailed: Boolean(x.emailed) });
+      else left.push({ line: lines[n], why: (x.problems || []).map((p) => p.message).join(' ') });
+    });
+    $('quickBox').value = left.map((l) => l.line).join('\n');
+    $('quickOut').innerHTML = left.length ? `<b>${left.length}</b> not added (still in the box so you can fix them):<ul>${left.map((l) => `<li>${esc(l.line)}: ${esc(l.why)}</li>`).join('')}</ul>` : '';
+    drawHandouts();
+    if (r.summary.created) { say(`${r.summary.created} ${r.summary.created === 1 ? 'person' : 'people'} added. ${mailedNote(r.summary)}`); $('handCard').scrollIntoView({ behavior: 'smooth' }); loadAccess().catch(() => {}); } else say('Nobody was added. See the notes under the box.', false);
+  } catch (e) { say(e.message, false); }
+  $('quickBtn').disabled = false;
+});
+
+// ---------------------------------------------------------------------------------------- company join link
+let companyName = '';
+let freshLinkId = null; // the link made on this page just now (its QR code is on screen)
+async function loadJoinLinks() {
+  const r = await api('GET', '/join-links');
+  const label = { active: ['ok', 'Working'], expired: ['off', 'Ended'], revoked: ['off', 'Turned off'], used: ['off', 'Used'] };
+  $('joinRows').innerHTML = r.data.map((l) => `<tr><td>${esc(when(l.createdAt))}</td><td>${esc(l.label)}</td><td>${esc(when(l.expiresAt))}</td><td>${l.open ? `${Number(l.joined) || 0} of ${Number(l.maxPeople) || 0} let in` : Number(l.requests) || 0}</td><td>${l.open ? '<span class="tag wait">Lets people in</span> ' : ''}<span class="tag ${label[l.state][0]}">${label[l.state][1]}</span></td><td>${l.state === 'active' ? `<button type="button" class="danger small" data-off="${esc(l.id)}">Turn off</button>` : ''}</td></tr>`).join('');
+  $('joinEmpty').hidden = r.data.length > 0;
+  // While an open link's QR code is on screen: how many are in so far
+  const fresh = freshLinkId && r.data.find((l) => l.id === freshLinkId);
+  $('joinLive').hidden = !(fresh && fresh.open);
+  if (fresh && fresh.open) $('joinLive').textContent = fresh.state === 'active' ? `${Number(fresh.joined) || 0} of ${Number(fresh.maxPeople) || 0} people are in so far. This updates by itself.` : `This link has stopped working. ${Number(fresh.joined) || 0} people came in with it.`;
+}
+const openMode = () => $('joinOpen').checked;
+function paintJoinMode() { $('openOpts').hidden = !openMode(); $('openWarn').hidden = !openMode(); $('joinDaysBox').hidden = openMode(); }
+document.querySelectorAll('input[name=joinMode]').forEach((el) => el.addEventListener('change', paintJoinMode));
+$('joinNew').addEventListener('click', async () => {
+  say('');
+  try {
+    const body = openMode() ? { open: true, hours: Number($('openHours').value), maxPeople: Number($('openPeople').value), label: $('joinLabel').value } : { days: Number($('joinDays').value), label: $('joinLabel').value };
+    const r = await api('POST', '/join-links', body);
+    const url = joinUrl(r.token);
+    freshLinkId = r.link.id;
+    $('joinUrl').textContent = url; $('joinFresh').hidden = false;
+    $('joinUntil').textContent = r.link.open ? `Works until ${when(r.link.expiresAt)}, for up to ${r.link.maxPeople} people. Each one is in as soon as they send the form, and shows up under "Sign-in help".` : `Works until ${when(r.link.expiresAt)}. People who ask to join show up under "Waiting for your approval".`;
+    $('joinCompany').textContent = companyName ? `Join ${companyName}` : 'Join our team';
+    const svg = window.QrMini ? window.QrMini.svg(url, { size: 220 }) : null;
+    $('joinQr').innerHTML = svg || '<p class="hint">This link is too long to draw as a QR code. Share the link itself.</p>';
+    $('joinLabel').value = ''; await loadJoinLinks();
+    say(r.link.open ? 'Open link made. Press "Show it big" and let everyone scan it. It cannot be shown again after you leave this page.' : 'Join link made. Copy it now: it cannot be shown again.');
+  } catch (e) { say(e.message, false); }
+});
+$('joinCopy').addEventListener('click', () => copyText($('joinUrl').textContent));
+$('joinPrint').addEventListener('click', () => window.print());
+$('joinBig').addEventListener('click', () => showQr($('joinCompany').textContent, $('joinUrl').textContent));
+$('joinRows').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-off]'); if (!b) return;
+  if (!window.confirm('Turn this join link off? Nobody will be able to use it any more. People already waiting stay on the list.')) return;
+  try { await api('DELETE', `/join-links/${encodeURIComponent(b.dataset.off)}`); await loadJoinLinks(); say('The link is turned off.'); } catch (e) { say(e.message, false); }
+});
+
+let MAX_AT_ONCE = 50;
+const picked = new Set();
+function paintPicked() {
+  const n = picked.size;
+  $('approvePicked').disabled = n === 0;
+  $('approvePicked').textContent = n ? `Approve the ${n} I ticked` : 'Approve the ones I ticked';
+  $('pickedCount').textContent = n > MAX_AT_ONCE ? `You can approve up to ${MAX_AT_ONCE} at a time.` : '';
+  const boxes = [...document.querySelectorAll('#waitRows [data-pick]')];
+  $('pickAll').checked = boxes.length > 0 && boxes.every((b) => b.checked);
+}
+async function loadRequests() {
+  const r = await api('GET', '/join-requests');
+  const waiting = r.data.filter((x) => x.status === 'waiting');
+  [...picked].forEach((id) => { if (!waiting.some((x) => x.id === id)) picked.delete(id); }); // ticks survive the refresh
+  $('waitCount').hidden = waiting.length === 0; $('waitCount').textContent = `${waiting.length} waiting`;
+  $('waitBulk').hidden = waiting.length < 2;
+  $('waitRows').innerHTML = waiting.map((x) => `<tr><td><input type="checkbox" data-pick="${esc(x.id)}" ${picked.has(x.id) ? 'checked' : ''} aria-label="Tick ${esc(x.firstName)} ${esc(x.lastName)}"></td><td>${esc(x.firstName)} ${esc(x.lastName)}</td><td>${esc(x.email)}</td><td>${esc(x.phone)}</td><td>${esc(when(x.createdAt))}</td><td style="white-space:nowrap"><button type="button" class="small" data-yes="${esc(x.id)}">Approve</button> <button type="button" class="danger small" data-no="${esc(x.id)}" data-name="${esc(x.firstName)} ${esc(x.lastName)}">Reject</button></td></tr>`).join('');
+  $('waitEmpty').hidden = waiting.length > 0;
+  paintPicked();
+}
+$('waitRows').addEventListener('change', (ev) => {
+  const b = ev.target.closest('[data-pick]'); if (!b) return;
+  if (b.checked) picked.add(b.dataset.pick); else picked.delete(b.dataset.pick);
+  paintPicked();
+});
+$('pickAll').addEventListener('change', () => {
+  document.querySelectorAll('#waitRows [data-pick]').forEach((b) => { b.checked = $('pickAll').checked; if (b.checked) picked.add(b.dataset.pick); else picked.delete(b.dataset.pick); });
+  paintPicked();
+});
+let busy = false;
+$('approvePicked').addEventListener('click', async () => {
+  const ids = [...picked].slice(0, MAX_AT_ONCE); if (!ids.length) return;
+  if (!window.confirm(`Approve ${ids.length} ${ids.length === 1 ? 'person' : 'people'}? Each one becomes an employee and can sign in.`)) return;
+  busy = true; $('approvePicked').disabled = true;
+  try {
+    const r = await api('POST', '/join-requests/approve-many', { ids, startDate: $('approveStart').value || today() });
+    ids.forEach((id) => picked.delete(id));
+    const told = r.emailed === r.approved ? ' We emailed each of them how to sign in.' : (r.emailed ? ` We emailed ${r.emailed} of them how to sign in; tell the others: email, then "Forgot password or PIN?" on the sign-in page.` : ' Tell them they can sign in now: email, then "Forgot password or PIN?" on the sign-in page.');
+    const failed = (r.failed || []).length ? ` ${r.failed.length} could not be approved: ${r.failed.map((f) => f.error).filter((v, i, a) => a.indexOf(v) === i).join(' ')}` : '';
+    say(`${r.approved} approved.${told}${failed}`, !failed);
+  } catch (e) { say(e.message, false); }
+  busy = false;
+  await loadRequests(); await loadAccess();
+});
+$('waitRows').addEventListener('click', async (ev) => {
+  const yes = ev.target.closest('[data-yes]'); const no = ev.target.closest('[data-no]');
+  try {
+    if (yes) { yes.disabled = true; const r = await api('POST', `/join-requests/${encodeURIComponent(yes.dataset.yes)}/approve`, { startDate: $('approveStart').value || today() }); say(r.emailed ? `${r.employee.name} is approved (${r.employee.employeeId}). We emailed them how to sign in.` : `${r.employee.name} is approved (${r.employee.employeeId}). Tell them they can sign in now: email, then "Forgot password or PIN?" on the sign-in page.`); }
+    else if (no) { if (!window.confirm(`Reject the request from ${no.dataset.name}?`)) return; await api('POST', `/join-requests/${encodeURIComponent(no.dataset.no)}/reject`); say('Request rejected.'); } else return;
+    await loadRequests(); await loadAccess();
+  } catch (e) { say(e.message, false); if (yes) yes.disabled = false; }
+});
+
+// --------------------------------------------------------------------------------------------- sign-in help
+let accessList = [];
+const ACCESS = { waiting_for_setup: ['wait', 'Has not opened their set-up link yet'], temporary_password: ['wait', 'Has a temporary password'], active: ['ok', 'Set up'], ended: ['off', 'No longer works here'], unknown: ['off', '-'] };
+async function loadAccess() { accessList = (await api('GET', '/access')).data; drawAccess(); }
+function drawAccess() {
+  const q = $('helpFind').value.trim().toLowerCase(); const pend = $('helpPending').checked;
+  const rows = accessList.filter((p) => (!q || `${p.name} ${p.email} ${p.employeeId}`.toLowerCase().includes(q)) && (!pend || p.access === 'waiting_for_setup' || p.access === 'temporary_password')).slice(0, 200);
+  $('helpRows').innerHTML = rows.map((p) => `<tr><td>${esc(p.employeeId)}</td><td>${esc(p.name)}</td><td>${esc(p.email || '')}</td><td><span class="tag ${ACCESS[p.access][0]}">${ACCESS[p.access][1]}</span>${p.linkExpiresAt ? ` <span class="hint">link works until ${esc(when(p.linkExpiresAt))}</span>` : ''}</td><td style="white-space:nowrap">${p.access === 'ended' || !p.email ? '' : `<button type="button" class="ghost small" data-re="link" data-id="${esc(p.id)}" data-name="${esc(p.name)}">New set-up link</button> `}</td></tr>`).join('');
+  $('helpEmpty').hidden = rows.length > 0;
+}
+$('helpFind').addEventListener('input', drawAccess); $('helpPending').addEventListener('change', drawAccess);
+$('helpRows').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-re]'); if (!b) return;
+  const what = b.dataset.re === 'link' ? 'a new set-up link' : 'a new temporary password';
+  if (!window.confirm(`Give ${b.dataset.name} ${what}? Their current link stops working right away, and they are signed out everywhere.`)) return;
+  try {
+    const r = await api('POST', `/people/${encodeURIComponent(b.dataset.id)}/reissue`, { method: b.dataset.re, email: MAIL });
+    handouts.push({ employeeId: r.person.employeeId, name: r.person.name, email: r.person.email, kind: r.method, value: r.method === 'link' ? setupUrl(r.token) : r.temporaryPassword, emailed: Boolean(r.emailed) });
+    drawHandouts(); await loadAccess(); say(r.emailed ? `Done. The new link was emailed to ${r.person.email}. It is also listed under "Hand these out".` : `Done. Give ${r.person.name} what is listed under "Hand these out".`); $('handCard').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) { say(e.message, false); }
+});
+
+window.addEventListener('beforeunload', (ev) => { if (handouts.length || (people.length && !$('gridCard').hidden)) { ev.preventDefault(); ev.returnValue = ''; } });
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    const f = await api('GET', '/fields');
+    FIELDS = f.fields; LABEL = Object.fromEntries(FIELDS.map((x) => [x.key, x.label]));
+    $('maxRows').textContent = f.maxRows; $('maxDays').textContent = f.joinLinkMaxDays; $('joinDays').max = f.joinLinkMaxDays;
+    if (f.openLinkMaxHours) { $('openMaxHours').textContent = f.openLinkMaxHours; $('openHours').max = f.openLinkMaxHours; }
+    if (f.openLinkMaxPeople) { $('openMaxPeople').textContent = f.openLinkMaxPeople; $('openPeople').max = f.openLinkMaxPeople; }
+    if (f.maxApproveAtOnce) MAX_AT_ONCE = f.maxApproveAtOnce;
+    MAIL = f.emailReady === true;
+    document.querySelectorAll('.mailOn').forEach((el) => { el.hidden = !MAIL; }); document.querySelectorAll('.mailOff').forEach((el) => { el.hidden = MAIL; });
+    document.querySelectorAll('.linkDays').forEach((el) => { el.textContent = f.setupLinkDays; });
+    $('quickStart').value = today(); $('approveStart').value = today();
+    ['importCard', 'quickCard', 'joinCard', 'waitCard', 'helpCard'].forEach((id) => { $(id).hidden = false; });
+    if (new URLSearchParams(location.search).get('welcome')) $('welcomeCard').hidden = false;
+    try { const org = await (await fetch('/api/org/profile', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json(); companyName = (org && (org.name || org.displayName || (org.profile && org.profile.name))) || ''; } catch (_) {}
+    await Promise.all([loadJoinLinks(), loadRequests(), loadAccess()]);
+    // New requests and open-link arrivals show up by themselves while this page is in front (every 15 seconds)
+    let refreshing = false;
+    setInterval(async () => {
+      if (document.hidden || busy || refreshing) return;
+      refreshing = true;
+      const before = Number($('waitCount').hidden ? 0 : parseInt($('waitCount').textContent, 10)) || 0;
+      try {
+        await Promise.all([loadRequests(), loadJoinLinks()]);
+        const now = Number($('waitCount').hidden ? 0 : parseInt($('waitCount').textContent, 10)) || 0;
+        if (freshLinkId || now !== before) await loadAccess();
+      } catch (_) {}
+      refreshing = false;
+    }, 15000);
+  } catch (e) {
+    $('blocked').hidden = false;
+    $('blockedText').textContent = e.status === 403 ? 'You do not have permission to add people. Ask the owner or an HR administrator.' : (e.status === 409 ? 'This page is for US companies. Your organization\'s country is not set to United States.' : e.message);
+  }
+});
+</script>
+<script type="module" src="us-nav.js?v=3"></script>
+</body>
+</html>

@@ -266,6 +266,7 @@
         }
     </style>
     <link rel="stylesheet" href="sidebar-lock.css">
+<script src="country-format.js"></script>
 </head>
 <body>
 
@@ -273,8 +274,8 @@
                 <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <a href="admin-dashboard.html" class="logo">
-                <img src="logo.jpg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
-                <span class="logo-text">Kylrx <span style="color: var(--primary);">AI</span></span>
+                <img src="onnhr-logo.svg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
+                <span class="logo-text">Onn <span style="color: var(--primary);">HR</span></span>
             </a>
             
             <nav class="nav-menu">
@@ -444,7 +445,7 @@
                             </div>
                             <div class="form-group">
                                 <label>Revised Salary (Per Annum)</label>
-                                <input type="number" id="targetSalary" placeholder="₹0.00">
+                                <input type="number" id="targetSalary" placeholder="0.00">
                             </div>
                             <div class="form-group">
                                 <label>Reporting Manager</label>
@@ -461,7 +462,7 @@
                                 <div id="previewCodeText" style="font-family: monospace; font-size: 1.15rem; font-weight: 800; color: var(--primary); margin-top: 3px;">FTE-CYB-CORP-2026-XXXX</div>
                             </div>
                             <div style="font-size: 0.72rem; color: var(--text-muted); text-align: right;">
-                                Powered by <strong style="color: var(--text-main);">Kylrx CodeEngine</strong><br>
+                                Powered by <strong style="color: var(--text-main);">Onn HR CodeEngine</strong><br>
                                 Atomic concurrency-safe sequence
                             </div>
                         </div>
@@ -675,7 +676,7 @@
             document.getElementById('dispEmailText').innerText = emp.email || 'No email registered';
             document.getElementById('dispOldType').innerText = (emp.employmentType || 'Staff').toUpperCase();
             document.getElementById('dispId').innerText = `ID: ${emp.employeeId}`;
-            document.getElementById('dispSalaryTag').innerText = emp.salary ? `₹${Number(emp.salary).toLocaleString()} / yr` : 'Compensation not set';
+            document.getElementById('dispSalaryTag').innerText = emp.salary ? `${(window.KylrxFmt ? KylrxFmt.money(emp.salary, { decimals: 0 }) : '₹' + Number(emp.salary).toLocaleString())} / yr` : 'Compensation not set';
 
             // Smart recommendation for target type
             const curType = (emp.employmentType || '').toLowerCase();
@@ -891,7 +892,7 @@
                 document.getElementById('dispOldType').innerText = targetType.toUpperCase();
                 document.getElementById('dispCurrent').innerText = `Current: ${targetRole} (${targetDept})`;
                 if (targetSalary) {
-                    document.getElementById('dispSalaryTag').innerText = `₹${Number(targetSalary).toLocaleString()} / yr`;
+                    document.getElementById('dispSalaryTag').innerText = `${(window.KylrxFmt ? KylrxFmt.money(targetSalary, { decimals: 0 }) : '₹' + Number(targetSalary).toLocaleString())} / yr`;
                 }
 
                 // Render in audit trail immediately

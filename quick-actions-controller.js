@@ -1,5 +1,5 @@
 /**
- * Kylrx AI - Unified Employee Quick Actions Controller (PRD Section 15)
+ * Onn HR - Unified Employee Quick Actions Controller (PRD Section 15)
  * Vanilla ES6 controller managing Quick Action hubs, slide-over document drawer,
  * click delegation, and modal routing across ESS, Manager, and Admin dashboards.
  */
@@ -21,7 +21,7 @@ const DEFAULT_DOCUMENTS = [
     {
         id: "DOC-POL-001",
         category: "policies",
-        title: "Kylrx AI Employee Code of Conduct (v2.4)",
+        title: "Onn HR Employee Code of Conduct (v2.4)",
         type: "PDF Policy",
         size: "1.4 MB",
         date: "2026-01-15",
@@ -2110,7 +2110,7 @@ Status:             AUTHENTICATED & DIGITALLY SEALED
                         <div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="width: 10px; height: 10px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; display: inline-block;"></span>
-                                <span style="font-size: 0.95rem; font-weight: 800; letter-spacing: 0.5px;">Kylrx AI TVC Node // ONLINE</span>
+                                <span style="font-size: 0.95rem; font-weight: 800; letter-spacing: 0.5px;">Onn HR TVC Node // ONLINE</span>
                             </div>
                             <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Node Cluster: TVC-PROD-01 • Latency: 12ms • Protocol: WSS/AES-256 Telemetry</div>
                         </div>

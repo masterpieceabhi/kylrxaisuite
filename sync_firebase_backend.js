@@ -1,4 +1,4 @@
-const admin = require("firebase-admin");
+const admin = require("./config/firebase-admin");
 const { db } = require("./config/firebase");
 
 async function syncBackendFirebase() {

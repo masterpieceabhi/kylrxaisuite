@@ -404,6 +404,7 @@ test('PRD Sections 1, 14, 17, & 18: Hybrid RBAC & Permission Overrides Suite', a
         assert.ok(fs.existsSync(xlsxPath), "Templates.xlsx must exist");
 
         const XLSX = (await import('xlsx')).default;
+        XLSX.set_fs(fs); // the ES-module build of SheetJS 0.20 reads files only when handed fs
         const wb = XLSX.readFile(xlsxPath);
         const hasRoleSheet = wb.SheetNames.some(sn => 
             sn.includes('Role_Code') || sn.includes('Roles_Permissions') || sn.includes('Role_Permissions')

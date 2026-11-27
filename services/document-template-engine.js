@@ -30,10 +30,19 @@ const automationEngine = require('./automation-engine');
  */
 
 class DocumentTemplateEngine {
-    constructor() {
+    // One engine per company (see forOrg): each company's template versions and generated documents are its own
+    constructor(orgId = null) {
+        this.orgId = orgId || null;
         this.templates = new Map();
         this.generatedDocuments = new Map();
         this.initializeStandardTemplates();
+    }
+
+    /** This company's engine (created on first use) */
+    forOrg(orgId) {
+        if (!orgId) throw new Error('A company is required for document templates.');
+        if (!orgEngines.has(orgId)) orgEngines.set(orgId, new DocumentTemplateEngine(orgId));
+        return orgEngines.get(orgId);
     }
 
     /**
@@ -651,6 +660,7 @@ class DocumentTemplateEngine {
         try {
             await automationEngine.recordAuditLog({
                 runId: `doc-gen-${docId}`,
+                ...(this.orgId ? { orgId: this.orgId } : {}),
                 automationId: `document-template-engine`,
                 stage: 'Document Generation',
                 status: 'success',
@@ -737,5 +747,8 @@ class DocumentTemplateEngine {
     }
 }
 
+const orgEngines = new Map();
+
+// Default instance (no company) for existing callers and tests; routes use documentTemplateEngine.forOrg(orgId)
 const documentTemplateEngine = new DocumentTemplateEngine();
 module.exports = documentTemplateEngine;

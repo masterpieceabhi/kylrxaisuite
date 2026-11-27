@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home | Onn HR</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:8px}
+h1{margin:0;font-size:20px}h2{margin:0 0 10px;font-size:16px}.hint{color:var(--muted);font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:24px;display:grid;gap:22px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+a.tile{display:block;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;text-decoration:none;color:var(--ink)}a.tile:hover,a.tile:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 2px #dbeafe}
+a.tile b{display:block;font-size:15px}a.tile span{color:var(--muted);font-size:13px}
+a.tile[hidden],main section[hidden]{display:none}
+.setup{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}.setup ol{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:8px}.setup li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px}.setup li.done{opacity:.6}.setup li b{display:block}.setup li span{color:var(--muted);font-size:13px}.setup li a{white-space:nowrap;background:var(--blue);color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;font-weight:600}.setup .ok{color:#166534;font-weight:700;white-space:nowrap}.find{display:grid;gap:4px;max-width:420px}.find input{padding:10px 12px;border:1px solid var(--line);border-radius:10px;font:inherit}
+#workSec{display:grid;gap:22px}#workSec h2,#recentSec h2,#mineSec h2{margin:0 0 10px;font-size:16px}
+button{padding:8px 14px;border:0;border-radius:8px;background:#e2e8f0;color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+#msg{display:none;background:#fee2e2;color:#b91c1c;border-radius:8px;padding:10px 14px}
+</style>
+</head>
+<body>
+<header><div><h1 id="hello">Home</h1><span class="hint" id="role"></span></div><button id="out">Sign out</button></header>
+<main>
+  <div id="msg" role="alert"></div>
+  <label class="find"><span class="hint">Find a page</span><input id="find" type="search" placeholder="For example: time off, I-9, payroll" autocomplete="off"></label>
+  <section id="setupSec" class="setup" hidden><h2 id="setupTitle">Getting started</h2><p class="hint" id="setupHint"></p><ol id="setupList"></ol></section>
+  <section id="recentSec" hidden><h2>Recently used</h2><div class="cards" id="recent"></div></section>
+  <div id="workSec" hidden></div>
+  <section id="mineSec"><h2>My own</h2><div class="cards" id="mine"></div></section>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+const $ = (id) => document.getElementById(id);
+// Each company page with the permissions that open it (any one is enough), matching the server routes
+const PAGES = [
+  ['admin-us-people.html', 'People', 'Add people, profiles, tax and pay forms', ['people.read']],
+  ['admin-us-org.html', 'Company structure', 'Locations, departments, pay schedules, holidays', ['people.read', 'org.settings']],
+  ['admin-us-changes.html', 'Profile changes', 'Approve name, address and bank changes', ['people.read']],
+  ['admin-us-hiring.html', 'Hiring', 'Job openings and candidates', ['hiring.view']],
+  ['admin-us-hiring-compliance.html', 'Hiring checks', 'Background checks, E-Verify, new-hire reporting', ['background.manage', 'compliance.view']],
+  ['admin-us-esign.html', 'Documents to sign', 'Send documents and see what is signed', ['compliance.view', 'onboarding.manage']],
+  ['admin-us-time.html', 'Time', 'Timesheets, approvals, corrections', ['time.approve', 'time.approve_team', 'time.view_all']],
+  ['admin-us-schedule.html', 'Schedule', 'Shifts, swaps, jobs', ['time.approve', 'time.approve_team']],
+  ['admin-us-clock.html', 'Time clock rules', 'Photos, work site area, notices', ['time.manage_rules']],
+  ['admin-us-wages.html', 'Wages and tips', 'Minimum wage checks and tip pools', ['time.manage_rules', 'people.read_pay']],
+  ['admin-us-leave.html', 'Time off', 'Policies, requests, balances', ['leave.decide', 'leave.decide_team', 'leave.view_all']],
+  ['admin-us-leave-cases.html', 'Leave cases', 'Medical, family and other longer leave', ['leave.decide', 'leave.view_all']],
+  ['admin-us-benefits.html', 'Benefits', 'Plans, enrollment, life events', ['benefits.view']],
+  ['admin-us-pay.html', 'Pay and contractors', 'Pay changes, direct deposit, 1099', ['people.read_pay']],
+  ['admin-us-payroll.html', 'Payroll', 'Run payroll through Gusto', ['payroll.view']],
+  ['admin-us-reports.html', 'Reports', 'Headcount, hours, time off, paperwork', ['reports.view']],
+  ['admin-us-compliance.html', 'Compliance', 'Documents, notices, EEO, injury log', ['compliance.view']],
+  ['admin-us-calendar.html', 'Compliance calendar', 'Every dated duty in one list', ['compliance.view', 'people.read']],
+  ['admin-us-checklists.html', 'Checklists', 'New-hire and leaving tasks', ['people.write', 'people.read']],
+  ['admin-us-i9-report.html', 'I-9 audit report', 'Printable list of every form', ['reports.view']],
+  ['admin-us-performance.html', 'Goals and reviews', 'Team goals and performance reviews', ['people.read', 'people.read_team', 'people.write']],
+  ['admin-us-surveys.html', 'Surveys', 'Ask the team short questions and see the results', ['people.read', 'people.write', 'reports.view']],
+  ['admin-us-assets.html', 'Equipment', 'Laptops, keys, uniforms: who has what', ['people.read', 'people.read_team', 'people.write']],
+  ['admin-us-policies.html', 'Policies', 'Write company policies and see who has read them', ['people.read', 'people.write']],
+  ['admin-us-review-cycles.html', 'Review rounds', 'Self reviews, manager reviews and coworker feedback', ['people.read', 'people.read_team', 'people.write']],
+  ['admin-us-recognition.html', 'News and thanks', 'Company announcements and thank-you notes', ['people.read', 'people.write']],
+  ['admin-us-pay-schedule.html', 'Pay schedule', 'Pay periods and pay dates', ['payroll.view', 'org.settings']],
+  ['admin-us-payroll-import.html', 'Bring in past payroll', 'Load pay history from before this system', ['payroll.run']],
+  ['admin-us-exit-interviews.html', 'Exit interviews', 'Why people leave', ['people.write']],
+  ['admin-us-assistant.html', 'HR assistant', 'Ask about your people, tasks, forms and time off', ['assistant.use']],
+  ['admin-us-team-import.html', 'Add your team', 'Bring people in from a file, a paste or a join link', ['people.write']],
+  ['admin-us-i9.html', 'Form I-9', 'Check documents, Section 2, work permits that end', ['compliance.view']],
+  ['admin-us-training.html', 'Training records', 'Who must take which training, and who is overdue', ['compliance.view']],
+  ['admin-us-report-builder.html', 'Report builder', 'Make your own lists and download them', ['reports.view']],
+  ['admin-us-offboarding.html', 'Offboarding', 'Terminations and final steps', ['people.write', 'people.read']],
+  ['admin-us-privacy.html', 'Privacy requests', 'Data copies and deletions', ['privacy.manage']],
+  ['admin-us-integrations.html', 'Integrations', 'API keys, webhooks, connected apps', ['integrations.view', 'integrations.manage']],
+  ['admin-us-owner.html', 'Owner settings', 'Activity log, roles, billing', ['security.manage', 'audit.view', 'billing.manage']],
+  ['admin-us-security.html', 'Security and sign-in', 'Single sign-on and sign-in rules', ['security.manage']]
+];
+const MINE = [
+  ['punch.html', 'Clock in and out', 'Start and end your day'], ['timesheet.html', 'My hours', 'Check and send your week'], ['my-schedule.html', 'My schedule', 'Shifts, swaps, availability'],
+  ['leave.html', 'Time off', 'Ask for days off'], ['my-pay.html', 'My pay stubs', 'What you were paid'], ['my-goals.html', 'My goals', 'Goals and reviews'], ['my-surveys.html', 'Surveys', 'Short questions from the company'], ['my-assets.html', 'My equipment', 'Company items you have'], ['my-policies.html', 'Company policies', 'Read the rules and confirm you read them'], ['my-news.html', 'Company news', 'Announcements and thanks'], ['my-training.html', 'My trainings', 'Trainings to take and ones you finished'], ['set-password.html', 'Change password', 'Pick a new password'], ['my-reviews.html', 'My reviews', 'Your review and feedback for coworkers'], ['my-exit-interview.html', 'Exit interview', 'If you are leaving the company'], ['my-benefits.html', 'My benefits', 'Coverage and enrollment'],
+  ['my-documents.html', 'My documents', 'Files and things to sign'], ['my-profile.html', 'My details', 'Phone, address, bank, contacts'], ['my-privacy.html', 'My privacy', 'Ask about your data'],
+  ['leave-cases.html', 'Leave of absence', 'Family, medical and other longer leave'], ['report-injury.html', 'Report an injury', 'Tell HR about a work injury'], ['self-id.html', 'Self-identification', 'Optional: gender, race, veteran and disability'], ['tips.html', 'My tips', 'Report the tips you received']
+];
+// Sections of the company pages, so a person scans a few short lists instead of one long one
+const GROUPS = [
+  ['Every day', ['admin-us-people.html', 'admin-us-time.html', 'admin-us-leave.html', 'admin-us-checklists.html', 'admin-us-assistant.html', 'admin-us-team-import.html']],
+  ['Time and pay', ['admin-us-schedule.html', 'admin-us-payroll.html', 'admin-us-pay.html', 'admin-us-pay-schedule.html', 'admin-us-wages.html', 'admin-us-benefits.html', 'admin-us-clock.html', 'admin-us-payroll-import.html']],
+  ['Hiring and new hires', ['admin-us-hiring.html', 'admin-us-hiring-compliance.html', 'admin-us-esign.html', 'admin-us-i9.html']],
+  ['People and culture', ['admin-us-org.html', 'admin-us-changes.html', 'admin-us-performance.html', 'admin-us-review-cycles.html', 'admin-us-recognition.html', 'admin-us-surveys.html', 'admin-us-policies.html', 'admin-us-training.html', 'admin-us-assets.html', 'admin-us-offboarding.html', 'admin-us-exit-interviews.html']],
+  ['Compliance and reports', ['admin-us-reports.html', 'admin-us-report-builder.html', 'admin-us-compliance.html', 'admin-us-calendar.html', 'admin-us-i9-report.html', 'admin-us-leave-cases.html', 'admin-us-privacy.html']],
+  ['Settings', ['admin-us-integrations.html', 'admin-us-owner.html', 'admin-us-security.html']]
+];
+function section(title, tiles) { const s = document.createElement('section'); const h = document.createElement('h2'); h.textContent = title; const d = document.createElement('div'); d.className = 'cards'; d.append(...tiles); s.append(h, d); return s; }
+function showWork(open) {
+  const placed = new Set(); const parts = [];
+  GROUPS.forEach(([name, hrefs]) => { const tiles = open.filter((p) => hrefs.includes(p[0])); tiles.forEach((p) => placed.add(p[0])); if (tiles.length) parts.push(section(name, tiles.map(tile))); });
+  const rest = open.filter((p) => !placed.has(p[0])); if (rest.length) parts.push(section('More', rest.map(tile)));
+  $('workSec').replaceChildren(...parts);
+}
+function showRecent(uid) {
+  let list = []; try { list = JSON.parse(localStorage.getItem(`onn_recent:${uid}`) || '[]'); } catch (_) { list = []; }
+  const known = new Map([...PAGES, ...MINE].map((p) => [p[0], p]));
+  const tiles = list.filter((x) => x && known.has(x.href)).slice(0, 6).map((x) => tile([x.href, known.get(x.href)[1], known.get(x.href)[2]]));
+  $('recentSec').hidden = !tiles.length; $('recent').replaceChildren(...tiles);
+}
+// typing in "Find a page" narrows every list to the matching tiles
+$('find').addEventListener('input', () => {
+  const q = $('find').value.trim().toLowerCase();
+  document.querySelectorAll('a.tile').forEach((a) => { a.hidden = Boolean(q) && !a.textContent.toLowerCase().includes(q); });
+  document.querySelectorAll('main section').forEach((sec) => { const tiles = sec.querySelectorAll('a.tile'); if (tiles.length) sec.hidden = ![...tiles].some((a) => !a.hidden) || (sec.id === 'recentSec' && !tiles.length); });
+});
+const tile = ([href, name, text]) => { const a = document.createElement('a'); a.className = 'tile'; a.href = href; const b = document.createElement('b'); b.textContent = name; const s = document.createElement('span'); s.textContent = text; a.append(b, s); return a; };
+
+$('out').addEventListener('click', async () => { try { await auth.signOut(); } catch (_) { /* go to login either way */ } window.location.replace('login.html'); });
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  $('mine').replaceChildren(...MINE.map(tile));
+  showRecent(user.uid);
+  try {
+    const res = await fetch('/api/us/me/permissions', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } });
+    const me = await res.json();
+    if (!res.ok) throw new Error(me.error || 'failed');
+    $('hello').textContent = user.displayName ? `Hello, ${user.displayName.split(' ')[0]}` : 'Home'; $('role').textContent = me.roleLabel || '';
+    const has = new Set(me.permissions || []);
+    const open = PAGES.filter((p) => p[3].some((x) => has.has(x)));
+    $('workSec').hidden = open.length === 0; showWork(open);
+    // Getting started: for the owner and HR, the few one-time steps, each ticked off from the company's own data
+    if (['org.settings', 'people.write', 'security.manage'].some((x) => has.has(x))) {
+      fetch('/api/us/setup/status', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } }).then((r) => r.json()).then((s) => {
+        if (!s.success || s.done >= s.required) return; // all set: the card stays away
+        $('setupTitle').textContent = `Getting started: ${s.done} of ${s.required} done`;
+        $('setupHint').textContent = 'Do these once. Each one ticks itself off when it is done.';
+        $('setupList').replaceChildren(...s.steps.map((st) => {
+          const li = document.createElement('li'); if (st.done) li.className = 'done';
+          const d = document.createElement('div'); const b = document.createElement('b'); b.textContent = st.title + (st.optional ? ' (optional)' : ''); const sp = document.createElement('span'); sp.textContent = st.why; d.append(b, sp);
+          let act; if (st.done) { act = document.createElement('span'); act.className = 'ok'; act.textContent = '✓ Done'; } else { act = document.createElement('a'); act.href = st.href; act.textContent = 'Set up'; }
+          li.append(d, act); return li;
+        }));
+        $('setupSec').hidden = false;
+      }).catch(() => { /* the rest of Home still works */ });
+    }
+    // people who run the company see their work first; everyone else sees their own pages first
+    if (open.length) $('workSec').after($('mineSec'));
+    try {
+      const w = await (await fetch('/api/us/approvals/waiting', { headers: { Authorization: `Bearer ${await user.getIdToken()}` } })).json();
+      if (w.success && w.canApprove && w.total > 0) {
+        // every kind with something waiting, as the server words it; the link goes to the first one
+        const parts = (w.items || []).map((x) => x.label);
+        const a = document.createElement('a'); a.href = ((w.items || [])[0] || {}).link || 'admin-us-time.html';
+        a.textContent = `Waiting for you: ${parts.join(', ')}`; a.style.fontWeight = '700';
+        $('msg').replaceChildren(a); $('msg').style.display = 'block';
+      }
+    } catch (_) { /* the menu still works without the count */ }
+  } catch (_) { $('msg').textContent = 'Could not load your menu. Your own pages below still work.'; $('msg').style.display = 'block'; }
+});
+</script>
+<script type="module" src="us-nav.js?v=3"></script>
+</body>
+</html>

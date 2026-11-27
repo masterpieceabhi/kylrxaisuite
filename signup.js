@@ -21,7 +21,7 @@
  */
 
 import { auth, storage } from "./firebase-config.js";
-import { signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { signInWithEmailAndPassword, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
 
 // Stepper State
@@ -54,6 +54,8 @@ const signupBtn = document.getElementById('signupBtn');
 const signupForm = document.getElementById('signupForm');
 const errorMessage = document.getElementById('errorMessage');
 const btnFillDemoSignup = document.getElementById('btnFillDemoSignup');
+// the testing quick-fill is shown only on a developer's own machine, never on a real server
+if (['localhost', '127.0.0.1'].includes(window.location.hostname)) { const bar = document.getElementById('demoDataBar'); if (bar) bar.style.display = String(); }
 
 // Step 1: Account Elements
 const nameInput = document.getElementById('name');
@@ -228,20 +230,19 @@ function validateStep1() {
         return false;
     }
 
-    const hasLength = pw.length >= 8;
-    const hasUpper = /[A-Z]/.test(pw);
-    const hasLower = /[a-z]/.test(pw);
-    const hasNumber = /[0-9]/.test(pw);
-    const hasSpecial = /[@$!%*?&#]/.test(pw);
-
-    if (!(hasLength && hasUpper && hasLower && hasNumber && hasSpecial)) {
-        showError("Password does not meet all 5 security requirements.");
+    // a PIN: the same rules the server checks (services/pin-signin.js weakPin)
+    const steps = pw.split('').slice(1).map((d, i) => Number(d) - Number(pw[i]));
+    const why = !/^\d{4,6}$/.test(pw) ? 'A PIN is 4 to 6 digits.'
+        : /^(\d)\1+$/.test(pw) ? 'Choose a PIN that is not one digit repeated.'
+        : (steps.every((x) => x === 1) || steps.every((x) => x === -1)) ? 'Choose a PIN that is not a run like 1234.' : '';
+    if (why) {
+        showError(why);
         passwordInput.focus();
         return false;
     }
 
     if (pw !== cpw) {
-        showError("Passwords do not match. Please verify.");
+        showError("The two PINs are not the same.");
         confirmPasswordInput.focus();
         return false;
     }
@@ -329,6 +330,11 @@ function validateStep3() {
         return false;
     }
 
+    if (isUsSignup()) {
+        if (!/^[A-Za-z]{2}$/.test(state)) { showError('Enter the 2-letter state code, for example TX.'); stateInput.focus(); return false; }
+        if (!/^\d{5}(-\d{4})?$/.test(pin)) { showError('Enter a 5-digit ZIP code.'); pinCodeInput.focus(); return false; }
+    }
+
     if (!regAddr) {
         showError("Please enter the Registered Address.");
         registeredAddressInput.focus();
@@ -345,7 +351,58 @@ function validateStep3() {
     return true;
 }
 
+const isUsSignup = () => /^(united states|usa|us)$/i.test(countryInput.value.trim());
+
+/** Switches the address labels, regional defaults and the tax-number step between India and the United States */
+function applyCountry() {
+    const us = isUsSignup();
+    const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+    set('stateLabel', us ? '9. State (2 letters) *' : '9. State *'); set('pinLabel', us ? '11. ZIP Code *' : '11. PIN Code *');
+    stateInput.placeholder = us ? 'e.g. TX' : 'e.g. Karnataka'; stateInput.maxLength = us ? 2 : 60; cityInput.placeholder = us ? 'e.g. Dallas' : 'e.g. Bengaluru'; pinCodeInput.placeholder = us ? 'e.g. 75201' : 'e.g. 560103';
+    timeZoneSelect.value = us ? 'America/Chicago' : 'Asia/Kolkata'; currencySelect.value = us ? 'USD' : 'INR'; fyStartSelect.value = us ? '01-01' : '04-01';
+    [panInput, tanInput, cinInput, gstinInput].forEach((el) => { const g = el.closest('.form-group'); if (g) g.style.display = us ? 'none' : ''; if (el !== cinInput) el.required = !us; if (us) el.value = ''; });
+    officialPhoneInput.placeholder = us ? 'e.g. (214) 555-0100' : 'e.g. +91 80 4123 4567';
+    // the kinds of company differ: US entity types (as on the company profile) or the Indian ones
+    const kinds = us
+        ? [['LLC', 'LLC'], ['C corporation', 'C corporation'], ['S corporation', 'S corporation'], ['Partnership', 'Partnership'], ['Sole proprietorship', 'Sole proprietorship'], ['Nonprofit', 'Nonprofit'], ['Other', 'Other']]
+        : [['Private Limited', 'Private Limited'], ['Public Limited', 'Public Limited'], ['LLP', 'Limited Liability Partnership (LLP)'], ['Partnership', 'Partnership'], ['Sole Proprietorship', 'Sole Proprietorship'], ['Other', 'Other']];
+    if (orgTypeSelect && orgTypeSelect.dataset.kinds !== (us ? 'us' : 'in')) {
+        orgTypeSelect.replaceChildren(...kinds.map(([v, label]) => new Option(label, v)));
+        orgTypeSelect.dataset.kinds = us ? 'us' : 'in';
+    }
+    const note = document.getElementById('usStatNote'); if (note) note.style.display = us ? 'block' : 'none';
+    const desc = document.getElementById('statDescIn'); if (desc) desc.style.display = us ? 'none' : '';
+}
+countryInput.addEventListener('change', applyCountry);
+
+// This server may take only some countries (region.js): us.onnhr.com keeps its data in the United States,
+// in.onnhr.com in India. The country list then offers the countries served here, and choosing one that is served
+// at another address shows that address instead of letting the person fill in a form the server will refuse.
+let regionInfo = null;
+function showRegionLine(entry, R) {
+    const old = document.getElementById('regionLine'); if (old) old.remove();
+    const line = entry ? R.addressLine(entry, 'sign up', 'signup.html') : null;
+    if (!line) return;
+    line.id = 'regionLine';
+    (countryInput.closest('.form-group') || countryInput.parentElement).appendChild(line);
+}
+import('./region.js').then(async (R) => {
+    regionInfo = await R.loadRegion();
+    if (!regionInfo || !regionInfo.restricted) return;
+    const known = [...regionInfo.serves, ...regionInfo.elsewhere];
+    for (const opt of [...countryInput.options]) if (!known.some((c) => c.name.toLowerCase() === opt.value.trim().toLowerCase())) opt.remove();
+    for (const c of known) if (![...countryInput.options].some((o) => o.value.trim().toLowerCase() === c.name.toLowerCase())) countryInput.add(new Option(c.name, c.name));
+    const firstHere = regionInfo.serves[0] && regionInfo.serves[0].name;
+    if (!R.servedHere(regionInfo, countryInput.value) && firstHere) countryInput.value = firstHere;
+    applyCountry(); // always: on a US-only server the list is just "United States", already chosen, so no change event ever fires
+    countryInput.addEventListener('change', () => {
+        const away = R.elsewhereFor(regionInfo, countryInput.value);
+        if (away && firstHere) { showRegionLine(away, R); countryInput.value = firstHere; applyCountry(); } else showRegionLine(null, R);
+    });
+}).catch(() => { /* the server still refuses a sign-up for the wrong country and says where to go */ });
+
 function validateStep4() {
+    if (isUsSignup()) { hideError(); return true; }
     const pan = panInput.value.trim().toUpperCase();
     const tan = tanInput.value.trim().toUpperCase();
     const gstin = gstinInput.value.trim().toUpperCase();
@@ -474,11 +531,11 @@ function evaluateConfirmPassword() {
     }
 
     if (pw === cpw) {
-        confirmFeedback.textContent = '✓ Passwords match';
+        confirmFeedback.textContent = '✓ The PINs match';
         confirmFeedback.className = 'validation-feedback valid';
         confirmFeedback.style.color = '#10b981';
     } else {
-        confirmFeedback.textContent = '✗ Passwords do not match';
+        confirmFeedback.textContent = '✗ The PINs are not the same';
         confirmFeedback.className = 'validation-feedback invalid';
         confirmFeedback.style.color = '#ef4444';
     }
@@ -576,13 +633,13 @@ function setupDemoDataAutofill() {
             // Section A: CEO Account
             nameInput.value = "John Doe";
             emailInput.value = `ceo@kylrx.ai`;
-            passwordInput.value = "Kylrx@Enterprise2026!";
-            confirmPasswordInput.value = "Kylrx@Enterprise2026!";
+            passwordInput.value = "4826";
+            confirmPasswordInput.value = "4826";
             termsInput.checked = true;
 
             // Section B: Company Profile
             legalNameInput.value = "Kylrx Technologies Private Limited";
-            displayNameInput.value = "Kylrx AI";
+            displayNameInput.value = "Kylrx Technologies";
             orgTypeSelect.value = "Private Limited";
             industryInput.value = "Technology & Enterprise SaaS";
             websiteInput.value = "https://kylrx.ai";
@@ -654,7 +711,7 @@ async function executeRegistrationAndOrganizationSetup() {
     const logoUrl = logoUrlInput.value.trim() || 'https://kylrx.ai/logo.jpg';
 
     const country = countryInput.value.trim() || 'India';
-    const state = stateInput.value.trim();
+    const state = isUsSignup() ? stateInput.value.trim().toUpperCase() : stateInput.value.trim();
     const city = cityInput.value.trim();
     const pinCode = pinCodeInput.value.trim();
     const regAddress = registeredAddressInput.value.trim();
@@ -681,7 +738,7 @@ async function executeRegistrationAndOrganizationSetup() {
             body: JSON.stringify({
                 fullName,
                 email: officialEmail,
-                password,
+                pin: password, // the field is the PIN now
                 organization: {
                     legalName, displayName, organizationType: orgType, industry, website,
                     officialPhone: phone, logoUrl, country, state, city, pinCode,
@@ -705,7 +762,8 @@ async function executeRegistrationAndOrganizationSetup() {
         console.log(`✅ Organization ${orgId} and Super Admin ${result.uid} provisioned`);
 
         // Sign in so the session carries the new super_admin custom claims
-        await signInWithEmailAndPassword(auth, officialEmail, password);
+        if (result.deviceGrant) await fetch('/api/auth/pin/remember', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ grant: result.deviceGrant }) }).catch(() => {}); // so the PIN signs in on this device next time
+        await (result.token ? signInWithCustomToken(auth, result.token) : signInWithEmailAndPassword(auth, officialEmail, password));
         console.log(`✅ Signed in as ${officialEmail}`);
 
         // Step 5: Start a fresh session - drop everything left over from any previous
@@ -726,19 +784,19 @@ async function executeRegistrationAndOrganizationSetup() {
         // Step 6: Confirmation dialog & redirect directly to the main Super Admin Central Dashboard
         // replace() so the Back button can't return to the filled-in signup form
         window.customAlertCallback = () => {
-            window.location.replace('admin-central-dashboard.html');
+            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; its home and menu are us-home.html
         };
 
         if (window.showAlert) {
             window.showAlert(
-                "Welcome to Kylrx AI!",
+                "Welcome to Onn HR!",
                 `Account for "${fullName}" and Organization "${displayName}" successfully provisioned!\n\nSuper Admin role assigned and continuous sequential Employee ID provisioning (EMP0001) is active.\n\nRedirecting to Command Center...`,
                 "check"
             );
         }
 
         setTimeout(() => {
-            window.location.replace('admin-central-dashboard.html');
+            window.location.replace(isUsSignup() ? 'admin-us-team-import.html?welcome=1' : 'admin-central-dashboard.html'); // a new US company starts by adding its team; its home and menu are us-home.html
         }, 2200);
 
     } catch (err) {

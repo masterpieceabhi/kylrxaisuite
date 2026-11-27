@@ -2,9 +2,18 @@ const express = require('express');
 const router = express.Router();
 const kylrxHROS = require('../services/kylrx-hr-os');
 const logger = require('../utils/logger');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { LEGACY_ORG_ID } = require('../config/tenant');
 
 router.use(verifyToken);
+
+const callerOrgOf = (req) => (req.user && req.user.orgId) || req.tenantOrgId || null;
+
+// The conversion store (codes, audit events, people) is per company; an account without one is refused
+function requireOrg(req, res, next) {
+    if (!callerOrgOf(req)) return res.status(403).json({ success: false, error: 'No company on this account' });
+    next();
+}
 
 /**
  * GET /api/hr-os/manifest
@@ -109,34 +118,51 @@ const fs = require('fs');
 const path = require('path');
 const storePath = path.join(__dirname, '..', 'data', 'conversion_store.json');
 
-function readStore() {
+const DEFAULT_COUNTERS = {
+    emp_code_full_time: 1050,
+    emp_code_intern: 205,
+    emp_code_consultant: 500,
+    emp_code_contractor: 8000,
+    emp_code_contracting: 8000
+};
+
+/**
+ * The store file keeps one section per company: { orgs: { [orgId]: { counters, auditLogs, users } } }.
+ * A file in the older shared shape (counters/auditLogs/users at the top) belonged to the original company and is
+ * moved under it the first time it is read.
+ */
+function readAllStores() {
+    let all = {};
     try {
-        if (!fs.existsSync(storePath)) {
-            const initial = {
-                counters: {
-                    emp_code_full_time: 1050,
-                    emp_code_intern: 205,
-                    emp_code_consultant: 500,
-                    emp_code_contractor: 8000,
-                    emp_code_contracting: 8000
-                },
-                auditLogs: [],
-                users: {}
-            };
-            fs.mkdirSync(path.dirname(storePath), { recursive: true });
-            fs.writeFileSync(storePath, JSON.stringify(initial, null, 2));
-            return initial;
-        }
-        return JSON.parse(fs.readFileSync(storePath, 'utf8'));
+        if (fs.existsSync(storePath)) all = JSON.parse(fs.readFileSync(storePath, 'utf8')) || {};
     } catch (e) {
-        return { counters: {}, auditLogs: [], users: {} };
+        all = {};
     }
+    if (!all.orgs || typeof all.orgs !== 'object') {
+        const legacy = (all.counters || all.auditLogs || all.users)
+            ? { counters: all.counters || {}, auditLogs: all.auditLogs || [], users: all.users || {} }
+            : null;
+        all = { orgs: legacy ? { [LEGACY_ORG_ID]: legacy } : {} };
+    }
+    return all;
 }
 
-function writeStore(data) {
+/** One company's section of the store; `all` is what writeStore saves back */
+function readStore(orgId) {
+    const all = readAllStores();
+    if (!all.orgs[orgId]) all.orgs[orgId] = { counters: { ...DEFAULT_COUNTERS }, auditLogs: [], users: {} };
+    const store = all.orgs[orgId];
+    Object.defineProperty(store, '__all', { value: all, enumerable: false });
+    return store;
+}
+
+// The Firestore copy of a company's counter (the original company keeps the old shared id)
+const counterDocId = (orgId, counterKey) => (orgId === LEGACY_ORG_ID ? counterKey : `${orgId}__${counterKey}`);
+
+function writeStore(store) {
     try {
         fs.mkdirSync(path.dirname(storePath), { recursive: true });
-        fs.writeFileSync(storePath, JSON.stringify(data, null, 2));
+        fs.writeFileSync(storePath, JSON.stringify(store.__all, null, 2));
     } catch (e) {
         logger.warn('[HR-OS API] Failed writing conversion store:', e);
     }
@@ -153,9 +179,9 @@ function withTimeout(promise, ms = 1200) {
  * GET /api/hr-os/audit-events
  * Returns recent conversion audit trail
  */
-router.get('/audit-events', async (req, res) => {
+router.get('/audit-events', requireOrg, async (req, res) => {
     try {
-        const store = readStore();
+        const store = readStore(callerOrgOf(req));
         res.json({
             success: true,
             events: store.auditLogs || []
@@ -169,7 +195,7 @@ router.get('/audit-events', async (req, res) => {
  * POST /api/hr-os/generate-code
  * Generates an employee code via resilient sequence engine (immune to 429 quota limits)
  */
-router.post('/generate-code', async (req, res) => {
+router.post('/generate-code', requireOrg, async (req, res) => {
     try {
         const { type, department } = req.body;
         const normalizedType = String(type || 'full-time').toLowerCase().trim();
@@ -187,7 +213,8 @@ router.post('/generate-code', async (req, res) => {
         const engineConfig = DEFAULT_CONFIGS[normalizedType] || DEFAULT_CONFIGS['full-time'];
         const counterKey = `emp_code_${normalizedType.replace(/[^a-z0-9]/g, '_')}`;
 
-        const store = readStore();
+        const orgId = callerOrgOf(req);
+        const store = readStore(orgId);
         store.counters = store.counters || {};
         let currentSeq = typeof store.counters[counterKey] === 'number' ? store.counters[counterKey] : (engineConfig.seqStart || 1000);
 
@@ -204,8 +231,9 @@ router.post('/generate-code', async (req, res) => {
         // Non-blocking Firestore background sync
         try {
             const { db, admin } = require('../config/firebase');
-            const seqRef = db.collection('system_counters').doc(counterKey);
+            const seqRef = db.collection('system_counters').doc(counterDocId(orgId, counterKey));
             withTimeout(seqRef.set({
+                orgId,
                 current: currentSeq + 1,
                 lastAssigned: newEmpId,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -223,12 +251,23 @@ router.post('/generate-code', async (req, res) => {
  * POST /api/hr-os/convert-employee
  * Converts employee role & employment type with instant response and resilient persistence
  */
-router.post('/convert-employee', async (req, res) => {
+// Changes a person's role, type, department and pay: owner and HR only, and only for a person of the caller's own company
+// (before 2026-11-20 any signed-in user could rewrite any user record, including making themselves an admin).
+router.post('/convert-employee', authorize(ADMIN_HR_ROLES), requireOrg, async (req, res) => {
     try {
         const { employeeId, targetType, targetRole, targetDept, targetSalary, effectiveDate, targetManager } = req.body;
 
         if (!employeeId || !targetType) {
             return res.status(400).json({ success: false, error: 'employeeId and targetType are required' });
+        }
+        {
+            const { rawCollection } = require('../config/firebase');
+            const target = await rawCollection('users').doc(String(employeeId)).get();
+            const callerOrg = (req.user && req.user.orgId) || req.tenantOrgId || null;
+            const found = typeof target.exists === 'function' ? target.exists() : target.exists;
+            if (!found || !callerOrg || target.data().orgId !== callerOrg) {
+                return res.status(404).json({ success: false, error: 'No such person in your company' });
+            }
         }
 
         const normalizedType = String(targetType).toLowerCase().trim();
@@ -246,7 +285,8 @@ router.post('/convert-employee', async (req, res) => {
         const engineConfig = DEFAULT_CONFIGS[normalizedType] || DEFAULT_CONFIGS['full-time'];
         const counterKey = `emp_code_${normalizedType.replace(/[^a-z0-9]/g, '_')}`;
 
-        const store = readStore();
+        const orgId = callerOrgOf(req);
+        const store = readStore(orgId);
         store.counters = store.counters || {};
         let currentSeq = typeof store.counters[counterKey] === 'number' ? store.counters[counterKey] : (engineConfig.seqStart || 1000);
 
@@ -326,6 +366,7 @@ router.post('/convert-employee', async (req, res) => {
         try {
             withTimeout(db.collection('conversion_audit').add({
                 ...auditData,
+                orgId,
                 timestamp: admin.firestore.FieldValue.serverTimestamp()
             }), 1200).catch(() => {});
 

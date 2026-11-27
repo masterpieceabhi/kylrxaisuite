@@ -109,6 +109,33 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────────────
+    // A company whose pages never open the database themselves: every US and Canada page calls the server, which
+    // checks the person's role on each request. For such a company the browser gets its own user record and its
+    // own company record, read-only, and nothing else. Without this, any signed-in employee could read coworkers'
+    // pay or approve their own timesheet by writing to the database directly with the public web key.
+    // The signup route stores `countryCode`; companies made before that are recognised by the country name.
+    // ─────────────────────────────────────────────────────────────────
+    function apiOnlyCountry(d) {
+      return d.get('countryCode', '') in ['US', 'CA']
+        || d.get('country', '').lower() in ['us', 'usa', 'u.s.', 'u.s.a.', 'united states', 'united states of america', 'america', 'ca', 'can', 'canada']
+        || d.get('Country', '').lower() in ['us', 'usa', 'u.s.', 'u.s.a.', 'united states', 'united states of america', 'america', 'ca', 'can', 'canada'];
+    }
+
+    function apiOnlyOrg() {
+      let orgId = getOrgId();
+      return orgId != null
+        && exists(/databases/$(database)/documents/organizations/$(orgId))
+        && apiOnlyCountry(get(/databases/$(database)/documents/organizations/$(orgId)).data);
+    }
+
+    // Fields of a user record that only the server may set
+    function serverKeptUserFields() {
+      return ['password', 'passwordHash', 'must_change_password', 'is_temporary_password', 'setup_pending',
+        'pinHash', 'pinAttempts', 'pinLockedUntil', 'pinSetAt', 'usProfile', 'usForms', 'superAdmin',
+        'sessionsValidAfter', 'signinDevices', 'totp'];
+    }
+
+    // ─────────────────────────────────────────────────────────────────
     // Organizations Collection & Subcollections (Multi-Tenant Hub)
     // ─────────────────────────────────────────────────────────────────
     match /organizations/{orgId} {
@@ -116,7 +143,9 @@ service cloud.firestore {
       // (This enables the setup wizard to complete company configurations and flip the flag)
       // Only members of the org can read it (a super admin of another org cannot)
       allow read: if signedIn() && isSameTenant(orgId);
-      allow update: if signedIn() && isSuperAdmin() && isSameTenant(orgId);
+      // (not in an API-only company: there the company record holds tax, billing and time settings, and an owner
+      // changing the country here would switch the protection off)
+      allow update: if signedIn() && isSuperAdmin() && isSameTenant(orgId) && !apiOnlyCountry(resource.data);
       // Organizations are created by the backend signup (Admin SDK), never by clients
       allow create: if false;
       allow delete: if false; // Organization root docs cannot be deleted by client
@@ -200,6 +229,13 @@ service cloud.firestore {
       match /employee_pf_details/{employeeId} {
         allow read: if signedIn() && isSameTenant(orgId);
         allow write: if canAccessAdmin() && isSameTenant(orgId);
+      }
+
+      // Holidays live two levels down (holiday_calendars/{calendarCode}/holidays/{id}), which the
+      // single-level catch-all below does not reach
+      match /holiday_calendars/{calendarCode}/holidays/{holidayId} {
+        allow read: if signedIn() && isSameTenant(orgId);
+        allow write: if isStaff() && isSameTenant(orgId);
       }
 
       // Any other org-owned configuration (business_units, cost_centers, shifts,
@@ -364,23 +400,29 @@ service cloud.firestore {
     // Users & Compliance Profiles
     // ─────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      // Own profile, or profiles in the same organization
-      allow read: if signedIn() && (request.auth.uid == userId || tenantRead());
-      // Restrict create so a new doc cannot set role above 'Employee'
-      allow create: if signedIn() && (
+      // Own profile always. Coworkers' profiles only in a company whose pages read them directly; in an API-only
+      // company (see apiOnlyOrg) the record also holds pay, tax and sign-in fields and is served by the server alone.
+      allow read: if signedIn() && (request.auth.uid == userId || (tenantRead() && !apiOnlyOrg()));
+      // Restrict create so a new doc cannot set role above 'Employee', cannot name a company the sign-in does not
+      // already belong to (that would put the person inside someone else's company), and cannot carry sign-in fields
+      allow create: if signedIn() && !apiOnlyOrg() && (
         (canAccessAdmin() && tenantCreate()) || (
           request.auth.uid == userId &&
           (!('role' in request.resource.data) || request.resource.data.role in ['Employee', 'employee']) &&
-          (!('super_admin' in request.resource.data) || request.resource.data.super_admin != true)
+          (!('super_admin' in request.resource.data) || request.resource.data.super_admin != true) &&
+          (!('orgId' in request.resource.data) || (('orgId' in request.auth.token) && request.resource.data.orgId == request.auth.token.orgId)) &&
+          !request.resource.data.keys().hasAny(serverKeptUserFields())
         )
       );
-      // A user cannot modify role, orgId, linkedAuthUid, or super_admin on their own profile
-      allow update: if (canAccessAdmin() && tenantUpdate()) || (
+      // A user cannot modify role, orgId, linkedAuthUid, or super_admin on their own profile, nor the fields the
+      // server keeps (password and PIN state, the forced password change, US pay and tax details)
+      allow update: if !apiOnlyOrg() && ((canAccessAdmin() && tenantUpdate()) || (
         signedIn() &&
         request.auth.uid == userId &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'orgId', 'linkedAuthUid', 'super_admin'])
-      );
-      allow delete: if canAccessAdmin() && tenantRead();
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'orgId', 'linkedAuthUid', 'super_admin']) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(serverKeptUserFields())
+      ));
+      allow delete: if !apiOnlyOrg() && canAccessAdmin() && tenantRead();
 
       match /compliance_profile/{profileId} {
         allow read: if parentInTenant(/databases/$(database)/documents/users/$(userId))
@@ -453,11 +495,57 @@ service cloud.firestore {
     // Every other top-level collection (attendance, notifications, messages,
     // payroll_profiles, holidays, ...): same organization only. Collections with
     // an explicit rule above are excluded so this fallback never loosens them.
+    // Two more limits, both because the server is the only door for them:
+    //   - a collection no page opens directly is closed to browsers for every company
+    //   - a company whose pages all go through the server (see apiOnlyOrg) gets nothing here at all
     match /{collection}/{document} {
-      allow read: if tenantRead() && !isExplicitCollection(collection);
-      allow create: if tenantCreate() && !isExplicitCollection(collection);
-      allow update: if tenantUpdate() && !isExplicitCollection(collection);
-      allow delete: if tenantRead() && !isExplicitCollection(collection);
+      allow read: if tenantRead() && browserMayUse(collection);
+      allow create: if tenantCreate() && browserMayUse(collection);
+      allow update: if tenantUpdate() && browserMayUse(collection);
+      allow delete: if tenantRead() && browserMayUse(collection);
+    }
+
+    function browserMayUse(name) {
+      return !isExplicitCollection(name) && !isServerOnlyCollection(name) && !apiOnlyOrg();
+    }
+
+    // Collections that only the server reads and writes (through the Admin SDK, which these rules do not bind).
+    // No page opens them directly, so a browser is refused outright: pay results, time punches, timesheets, Gusto
+    // records, API keys, sign-in codes, billing and the rest. Generated from the code on 2026-11-17: a collection
+    // belongs here when a route or service uses it and no page does. Split in two lists to keep each one short.
+    function isServerOnlyCollection(name) {
+      return name in [
+        'signin_qr_links', 'job_locks', 'platform_jobs',
+        'aca_offers', 'alerts', 'analytics_dashboards', 'announcement_reads', 'announcements', 'api_access_log',
+        'api_idempotency', 'api_keys', 'approval_resolutions', 'asset_audit_logs', 'asset_declarations', 'attendance_policies',
+        'audit_chain', 'automation_audit_logs', 'automation_runs', 'automations', 'background_checks', 'benefit_enrollments',
+        'benefit_events', 'benefit_plans', 'benefit_settings', 'billing_accounts', 'billing_events', 'billing_invoices',
+        'bulk_ai_configurations', 'bulk_trigger_audit_logs', 'bulk_trigger_jobs', 'candidate_eeo', 'candidate_events', 'checklist_templates',
+        'checklists', 'clock_consents', 'clock_devices', 'clock_exceptions', 'clock_jurisdiction_rules', 'clock_notices',
+        'clock_policies', 'cobra_records', 'comp_history', 'company_holidays', 'compliance_plans', 'connector_connections',
+        'connector_dead_letters', 'connector_logs', 'connector_runs', 'connector_sync_state', 'contractor_payments', 'contractors',
+        'cost_centers', 'custom_field_defs', 'disbursement_batches', 'doc_templates', 'eeo_selfid', 'employee_exits',
+        'employee_finance', 'employee_pf_profiles', 'employee_types', 'enterprise_metrics', 'event_outbox', 'everify_cases',
+        'exit_interview_settings', 'exit_interviews', 'gusto_connections', 'gusto_contractor_payments', 'gusto_deduction_runs', 'gusto_errors',
+        'gusto_events', 'gusto_links', 'gusto_locks', 'gusto_payroll_syncs', 'gusto_payrolls', 'gusto_time_sheets',
+        'hiring_settings', 'hr_tasks', 'informational_notices', 'integration_alerts', 'job_requisitions', 'jobs',
+        'kiosks', 'leave_adjustments', 'leave_case_settings'
+      ] || name in [
+        'leave_cases', 'leave_payout_locks', 'leave_payout_settings', 'leave_payouts', 'locations', 'new_hire_agencies',
+        'new_hire_submissions', 'notice_attachments', 'notice_templates', 'oauth_apps', 'oauth_codes', 'oauth_grants',
+        'oauth_tokens', 'onboarding_reminders_audit', 'osha_incidents', 'otp_audit_logs', 'otp_verifications', 'pay_results',
+        'pay_schedules', 'payroll_exception_alerts', 'payroll_garnishments', 'payroll_reprocessing_queue', 'pending_approvals', 'people_data_settings',
+        'people_tags', 'performance_goals', 'performance_reviews', 'performance_settings', 'pf_challans', 'pf_staging_rejections',
+        'policy_acks', 'policy_audit', 'policy_settings', 'policy_versions', 'posting_records', 'predictive_schedule_rules',
+        'privacy_requests', 'privacy_settings', 'profile_change_requests', 'punch_corrections', 'punch_photos', 'recognition_settings',
+        'recognition_thanks', 'report_snapshots', 'review_cycle_members', 'review_cycles', 'review_peer_answers', 'review_peer_responders',
+        'salary_structures', 'saved_reports', 'schedule_availability', 'schedule_notices', 'schedule_settings', 'schedule_shifts',
+        'scim_tokens', 'shift_swaps', 'shift_templates', 'sign_requests', 'sub_departments', 'support_grants',
+        'survey_responders', 'survey_responses', 'surveys', 'time_allocations', 'time_punches', 'timesheet_weeks',
+        'tip_distributions', 'tip_pools', 'tip_records', 'tip_settings', 'training_completions', 'trainings',
+        'vault_documents', 'wage_rules', 'webhook_audit_logs', 'webhook_deliveries', 'webhook_endpoints', 'workflow_builder_audit',
+        'workflow_builder_runs', 'workflow_builder_workflows'
+      ];
     }
 
     function isExplicitCollection(name) {

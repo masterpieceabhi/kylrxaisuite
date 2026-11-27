@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Customer & CEO Registration | Kylrx AI</title>
+  <title>Customer & CEO Registration | Onn HR</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏢</text></svg>">
   <link rel="stylesheet" href="login.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -290,8 +290,8 @@
       <div class="wave-bg"></div>
       <div style="position: relative; z-index: 10;">
         <a href="index.html" class="brand-logo">
-          <img src="logo.jpg" alt="Logo">
-          <span>Kylrx <span>AI</span></span>
+          <img src="onnhr-logo.svg" alt="Logo">
+          <span>Onn <span>HR</span></span>
         </a>
         <div class="tagline-badge">ENTERPRISE HR & PAYROLL SUITE</div>
         <h1 class="hero-title">One Platform.<br>Infinite <span>Possibilities.</span></h1>
@@ -328,7 +328,7 @@
           </div>
         </div>
       </div>
-      <div class="footer-copy">&copy; 2026 Kylrx AI. All rights reserved.</div>
+      <div class="footer-copy">&copy; 2026 Prompt AI Ethical Solutions USA LLC. All rights reserved.</div>
     </div>
 
     <!-- Right Column (Centered Auth Card) -->
@@ -337,8 +337,8 @@
         
         <!-- Mobile Header (hidden on Desktop) -->
         <a href="index.html" class="brand-logo mobile-logo">
-          <img src="logo.jpg" alt="Logo">
-          <span>Kylrx <span>AI</span></span>
+          <img src="onnhr-logo.svg" alt="Logo">
+          <span>Onn <span>HR</span></span>
         </a>
 
         <div class="auth-header">
@@ -350,10 +350,10 @@
         </div>
 
         <!-- 1-Click QA Quick-Fill Bar -->
-        <div class="demo-data-bar">
+        <div class="demo-data-bar" id="demoDataBar" style="display:none">
           <span style="font-size: 0.75rem; color: #64748b; font-weight: 600;">Testing setup?</span>
           <button type="button" id="btnFillDemoSignup" style="background: none; border: none; color: var(--primary); font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-            <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i> Fill Kylrx Demo Setup
+            <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i> Fill Onn HR Demo Setup
           </button>
         </div>
 
@@ -400,7 +400,7 @@
                 <label for="name">Full Name *</label>
                 <div class="input-wrapper">
                   <i data-lucide="user" class="icon-left"></i>
-                  <input type="text" id="name" name="fullName" placeholder="John Doe" required autocomplete="name">
+                  <input type="text" id="name" name="fullName" placeholder="Your full name" required autocomplete="name">
                 </div>
               </div>
 
@@ -419,10 +419,10 @@
             <!-- Password & Confirm Password -->
             <div class="form-grid-2" style="margin-top: 0.5rem;">
               <div class="form-group">
-                <label for="password">Password *</label>
+                <label for="password">Choose a PIN *</label>
                 <div class="input-wrapper">
                   <i data-lucide="lock" class="icon-left"></i>
-                  <input type="password" id="password" name="password" placeholder="••••••••" required autocomplete="new-password">
+                  <input type="password" id="password" name="password" placeholder="4 to 6 digits" inputmode="numeric" maxlength="6" required autocomplete="new-password">
                   <button type="button" class="eye-btn" data-target="password">
                     <i data-lucide="eye"></i>
                   </button>
@@ -430,10 +430,10 @@
               </div>
 
               <div class="form-group">
-                <label for="confirmPassword">Confirm Password *</label>
+                <label for="confirmPassword">Type the PIN again *</label>
                 <div class="input-wrapper">
                   <i data-lucide="lock" class="icon-left"></i>
-                  <input type="password" id="confirmPassword" name="confirmPassword" placeholder="••••••••" required autocomplete="new-password">
+                  <input type="password" id="confirmPassword" name="confirmPassword" placeholder="4 to 6 digits" inputmode="numeric" maxlength="6" required autocomplete="new-password">
                   <button type="button" class="eye-btn" data-target="confirmPassword">
                     <i data-lucide="eye"></i>
                   </button>
@@ -442,8 +442,9 @@
               </div>
             </div>
 
-            <!-- 6-Point Password Strength Meter -->
-            <div class="strength-container" style="margin-top: 0.25rem;">
+            <p class="field-hint" style="margin-top:.4rem">You sign in with your email and this PIN. Not one digit repeated, and not a run like 1234. No password needed.</p>
+            <!-- the old password strength meter, kept hidden so the script that fills it still finds its parts -->
+            <div class="strength-container" style="display:none">
               <div class="strength-bar"><div class="strength-bar-fill bg-danger" id="strengthFill"></div></div>
               <div class="strength-text" id="strengthText">Password Strength: None</div>
               <ul class="strength-checklist">
@@ -487,7 +488,7 @@
                 <label for="legalName">1. Legal Name *</label>
                 <div class="input-wrapper">
                   <i data-lucide="file-badge" class="icon-left"></i>
-                  <input type="text" id="legalName" name="Legal_Name" placeholder="e.g. Kylrx Technologies Pvt. Ltd." required>
+                  <input type="text" id="legalName" name="Legal_Name" placeholder="e.g. Acme Services LLC" required>
                 </div>
                 <span class="field-hint">Exact name registered with MCA / Registrar</span>
               </div>
@@ -496,7 +497,7 @@
                 <label for="displayName">2. Display Name *</label>
                 <div class="input-wrapper">
                   <i data-lucide="briefcase" class="icon-left"></i>
-                  <input type="text" id="displayName" name="Display_Name" placeholder="e.g. Kylrx AI" required>
+                  <input type="text" id="displayName" name="Display_Name" placeholder="e.g. Onn HR" required>
                 </div>
                 <span class="field-hint">Brand name shown across employee portal</span>
               </div>
@@ -533,7 +534,7 @@
                 <label for="website">5. Website</label>
                 <div class="input-wrapper">
                   <i data-lucide="globe" class="icon-left"></i>
-                  <input type="url" id="website" name="Website" placeholder="https://kylrx.ai">
+                  <input type="url" id="website" name="Website" placeholder="https://yourcompany.com">
                 </div>
               </div>
 
@@ -552,7 +553,7 @@
               <div style="display: flex; gap: 10px;">
                 <div class="input-wrapper" style="flex: 1;">
                   <i data-lucide="image" class="icon-left"></i>
-                  <input type="text" id="logoUrl" name="Logo_URL" placeholder="https://kylrx.ai/logo.jpg or upload below">
+                  <input type="text" id="logoUrl" name="Logo_URL" placeholder="https://yourcompany.com/logo.png or upload below">
                 </div>
                 <label class="btn-secondary" style="margin: 0; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
                   <i data-lucide="upload" style="width: 16px; height: 16px;"></i> Browse File
@@ -586,12 +587,12 @@
                 <label for="country">8. Country *</label>
                 <div class="input-wrapper">
                   <i data-lucide="flag" class="icon-left"></i>
-                  <input type="text" id="country" name="Country" value="India" required>
+                  <select id="country" name="Country" required style="width:100%;padding-left:2.75rem;height:100%;min-height:2.9rem;border:1.5px solid #e2e8f0;border-radius:12px;font:inherit;background:#fff"><option value="India" selected>India</option><option value="United States">United States</option></select>
                 </div>
               </div>
 
               <div class="form-group">
-                <label for="state">9. State *</label>
+                <label for="state" id="stateLabel">9. State *</label>
                 <div class="input-wrapper">
                   <i data-lucide="map" class="icon-left"></i>
                   <input type="text" id="state" name="State" placeholder="e.g. Karnataka" required>
@@ -609,7 +610,7 @@
               </div>
 
               <div class="form-group">
-                <label for="pinCode">11. PIN Code *</label>
+                <label for="pinCode" id="pinLabel">11. PIN Code *</label>
                 <div class="input-wrapper">
                   <i data-lucide="navigation" class="icon-left"></i>
                   <input type="text" id="pinCode" name="PIN_Code" placeholder="e.g. 560103" required>
@@ -642,7 +643,13 @@
                   <select id="timeZone" name="Time_Zone" required>
                     <option value="Asia/Kolkata" selected>Asia/Kolkata (IST)</option>
                     <option value="UTC">UTC</option>
-                    <option value="America/New_York">America/New_York (EST)</option>
+                    <option value="America/New_York">America/New_York (Eastern)</option>
+                    <option value="America/Chicago">America/Chicago (Central)</option>
+                    <option value="America/Denver">America/Denver (Mountain)</option>
+                    <option value="America/Phoenix">America/Phoenix (Arizona)</option>
+                    <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+                    <option value="America/Anchorage">America/Anchorage (Alaska)</option>
+                    <option value="Pacific/Honolulu">Pacific/Honolulu (Hawaii)</option>
                     <option value="Europe/London">Europe/London (GMT)</option>
                     <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
                     <option value="Asia/Dubai">Asia/Dubai (GST)</option>
@@ -698,7 +705,8 @@
               <i data-lucide="shield-alert" style="color: var(--primary); width: 20px; height: 20px;"></i>
               <h3>D. Statutory & Legal Compliance Identifiers</h3>
             </div>
-            <p class="section-desc">Federal tax registrations for automated payroll TDS, corporate filings, and compliance.</p>
+            <p class="section-desc" id="statDescIn">Federal tax registrations for automated payroll TDS, corporate filings, and compliance.</p>
+            <div id="usStatNote" style="display:none;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin:0 0 1rem;color:#1e3a8a;font-size:0.9rem;line-height:1.5">United States companies do not need the India tax numbers. After you sign in, add your Employer Identification Number (EIN), business type and work states under company settings. You can go to the next step now.</div>
 
             <div class="form-grid-2">
               <div class="form-group">
@@ -784,14 +792,14 @@
       <h2 style="font-size:1.75rem; font-weight:800; margin-bottom:0.5rem; color:#0f172a;">Terms of Service</h2>
       <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.5rem;">Effective Date: May 27, 2026</p>
       <div style="font-size:0.95rem; color:#475569; line-height:1.7; display:flex; flex-direction:column; gap:1.25rem;">
-        <p>Welcome to Kylrx AI. By subscribing to our SaaS platform, your organization agrees to be bound by these Terms of Service.</p>
+        <p>Welcome to Onn HR. By subscribing to our SaaS platform, your organization agrees to be bound by these Terms of Service.</p>
         <div>
           <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">1. Platform License & Access</h4>
-          <p>Kylrx AI grants a non-exclusive, non-transferable, revocable license to access our platform in accordance with the features detailed in your subscribed plan.</p>
+          <p>Onn HR grants a non-exclusive, non-transferable, revocable license to access our platform in accordance with the features detailed in your subscribed plan.</p>
         </div>
         <div>
           <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">2. Data Security & Ownership</h4>
-          <p>Your organization retains complete ownership of all data submitted to the platform. Kylrx AI commits to maintaining robust backup regimes and SOC 2 security standards.</p>
+          <p>Your organization retains complete ownership of all data submitted to the platform. Onn HR commits to maintaining robust backup regimes and SOC 2 security standards.</p>
         </div>
         <div>
           <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">3. Service Levels & Compliance</h4>
@@ -807,16 +815,28 @@
     <div style="background:white; padding:2.5rem; border-radius:24px; width:100%; max-width:600px; max-height:85vh; overflow-y:auto; border:1px solid #dbeafe; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1); position:relative; text-align:left;">
       <button onclick="closeModal('privacyModal')" style="position:absolute; top:1.5rem; right:1.5rem; background:transparent; border:none; font-size:1.2rem; cursor:pointer; color:#64748b;"><i data-lucide="x"></i></button>
       <h2 style="font-size:1.75rem; font-weight:800; margin-bottom:0.5rem; color:#0f172a;">Privacy Policy</h2>
-      <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.5rem;">Last Updated: May 27, 2026</p>
+      <p style="font-size:0.85rem; color:#64748b; margin-bottom:1.5rem;">Last Updated: November 21, 2026</p>
       <div style="font-size:0.95rem; color:#475569; line-height:1.7; display:flex; flex-direction:column; gap:1.25rem;">
-        <p>At Kylrx AI, we prioritize the confidentiality and safety of your organizational and statutory tax data.</p>
+        <p>Onn HR is run by Prompt AI Ethical Solutions and its partners. This policy explains what we keep about your company and your people, who helps us run the service, and the choices you have.</p>
         <div>
-          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">1. Information We Collect</h4>
-          <p>To deliver AI-powered HR, tax compliance, and payroll services, we process: employer registration details (PAN, TAN, GSTIN, CIN), employee rosters, biometric attendance, and compensation parameters.</p>
+          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">1. Information we keep</h4>
+          <p>Company details you enter (legal name, address, tax IDs such as an EIN in the US or PAN, TAN and GSTIN in India), and for each person: name, contact details, job, start date, work state, time and attendance, time off, pay and tax forms, and documents you upload. Social Security numbers are stored encrypted and shown only to people whose role allows it. When your company runs US payroll through Gusto, bank details are entered with and kept by Gusto.</p>
         </div>
         <div>
-          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">2. Security Framework</h4>
-          <p>We leverage advanced serverless infrastructure and high-fidelity encryption systems (AES-256 and TLS 1.3) to protect data at rest and in transit.</p>
+          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">2. Who helps us run the service</h4>
+          <p>We use these providers, only for the purpose listed: Google Cloud and Firebase (hosting, database, sign-in); Cloudflare (network and security); our email provider (sign-in codes and notices); Stripe (subscription billing, when switched on); Gusto (US payroll, only if your company connects it); Sentry (error reports, without employee records); OpenAI (the HR assistant, see below). We do not sell personal information.</p>
+        </div>
+        <div>
+          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">3. The HR assistant</h4>
+          <p>If your company uses the HR assistant, the question and a short summary of HR status (names, departments, job titles, start dates, open tasks, missing forms, time off and hours waiting for approval) are sent to OpenAI to write the answer. Pay rates, Social Security numbers, bank details, dates of birth, home addresses and health details are never sent. Only the company owner and HR admins can use it.</p>
+        </div>
+        <div>
+          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">4. Security</h4>
+          <p>Data is encrypted in transit (TLS) and at rest. Access is limited by role, and actions on personal records are logged.</p>
+        </div>
+        <div>
+          <h4 style="font-weight:700; color:#0f172a; margin-bottom:0.25rem;">5. How long we keep it, and your choices</h4>
+          <p>Your company decides how long records of former employees are kept, within what the law requires. Employees can ask to see or correct their information from the Privacy page in the app. Questions: <a href="mailto:support@promptaiusa.com">support@promptaiusa.com</a>.</p>
         </div>
       </div>
       <button onclick="closeModal('privacyModal')" style="background:#2563eb; color:white; width:100%; padding:1rem; border:none; border-radius:12px; font-weight:700; cursor:pointer; margin-top:2rem;">Close</button>
@@ -862,7 +882,7 @@
     document.getElementById('showPrivacy').onclick = () => openModal('privacyModal');
   </script>
 
-  <script type="module" src="signup.js"></script>
+  <script type="module" src="signup.js?v=2"></script>
   <script>if (window.lucide) { lucide.createIcons(); }</script>
 </body>
 </html>

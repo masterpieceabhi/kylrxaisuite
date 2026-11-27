@@ -59,6 +59,8 @@
         designationTitle: [
             'designation_title', 'designationtitle', 'designation', 'job_title', 'jobtitle', 'title', 'position', 'role'
         ],
+        employeeName: ['employee_name', 'employeename', 'full_name', 'fullname', 'name'],
+        officialEmail: ['official_email', 'officialemail', 'work_email', 'workemail', 'email', 'email_address'],
         annualCtc: [
             'annual_ctc', 'annualctc', 'ctc', 'total_ctc', 'cost_to_company', 'annual_salary', 'package', 'gross_ctc'
         ],
@@ -323,10 +325,18 @@
         let activeRaw = findField(rawRow, 'active');
         let active = sanitizeBoolean(activeRaw, true);
 
+        // Optional extras (not part of the 11 core attributes): used to create a profile for a new person
+        const employeeNameRaw = findField(rawRow, 'employeeName');
+        const officialEmailRaw = findField(rawRow, 'officialEmail');
+        const optionalPeople = {};
+        if (employeeNameRaw && String(employeeNameRaw).trim()) optionalPeople.Employee_Name = String(employeeNameRaw).trim();
+        if (officialEmailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(officialEmailRaw).trim())) optionalPeople.Official_Email = String(officialEmailRaw).trim().toLowerCase();
+
         const normalizedRecord = {
             rowIndex: index + 1,
             Employee_ID: employeeId,
             Organization_ID: orgId,
+            ...optionalPeople,
             Effective_Date: effectiveDate,
             Department_Code: departmentCode,
             Designation_Title: designationTitle,

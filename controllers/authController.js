@@ -1,7 +1,8 @@
-const { admin, db } = require('../config/firebase');
+const { admin, db, rawCollection } = require('../config/firebase');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { getCountryConfig } = require('../country-config');
 const otpVerificationService = require('../services/otp-verification-service');
 
 // Security Configurations
@@ -85,33 +86,70 @@ exports.registerOrganization = async (req, res, next) => {
         return res.status(503).json({ success: false, error: 'Firebase Admin SDK is not configured on the server' });
     }
 
-    const { fullName, email, password, organization = {} } = req.body || {};
+    const { fullName, email, organization = {} } = req.body || {};
+    // The owner chooses a PIN (the sign-in page has no password box). A password is still accepted from older callers.
+    const pin = typeof (req.body || {}).pin === 'string' ? req.body.pin : '';
+    const usePin = Boolean(pin);
+    const password = usePin ? null : (req.body || {}).password;
+    if (usePin) {
+        const weak = require('../services/pin-signin').weakPin(pin);
+        if (weak) return res.status(400).json({ success: false, code: 'weak_pin', error: weak });
+    }
     const officialEmail = String(email || '').trim().toLowerCase();
     const name = String(fullName || '').trim();
     const legalName = String(organization.legalName || '').trim();
     const displayName = String(organization.displayName || '').trim();
 
-    if (!name || !officialEmail || !password || !(legalName || displayName)) {
-        return res.status(400).json({ success: false, error: 'Name, email, password and company name are required' });
+    if (!name || !officialEmail || !(usePin || password) || !(legalName || displayName)) {
+        return res.status(400).json({ success: false, error: 'Name, email, a PIN and company name are required' });
     }
-    if (String(password).length < 8) {
+    if (!usePin && String(password).length < 8) {
         return res.status(400).json({ success: false, error: 'Password must be at least 8 characters long' });
     }
 
+    // Is this server for that country? (services/served-countries.js: us.onnhr.com keeps its data in the United States,
+    // in.onnhr.com in India.) A company of another country is pointed to its own address; nothing is created here.
+    const where = require('../services/served-countries').checkSignup(organization.country);
+    if (!where.ok) return res.status(where.status).json({ success: false, code: where.code, error: where.error, country: where.country || null, address: where.address || null });
+    organization.country = where.country; // the server's own country when none was sent and it serves exactly one
+
+    // Country decides the defaults. Before this, a company that named a country but no time zone, currency or
+    // fiscal year was given India's (Asia/Kolkata, INR, April), whatever the country.
+    const countryConfig = getCountryConfig(organization.country);
+    const isIndia = countryConfig.code === 'IN';
+    const zoneSent = String(organization.timezone || '').trim();
+    if (zoneSent) {
+        try { new Intl.DateTimeFormat('en-US', { timeZone: zoneSent }); } catch (_) {
+            return res.status(400).json({ success: false, code: 'bad_timezone', error: 'The time zone is not one we know. Send a name such as America/Chicago.', timeZones: countryConfig.timeZones });
+        }
+    } else if (!isIndia) {
+        // A country with several time zones: guessing one would put every clock-in and pay period on the wrong day for some companies
+        return res.status(400).json({ success: false, code: 'timezone_required', error: 'Choose the company time zone.', timeZones: countryConfig.timeZones });
+    }
+    const orgDefaults = {
+        country: String(organization.country || '').trim() || countryConfig.name,
+        timezone: zoneSent || countryConfig.timeZones[0],
+        currency: String(organization.currency || '').trim() || countryConfig.currency,
+        financialYearStart: String(organization.financialYearStart || '').trim() || (isIndia ? '04-01' : '01-01')
+    };
+
+    // The company id comes from its name. Two companies can share a name ("Main Street Cafe"), so when the plain
+    // id is taken a short random ending is added; an existing company is never merged into or taken over.
     const orgSlug = (displayName || legalName).replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-    const orgId = `org_${orgSlug}`;
-    const orgRef = db.collection('organizations').doc(orgId);
+    let orgId = `org_${orgSlug}`;
+    let orgRef = db.collection('organizations').doc(orgId);
 
     let uid;
     try {
-        // Refuse to take over an organization that another account already owns
-        const existingOrg = await orgRef.get();
-        if (existingOrg.exists) {
-            return res.status(409).json({ success: false, error: `An organization named "${displayName || legalName}" is already registered` });
+        for (let tries = 0; (await orgRef.get()).exists; tries += 1) {
+            if (tries >= 5) return res.status(409).json({ success: false, error: `An organization named "${displayName || legalName}" is already registered` });
+            orgId = `org_${orgSlug}_${require('crypto').randomBytes(3).toString('hex')}`;
+            orgRef = db.collection('organizations').doc(orgId);
         }
 
         try {
-            const userRecord = await admin.auth().createUser({ email: officialEmail, password: String(password), displayName: name });
+            // with a PIN the account gets a password nobody knows
+            const userRecord = await admin.auth().createUser({ email: officialEmail, password: usePin ? require('../services/us-people-service').unknownPassword() : String(password), displayName: name });
             uid = userRecord.uid;
         } catch (authErr) {
             if (authErr.code === 'auth/email-already-exists') {
@@ -122,6 +160,10 @@ exports.registerOrganization = async (req, res, next) => {
             }
             throw authErr;
         }
+
+        // With a PIN it is stored hashed. The device is remembered afterwards by the page, through /api/auth/pin/remember
+        // (the device cookie is sent only to /api/auth/pin, so it cannot be read or set safely from here).
+        const pinFields = usePin ? { pinHash: await bcrypt.hash(pin, 10), pinAttempts: 0, pinLockedUntil: null, pinSetAt: new Date().toISOString() } : null;
 
         // Set claims straight away so the onUserCreated Cloud Function sees them and skips
         await admin.auth().setCustomUserClaims(uid, { role: 'super_admin', super_admin: true, orgId });
@@ -165,6 +207,7 @@ exports.registerOrganization = async (req, res, next) => {
                 department: 'Executive Leadership',
                 designation: 'CEO & Founder',
                 status: 'active',
+                ...(pinFields || {}),
                 createdAt: ts,
                 updatedAt: ts
             }, { merge: true });
@@ -178,15 +221,15 @@ exports.registerOrganization = async (req, res, next) => {
                 Website: field(o.website),
                 Official_Email: officialEmail,
                 Official_Phone: field(o.officialPhone),
-                Country: field(o.country) || 'India',
+                Country: orgDefaults.country,
                 State: field(o.state),
                 City: field(o.city),
                 PIN_Code: field(o.pinCode),
                 Registered_Address: field(o.registeredAddress),
                 Corporate_Address: corpAddress,
-                Time_Zone: field(o.timezone) || 'Asia/Kolkata',
-                Currency: field(o.currency) || 'INR',
-                Financial_Year_Start: field(o.financialYearStart) || '04-01',
+                Time_Zone: orgDefaults.timezone,
+                Currency: orgDefaults.currency,
+                Financial_Year_Start: orgDefaults.financialYearStart,
                 PAN: field(o.pan).toUpperCase(),
                 TAN: field(o.tan).toUpperCase(),
                 CIN_or_LLPIN: field(o.cinOrLlpin).toUpperCase(),
@@ -201,15 +244,16 @@ exports.registerOrganization = async (req, res, next) => {
                 website: field(o.website),
                 officialEmail,
                 officialPhone: field(o.officialPhone),
-                country: field(o.country) || 'India',
+                country: orgDefaults.country,
+                countryCode: countryConfig.code, // IN, US or CA: the database rules and the country gate read this, whatever spelling of the name was sent
                 state: field(o.state),
                 city: field(o.city),
                 pinCode: field(o.pinCode),
                 registeredAddress: field(o.registeredAddress),
                 corporateAddress: corpAddress,
-                timezone: field(o.timezone) || 'Asia/Kolkata',
-                currency: field(o.currency) || 'INR',
-                financialYearStart: field(o.financialYearStart) || '04-01',
+                timezone: orgDefaults.timezone,
+                currency: orgDefaults.currency,
+                financialYearStart: orgDefaults.financialYearStart,
                 pan: field(o.pan).toUpperCase(),
                 tan: field(o.tan).toUpperCase(),
                 cinOrLlpin: field(o.cinOrLlpin).toUpperCase(),
@@ -241,7 +285,14 @@ exports.registerOrganization = async (req, res, next) => {
         })]).finally(() => clearTimeout(timer));
 
         logger.info(`Organization signup completed: ${orgId} by ${uid}`);
-        res.status(201).json({ success: true, uid, orgId });
+        let extra = {};
+        if (usePin) {
+            extra = {
+                token: await admin.auth().createCustomToken(uid), // the page signs in with this; no password exists to type
+                deviceGrant: require('../services/pin-signin').deviceGrant(JWT_SECRET, uid, officialEmail)
+            };
+        }
+        res.status(201).json({ success: true, uid, orgId, country: countryConfig.code, timezone: orgDefaults.timezone, currency: orgDefaults.currency, ...extra });
     } catch (error) {
         // Roll back the Auth user so the person can retry with the same email
         if (uid) {
@@ -260,13 +311,15 @@ exports.registerOrganization = async (req, res, next) => {
 
 exports.login = async (req, res, next) => {
     try {
+        // PASSWORD_SIGNIN=off closes this door on a server where people sign in with a PIN, a code or a QR instead.
+        if (process.env.PASSWORD_SIGNIN === 'off') return res.status(403).json({ success: false, code: 'password_signin_off', error: 'Sign in with your PIN or a sign-in code.' });
         const { email, password } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ success: false, error: 'Email and password required' });
         }
 
-        const usersSnapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+        const usersSnapshot = await rawCollection('users').where('email', '==', email).limit(1).get();
 
         if (usersSnapshot.empty) {
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
@@ -288,7 +341,7 @@ exports.login = async (req, res, next) => {
                 });
             }
             // Lock expired — reset it automatically
-            await db.collection('users').doc(userId).update({ loginAttempts: 0, lockUntil: null });
+            await rawCollection('users').doc(userId).update({ loginAttempts: 0, lockUntil: null });
         }
 
         // 2. Verify Password (Strict bcrypt comparison only; plaintext comparisons removed)
@@ -307,12 +360,22 @@ exports.login = async (req, res, next) => {
                 logger.warn(`Account locked for email: ${email}`);
             }
             
-            await db.collection('users').doc(userId).update(updates);
+            await rawCollection('users').doc(userId).update(updates);
             return res.status(401).json({ success: false, error: 'Invalid credentials' });
         }
 
+        // Employment ended: the right password no longer opens a session
+        if (/^terminated$/i.test(String(user.status || ''))) {
+            return res.status(403).json({ success: false, error: 'This account is no longer active' });
+        }
+
+        // Company requires single sign-on: passwords are refused (except the break-glass accounts)
+        if (await require('../services/sso').passwordLoginBlocked({ ...user, email: user.email || email })) {
+            return res.status(403).json({ success: false, code: 'sso_required', error: 'Your company requires single sign-on. Use the "Sign in with SSO" button.' });
+        }
+
         // 3. Reset failed login attempts on successful password verification
-        await db.collection('users').doc(userId).update({
+        await rawCollection('users').doc(userId).update({
             loginAttempts: 0,
             lockUntil: null
         });
@@ -408,7 +471,7 @@ exports.verifyMfa = async (req, res, next) => {
         // Fetch latest user document from Firestore to verify status and mustResetPassword
         let userData = {};
         try {
-            const userDoc = await db.collection('users').doc(decoded.id).get();
+            const userDoc = await rawCollection('users').doc(decoded.id).get();
             if (userDoc.exists) {
                 userData = userDoc.data();
             }
@@ -418,7 +481,7 @@ exports.verifyMfa = async (req, res, next) => {
 
         // Update lastLogin
         try {
-            await db.collection('users').doc(decoded.id).update({
+            await rawCollection('users').doc(decoded.id).update({
                 lastLogin: admin.firestore.FieldValue.serverTimestamp()
             });
         } catch (_) {}
@@ -528,7 +591,7 @@ exports.unlockAccount = async (req, res, next) => {
         const { email } = req.params;
         if (!email) return res.status(400).json({ success: false, error: 'Email required' });
 
-        const snap = await db.collection('users').where('email', '==', email).limit(1).get();
+        const snap = await rawCollection('users').where('email', '==', email).limit(1).get();
         if (snap.empty) return res.status(404).json({ success: false, error: 'User not found' });
 
         await snap.docs[0].ref.update({ loginAttempts: 0, lockUntil: null });

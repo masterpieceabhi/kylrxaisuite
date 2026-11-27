@@ -1,6 +1,22 @@
 {
   "indexes": [
     {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "time_punches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orgId", "order": "ASCENDING" },
+        { "fieldPath": "at", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "payroll_documents",
       "queryScope": "COLLECTION",
       "fields": [

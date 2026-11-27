@@ -2,9 +2,17 @@ const express = require('express');
 const router = express.Router();
 const documentTemplateEngine = require('../services/document-template-engine');
 const logger = require('../utils/logger');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
 
 router.use(verifyToken);
+
+// Every call works on the caller's own company engine (template versions, approvals, generated documents)
+router.use((req, res, next) => {
+    const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+    if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+    req.docEngine = documentTemplateEngine.forOrg(orgId);
+    next();
+});
 
 /**
  * 11. Document & Template Integration REST API
@@ -26,7 +34,7 @@ router.use(verifyToken);
 // GET /api/document-templates - List all 10 standard templates
 router.get('/', (req, res) => {
     try {
-        const templates = documentTemplateEngine.listTemplates();
+        const templates = req.docEngine.listTemplates();
         res.status(200).json({ success: true, data: templates, total: templates.length });
     } catch (error) {
         logger.error('[DocumentTemplatesAPI] Error listing templates:', error);
@@ -43,7 +51,7 @@ router.post('/generate', async (req, res) => {
             return res.status(400).json({ success: false, error: 'templateKey is required.' });
         }
 
-        const docRecord = await documentTemplateEngine.generateDocument(
+        const docRecord = await req.docEngine.generateDocument(
             templateKey,
             dataContext || {},
             { callerModule: callerModule || 'hr_admin', actor: actor || 'HR Administrator', asOfDate }
@@ -73,7 +81,7 @@ router.post('/generate', async (req, res) => {
 router.get('/generated', (req, res) => {
     try {
         const { templateKey, recipientId, limit } = req.query;
-        const docs = documentTemplateEngine.listGeneratedDocuments({
+        const docs = req.docEngine.listGeneratedDocuments({
             templateKey,
             recipientId,
             limit: limit ? parseInt(limit, 10) : 50
@@ -88,7 +96,7 @@ router.get('/generated', (req, res) => {
 // GET /api/document-templates/generated/:docId - View single generated document
 router.get('/generated/:docId', (req, res) => {
     try {
-        const doc = documentTemplateEngine.getGeneratedDocument(req.params.docId);
+        const doc = req.docEngine.getGeneratedDocument(req.params.docId);
         res.status(200).json({ success: true, data: doc });
     } catch (error) {
         logger.error(`[DocumentTemplatesAPI] Error fetching generated document '${req.params.docId}':`, error);
@@ -99,7 +107,7 @@ router.get('/generated/:docId', (req, res) => {
 // GET /api/document-templates/:key - Full template detail with version history
 router.get('/:key', (req, res) => {
     try {
-        const template = documentTemplateEngine.getTemplate(req.params.key);
+        const template = req.docEngine.getTemplate(req.params.key);
         res.status(200).json({ success: true, data: template });
     } catch (error) {
         logger.error(`[DocumentTemplatesAPI] Error fetching template '${req.params.key}':`, error);
@@ -108,14 +116,14 @@ router.get('/:key', (req, res) => {
 });
 
 // POST /api/document-templates/:key/versions - Create new draft version
-router.post('/:key/versions', (req, res) => {
+router.post('/:key/versions', authorize(ADMIN_HR_ROLES), (req, res) => {
     try {
         const { versionNumber, templateBody, effectiveFrom, changeNotes, createdBy, fieldMappings } = req.body || {};
         if (!versionNumber || !templateBody) {
             return res.status(400).json({ success: false, error: 'versionNumber and templateBody are required.' });
         }
 
-        const newVersion = documentTemplateEngine.createTemplateVersion(req.params.key, {
+        const newVersion = req.docEngine.createTemplateVersion(req.params.key, {
             versionNumber,
             templateBody,
             effectiveFrom,
@@ -132,10 +140,10 @@ router.post('/:key/versions', (req, res) => {
 });
 
 // POST /api/document-templates/:key/versions/:versionNumber/approve - Approve a version
-router.post('/:key/versions/:versionNumber/approve', (req, res) => {
+router.post('/:key/versions/:versionNumber/approve', authorize(ADMIN_HR_ROLES), (req, res) => {
     try {
         const { approvedBy, approvalRemarks } = req.body || {};
-        const approved = documentTemplateEngine.approveTemplateVersion(
+        const approved = req.docEngine.approveTemplateVersion(
             req.params.key,
             req.params.versionNumber,
             { approvedBy: approvedBy || 'HR Director', approvalRemarks: approvalRemarks || 'Approved for production use.' }
@@ -151,7 +159,7 @@ router.post('/:key/versions/:versionNumber/approve', (req, res) => {
 router.post('/:key/preview', (req, res) => {
     try {
         const { versionNumber, dataContext } = req.body || {};
-        const preview = documentTemplateEngine.previewTemplate(req.params.key, { versionNumber, dataContext: dataContext || {} });
+        const preview = req.docEngine.previewTemplate(req.params.key, { versionNumber, dataContext: dataContext || {} });
         res.status(200).json({ success: true, data: preview });
     } catch (error) {
         logger.error(`[DocumentTemplatesAPI] Error previewing template '${req.params.key}':`, error);

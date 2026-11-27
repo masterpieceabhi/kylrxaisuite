@@ -1,4 +1,5 @@
 import { db, auth, onAuthStateChanged, doc, getDoc, collection, query, where, getDocs } from "./firebase-config.js";
+import './country-gate.js';
 
 /**
  * HRMS Suite Sidebar & Profile Synchronization

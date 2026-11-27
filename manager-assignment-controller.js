@@ -257,7 +257,7 @@
 
             const oldMgr = getManagerDisplayString(item.oldManagerId, employees);
             const newMgr = getManagerDisplayString(item.newManagerId, employees);
-            const dateStr = item.changedAt ? new Date(item.changedAt).toLocaleString('en-IN', {
+            const dateStr = item.changedAt ? new Date(item.changedAt).toLocaleString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), {
                 year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
             }) : '---';
 

@@ -1,7 +1,0 @@
-Date,Employee ID,Employee Name,Official Email,Role,Department,Punch In Time,Punch Out Time,Duration (Hours),Status
-"2026-06-22","N/A","CYBER","cyber@gmail.com","manager","Cybersecurity","2026-06-22 05:38:57","2026-06-22 05:38:58","0.00","Short Hours"
-"2026-06-22","N/A","John","john@gmail.com","manager","Cybersecurity Manager","2026-06-22 05:23:17","2026-06-22 05:32:08","0.15","Short Hours"
-"2026-05-22","N/A","Unnamed Employee","N/A","employee","N/A","2026-05-22 15:25:31","2026-05-22 15:25:31","0.00","Short Hours"
-"2026-05-21","N/A","Unnamed Employee","N/A","employee","N/A","2026-05-21 17:34:03","N/A","N/A","Present"
-"2026-05-20","N/A","Unnamed Employee","N/A","employee","N/A","2026-05-20 18:07:23","2026-05-20 18:07:21","N/A","Present"
-"2026-05-15","N/A","Unnamed Employee","N/A","employee","N/A","2026-05-15 05:06:13","N/A","N/A","Present"

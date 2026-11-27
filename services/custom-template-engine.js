@@ -26,9 +26,18 @@ const logger = require('../utils/logger');
  */
 
 class CustomTemplateEngine {
-    constructor() {
+    // One engine per company (see forOrg): each company's templates, copies and versions are its own
+    constructor(orgId = null) {
+        this.orgId = orgId || null;
         this.templates = new Map();
         this.initializeStandardModuleTemplates();
+    }
+
+    /** This company's engine (created on first use) */
+    forOrg(orgId) {
+        if (!orgId) throw new Error('A company is required for custom templates.');
+        if (!orgEngines.has(orgId)) orgEngines.set(orgId, new CustomTemplateEngine(orgId));
+        return orgEngines.get(orgId);
     }
 
     generateId() {
@@ -1921,5 +1930,8 @@ class CustomTemplateEngine {
     }
 }
 
+const orgEngines = new Map();
+
+// Default instance (no company) for existing callers and tests; routes use customTemplateEngine.forOrg(orgId)
 const customTemplateEngine = new CustomTemplateEngine();
 module.exports = customTemplateEngine;

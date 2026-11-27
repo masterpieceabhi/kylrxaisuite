@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My details | Onn HR</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:18px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:#fff;border-bottom:1px solid var(--line);gap:8px}
+h1{margin:0;font-size:22px}h2{margin:0 0 10px;font-size:19px}
+.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:560px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+label{display:grid;gap:4px;font-size:15px;color:var(--muted);font-weight:600;margin-bottom:10px}
+input,select{padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:16px;width:100%;color:var(--ink);background:#fff}
+button.go{padding:12px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.soft{padding:10px 14px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-weight:700;cursor:pointer}
+button.no{padding:10px 14px;border:0;border-radius:10px;background:#fee2e2;color:var(--bad);font:inherit;font-weight:700;cursor:pointer}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:16px}.kv span:first-child{color:var(--muted)}.kv:last-of-type{border-bottom:0}
+.hint{color:var(--muted);font-size:15px}.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tag{padding:2px 10px;border-radius:999px;font-size:14px;font-weight:700}.good{background:#dcfce7;color:var(--ok)}.wait{background:#fef3c7;color:#92400e}.bad{background:#fee2e2;color:var(--bad)}.grey{background:#e2e8f0;color:#475569}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--ink);font-weight:500}.chk input{width:22px;height:22px;flex:none;margin-top:2px}
+[hidden]{display:none!important}.hint.warn{color:var(--bad)}#todoCard{border-color:#fde68a;background:#fffbeb}
+.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}
+a.back{display:block;text-align:center;color:var(--blue);font-weight:700;padding:14px;text-decoration:none}
+form[hidden]{display:none}
+</style>
+</head>
+<body>
+<header><h1 data-t="title"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card" id="todoCard" hidden>
+    <h2 data-t="todoTitle"></h2>
+    <div id="todoList"></div>
+  </section>
+
+  <section class="card">
+    <h2 data-t="basics"></h2>
+    <form id="basicForm">
+      <label><span data-t="preferred"></span><input name="preferredName" maxlength="60" autocomplete="nickname"></label>
+      <label><span data-t="phone"></span><input name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(555) 555-1234"><span class="hint" data-t="phoneWhy"></span></label>
+      <div class="row" id="phoneSuggestRow" hidden><button class="soft" type="button" id="phoneSuggest"></button></div>
+      <label><span data-t="codeVia"></span><select name="codeVia"><option value="" data-t="viaAuto"></option><option value="email" data-t="viaEmail"></option><option value="phone" data-t="viaText"></option><option value="whatsapp" data-t="viaWhatsApp"></option></select><span class="hint" data-t="codeViaHint"></span></label>
+      <button class="go" type="submit" data-t="save"></button>
+    </form>
+  </section>
+
+  <section class="card" id="appCard">
+    <h2 data-t="appTitle"></h2>
+    <p class="hint" data-t="appHint"></p>
+    <div class="kv"><span data-t="appStatus"></span><b id="appState"></b></div>
+    <div class="row"><button class="soft" type="button" id="appStart" data-t="appSetUp"></button><button class="soft" type="button" id="appRemove" data-t="appRemove" hidden></button></div>
+    <div id="appSetup" hidden style="margin-top:12px">
+      <p class="hint" data-t="appScan"></p>
+      <div id="appQr" style="margin:8px 0"></div>
+      <p class="hint"><span data-t="appKey"></span> <code id="appSecret" style="overflow-wrap:anywhere"></code></p>
+      <p class="hint"><a id="appOpen" href="#" data-t="appOpen"></a></p>
+      <form id="appConfirm"><label><span data-t="appCode"></span><input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label><button class="go" type="submit" data-t="appTurnOn"></button></form>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-t="contacts"></h2>
+    <p class="hint" data-t="contactsHint"></p>
+    <div id="contactList"></div>
+    <div class="row"><button class="soft" id="contactAdd" data-t="addContact"></button></div>
+    <form id="contactForm" hidden style="margin-top:12px">
+      <label><span data-t="cName"></span><input name="name" required maxlength="80" autocomplete="off"></label>
+      <label><span data-t="cRel"></span><input name="relationship" required maxlength="40" autocomplete="off"></label>
+      <label><span data-t="phone"></span><input name="phone" type="tel" inputmode="tel" required autocomplete="off"></label>
+      <label><span data-t="cEmail"></span><input name="email" type="email" autocomplete="off"></label>
+      <label class="chk"><input type="checkbox" name="isPrimary"> <span data-t="cPrimary"></span></label>
+      <div class="row"><button class="go" type="submit" data-t="save"></button><button class="soft" type="button" id="contactCancel" data-t="cancel"></button></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 data-t="guarded"></h2>
+    <p class="hint" data-t="guardedHint"></p>
+    <div class="kv"><span data-t="legal"></span><b id="vLegal"></b></div>
+    <div class="row"><button class="soft" data-open="legalForm" data-t="askChange"></button></div>
+    <form id="legalForm" hidden style="margin-top:12px">
+      <label><span data-t="first"></span><input name="legalFirstName" required maxlength="60" autocomplete="given-name"></label>
+      <label><span data-t="middle"></span><input name="legalMiddleName" maxlength="60" autocomplete="additional-name"></label>
+      <label><span data-t="last"></span><input name="legalLastName" required maxlength="60" autocomplete="family-name"></label>
+      <label><span data-t="reason"></span><input name="reason" required minlength="3" maxlength="500"></label>
+      <div class="row"><button class="go" type="submit" data-t="send"></button><button class="soft" type="button" data-close="legalForm" data-t="cancel"></button></div>
+    </form>
+
+    <div class="kv" style="margin-top:14px"><span data-t="address"></span><b id="vAddress" style="text-align:right"></b></div>
+    <div class="row"><button class="soft" data-open="addressForm" data-t="askChange"></button></div>
+    <form id="addressForm" hidden style="margin-top:12px">
+      <label><span data-t="street"></span><input name="line1" required autocomplete="address-line1"></label>
+      <label><span data-t="unit"></span><input name="line2" autocomplete="address-line2"></label>
+      <label><span data-t="city"></span><input name="city" required autocomplete="address-level2"></label>
+      <label><span data-t="state"></span><input name="state" required maxlength="2" autocomplete="address-level1"></label>
+      <label><span data-t="zip"></span><input name="zip" required inputmode="numeric" autocomplete="postal-code" maxlength="10"><span class="hint" id="zipHint"></span></label>
+      <label><span data-t="reason"></span><input name="reason" required minlength="3" maxlength="500"></label>
+      <div class="row"><button class="go" type="submit" data-t="send"></button><button class="soft" type="button" data-close="addressForm" data-t="cancel"></button></div>
+    </form>
+
+    <div class="kv" style="margin-top:14px"><span data-t="bank"></span><b id="vBank" style="text-align:right"></b></div>
+    <div class="row"><button class="soft" data-open="bankForm" data-t="askChange"></button></div>
+    <form id="bankForm" hidden style="margin-top:12px" autocomplete="off">
+      <p class="hint" data-t="bankHint"></p>
+      <label><span data-t="bankName"></span><input name="bankName" required></label>
+      <label><span data-t="routing"></span><input name="routingNumber" required inputmode="numeric" maxlength="9"><span class="hint" id="routingHint"></span></label>
+      <label><span data-t="account"></span><input name="accountNumber" required inputmode="numeric" maxlength="17"></label>
+      <label><span data-t="account2"></span><input name="accountNumber2" required inputmode="numeric" maxlength="17"><span class="hint" id="acctHint"></span></label>
+      <label><span data-t="acctType"></span><select name="accountType"><option value="checking" data-t="checking"></option><option value="savings" data-t="savings"></option></select></label>
+      <label><span data-t="reason"></span><input name="reason" required minlength="3" maxlength="500"></label>
+      <label class="chk"><input type="checkbox" name="authorization" required> <span data-t="authorize"></span></label>
+      <div class="row"><button class="go" type="submit" data-t="send"></button><button class="soft" type="button" data-close="bankForm" data-t="cancel"></button></div>
+    </form>
+  </section>
+
+  <section class="card" id="extraCard" hidden>
+    <h2 data-t="extra"></h2>
+    <form id="extraForm"><div id="extraFields"></div><button class="go" type="submit" id="extraSave" data-t="save"></button></form>
+  </section>
+
+  <section class="card">
+    <h2 data-t="requests"></h2>
+    <div id="reqList"></div>
+  </section>
+  <a class="back" href="punch.html" data-t="back"></a>
+</main>
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+import { livePhone, formatPhone, stateForZip, routingLooksRight, CHOICES, offerChoices, phoneFromSignin, rememberPhoneForSignin } from './us-smart-fill.js?v=1';
+const $ = (id) => document.getElementById(id);
+const T = {
+  en: {
+    appTitle: 'Authenticator app (optional)', appHint: 'Use an app such as Google Authenticator or Microsoft Authenticator for sign-in codes. Nothing is sent: the app shows the code. Recommended for owners, HR and payroll.', appStatus: 'Status', appOn: 'On', appOff: 'Not set up', appSetUp: 'Set up', appRemove: 'Remove', appScan: 'Scan this code with your authenticator app, then type the 6-digit code it shows.', appKey: 'Or type this key:', appOpen: 'On this phone? Open in your authenticator app', appCode: 'Code from the app', appTurnOn: 'Turn on', appDone: 'The authenticator app is on. Use "Use my authenticator app" when signing in.', appAskCode: 'Type the code your app shows now to remove it:', appGone: 'The authenticator app was removed.',
+    todoTitle: 'Still missing', todoPhone: 'Add your mobile number', todoPhoneWhy: 'Needed to get sign-in codes by text or WhatsApp.', todoContact: 'Add an emergency contact', todoContactWhy: 'Who we call if something happens to you at work.', todoAddress: 'Add your home address', todoAddressWhy: 'It goes on your W-2 tax form.', todoBank: 'Add a bank account for pay', todoBankWhy: 'So your pay goes straight to your account.', fixIt: 'Add it',
+    phoneWhy: 'Your mobile. By adding it, you agree to get Onn HR sign-in codes by text when you ask for one. Msg & data rates may apply. Reply STOP to opt out, HELP for help. Codes can always go by email instead.', codeVia: 'Send my sign-in codes by', viaAuto: 'Pick for me (email, or my phone when I sign in with my number)', viaEmail: 'Email', viaText: 'Text message', viaWhatsApp: 'WhatsApp', codeViaHint: 'Used on any device. Text and WhatsApp need your mobile above; without it, codes go by email.', usePhone: 'Use {p}', zipState: 'ZIP {z} is in {s}. State filled in.', routingOk: 'Routing number looks right.', routingBad: 'This routing number does not look right. Check the 9 digits on a check or in your bank app.', acctOk: 'The account numbers match.', acctBad: 'The two account numbers are different.',
+    title: 'My details', back: 'Back to the clock', basics: 'Name and phone', preferred: 'Name you like to be called', phone: 'Phone', save: 'Save', cancel: 'Cancel', saved: 'Saved.',
+    contacts: 'Emergency contacts', contactsHint: 'Who we call if something happens to you at work.', addContact: 'Add a contact', cName: 'Full name', cRel: 'How you know them (wife, brother, friend)', cEmail: 'Email (optional)', cPrimary: 'Call this person first', noContacts: 'No emergency contacts yet.', first1: 'call first', edit: 'Edit', remove: 'Remove', removeAsk: 'Remove this contact?',
+    guarded: 'Legal name, address and bank', guardedHint: 'HR checks these changes before they are saved, because they affect your pay and tax forms.', legal: 'Legal name', address: 'Home address', bank: 'Bank account for pay', askChange: 'Ask to change', none: 'Not on file',
+    first: 'First name', middle: 'Middle name (optional)', last: 'Last name', street: 'Street address', unit: 'Apartment or unit (optional)', city: 'City', state: 'State (2 letters)', zip: 'ZIP code', reason: 'Why is this changing?', send: 'Send to HR',
+    bankHint: 'Never send bank details by text or email. Enter them only here.', bankName: 'Bank name', routing: 'Routing number (9 digits)', account: 'Account number', account2: 'Account number again', acctType: 'Account type', checking: 'Checking', savings: 'Savings', authorize: 'I allow my employer to deposit my pay into this account.', mismatch: 'The two account numbers are not the same.',
+    sent: 'Sent to HR. You will see the answer below.', applied: 'Saved. This change did not need a review.', extra: 'More about you', requests: 'My change requests', noReq: 'No requests yet.', cancelReq: 'Cancel request', cancelled: 'Request cancelled.',
+    f_legalName: 'Legal name', f_homeAddress: 'Home address', f_bankDetails: 'Bank account', s_pending: 'Waiting for HR', s_approved: 'Approved', s_rejected: 'Not approved', s_cancelled: 'Cancelled', hrNote: 'HR said:', fail: 'Could not load your details. Try again.', yes: 'Yes', no: 'No', choose: 'Choose'
+  },
+  es: {
+    appTitle: 'App de autenticación (opcional)', appHint: 'Use una app como Google Authenticator o Microsoft Authenticator para los códigos de entrada. No se envía nada: la app muestra el código. Recomendado para dueños, Recursos Humanos y nómina.', appStatus: 'Estado', appOn: 'Activada', appOff: 'Sin configurar', appSetUp: 'Configurar', appRemove: 'Quitar', appScan: 'Escanee este código con su app de autenticación y escriba el código de 6 dígitos que muestra.', appKey: 'O escriba esta clave:', appOpen: '¿En este teléfono? Abrir en su app de autenticación', appCode: 'Código de la app', appTurnOn: 'Activar', appDone: 'La app de autenticación está activada. Use "Use my authenticator app" al entrar.', appAskCode: 'Escriba el código que muestra su app ahora para quitarla:', appGone: 'Se quitó la app de autenticación.',
+    todoTitle: 'Falta', todoPhone: 'Agregue su número de celular', todoPhoneWhy: 'Necesario para recibir códigos de entrada por mensaje de texto o WhatsApp.', todoContact: 'Agregue un contacto de emergencia', todoContactWhy: 'A quién llamamos si le pasa algo en el trabajo.', todoAddress: 'Agregue la dirección de su casa', todoAddressWhy: 'Aparece en su formulario de impuestos W-2.', todoBank: 'Agregue una cuenta de banco para su pago', todoBankWhy: 'Para que su pago vaya directo a su cuenta.', fixIt: 'Agregar',
+    phoneWhy: 'Su celular. Al agregarlo, acepta recibir códigos de entrada de Onn HR por mensaje de texto cuando los pida. Pueden aplicarse tarifas de mensajes y datos. Responda STOP para no recibir más, HELP para ayuda. Los códigos siempre pueden ir por correo.', codeVia: 'Enviar mis códigos de entrada por', viaAuto: 'Elegir por mí (correo, o mi teléfono si entro con mi número)', viaEmail: 'Correo electrónico', viaText: 'Mensaje de texto', viaWhatsApp: 'WhatsApp', codeViaHint: 'Sirve en cualquier dispositivo. Texto y WhatsApp necesitan su celular arriba; sin él, los códigos van por correo.', usePhone: 'Usar {p}', zipState: 'El código postal {z} está en {s}. Estado completado.', routingOk: 'El número de ruta parece correcto.', routingBad: 'Este número de ruta no parece correcto. Revise los 9 dígitos en un cheque o en la app de su banco.', acctOk: 'Los números de cuenta coinciden.', acctBad: 'Los dos números de cuenta son diferentes.',
+    title: 'Mis datos', back: 'Volver al reloj', basics: 'Nombre y teléfono', preferred: 'Nombre que prefiere usar', phone: 'Teléfono', save: 'Guardar', cancel: 'Cancelar', saved: 'Guardado.',
+    contacts: 'Contactos de emergencia', contactsHint: 'A quién llamamos si le pasa algo en el trabajo.', addContact: 'Agregar un contacto', cName: 'Nombre completo', cRel: 'Relación (esposa, hermano, amigo)', cEmail: 'Correo electrónico (opcional)', cPrimary: 'Llamar primero a esta persona', noContacts: 'Todavía no hay contactos de emergencia.', first1: 'llamar primero', edit: 'Editar', remove: 'Quitar', removeAsk: '¿Quitar este contacto?',
+    guarded: 'Nombre legal, dirección y banco', guardedHint: 'Recursos Humanos revisa estos cambios antes de guardarlos, porque afectan su pago y sus formularios de impuestos.', legal: 'Nombre legal', address: 'Dirección de casa', bank: 'Cuenta de banco para su pago', askChange: 'Pedir un cambio', none: 'No registrado',
+    first: 'Nombre', middle: 'Segundo nombre (opcional)', last: 'Apellido', street: 'Calle y número', unit: 'Apartamento o unidad (opcional)', city: 'Ciudad', state: 'Estado (2 letras)', zip: 'Código postal', reason: '¿Por qué cambia esto?', send: 'Enviar a Recursos Humanos',
+    bankHint: 'Nunca envíe datos de banco por mensaje de texto o correo. Escríbalos solo aquí.', bankName: 'Nombre del banco', routing: 'Número de ruta (9 dígitos)', account: 'Número de cuenta', account2: 'Número de cuenta otra vez', acctType: 'Tipo de cuenta', checking: 'Cheques', savings: 'Ahorros', authorize: 'Autorizo a mi empleador a depositar mi pago en esta cuenta.', mismatch: 'Los dos números de cuenta no son iguales.',
+    sent: 'Enviado a Recursos Humanos. Verá la respuesta abajo.', applied: 'Guardado. Este cambio no necesitó revisión.', extra: 'Más sobre usted', requests: 'Mis solicitudes de cambio', noReq: 'Todavía no hay solicitudes.', cancelReq: 'Cancelar solicitud', cancelled: 'Solicitud cancelada.',
+    f_legalName: 'Nombre legal', f_homeAddress: 'Dirección de casa', f_bankDetails: 'Cuenta de banco', s_pending: 'Esperando a Recursos Humanos', s_approved: 'Aprobado', s_rejected: 'No aprobado', s_cancelled: 'Cancelado', hrNote: 'Recursos Humanos dijo:', fail: 'No se pudieron cargar sus datos. Intente de nuevo.', yes: 'Sí', no: 'No', choose: 'Elegir'
+  }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+if (!T[lang]) lang = 'en';
+const tr = (k) => T[lang][k] ?? T.en[k] ?? k;
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const say = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.className = ok ? 'ok' : 'err'; window.scrollTo({ top: 0, behavior: 'smooth' }); };
+let data = null; let contactEdit = null;
+
+async function req(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  const res = await fetch(`/api/us${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((json.errors && json.errors.join('; ')) || (typeof json.error === 'string' ? json.error : '') || `Request failed (${res.status})`);
+  return json;
+}
+const addressText = (a) => (a ? `${[a.line1, a.line2].filter(Boolean).join(', ')}, ${a.city}, ${a.state} ${a.zip}` : tr('none'));
+const bankText = (b) => (b ? `${b.bankName} ••••${b.accountLast4}` : tr('none'));
+const changeText = (r, v) => {
+  if (!v) return tr('none');
+  if (r.field === 'legalName') return [v.legalFirstName, v.legalMiddleName, v.legalLastName].filter(Boolean).join(' ');
+  return r.field === 'homeAddress' ? addressText(v) : bankText(v);
+};
+const stamp = (iso) => (iso ? new Date(iso).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { dateStyle: 'medium' }) : '');
+
+function paintStatic() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr(el.dataset.t); });
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+}
+function paint() {
+  paintStatic(); if (!data) return;
+  const p = data.profile;
+  $('vLegal').textContent = [p.legalFirstName, p.legalMiddleName, p.legalLastName].filter(Boolean).join(' ') || p.name || tr('none');
+  $('vAddress').textContent = addressText(p.homeAddress); $('vBank').textContent = bankText(p.bank);
+  $('contactList').innerHTML = p.emergencyContacts.map((c) => `<div class="item"><b>${esc(c.name)}</b> ${c.isPrimary ? `<span class="tag good">${esc(tr('first1'))}</span>` : ''}<br><span class="hint">${esc(c.relationship)} · ${esc(c.phone)}${c.email ? ` · ${esc(c.email)}` : ''}</span><div class="row"><button class="soft" data-cedit="${esc(c.id)}">${esc(tr('edit'))}</button><button class="no" data-cdel="${esc(c.id)}">${esc(tr('remove'))}</button></div></div>`).join('') || `<p class="hint">${esc(tr('noContacts'))}</p>`;
+  $('reqList').innerHTML = data.requests.map((r) => {
+    const cls = { pending: 'wait', approved: 'good', rejected: 'bad', cancelled: 'grey' }[r.status] || 'grey';
+    return `<div class="item"><b>${esc(tr(`f_${r.field}`))}</b> <span class="tag ${cls}">${esc(tr(`s_${r.status}`))}</span><br><span class="hint">${esc(stamp(r.createdAt))} · ${esc(changeText(r, r.after))}</span>${r.decisionNote && !r.autoApproved ? `<br><span class="hint">${esc(tr('hrNote'))} ${esc(r.decisionNote)}</span>` : ''}${r.status === 'pending' ? `<div class="row"><button class="no" data-rcancel="${esc(r.id)}">${esc(tr('cancelReq'))}</button></div>` : ''}</div>`;
+  }).join('') || `<p class="hint">${esc(tr('noReq'))}</p>`;
+  const fields = data.customFields || [];
+  $('extraCard').hidden = fields.length === 0; $('extraSave').hidden = !fields.some((f) => f.canEdit);
+  $('extraFields').innerHTML = fields.map((f) => {
+    const v = f.value ?? ''; const name = `cf_${f.key}`; const help = f.helpText ? `<span class="hint">${esc(f.helpText)}</span>` : '';
+    if (!f.canEdit) return `<div class="kv"><span>${esc(f.label)}</span><b>${esc(f.type === 'boolean' ? (f.hasValue ? tr(v ? 'yes' : 'no') : '') : v)}</b></div>`;
+    let input;
+    if (f.type === 'select') input = `<select name="${esc(name)}"><option value="">${esc(tr('choose'))}</option>${f.options.map((o) => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    else if (f.type === 'boolean') input = `<select name="${esc(name)}"><option value="">${esc(tr('choose'))}</option><option value="true"${v === true ? ' selected' : ''}>${esc(tr('yes'))}</option><option value="false"${v === false ? ' selected' : ''}>${esc(tr('no'))}</option></select>`;
+    else input = `<input name="${esc(name)}" type="${f.type === 'date' ? 'date' : f.type === 'number' && !f.sensitive ? 'number' : 'text'}" ${f.sensitive ? `placeholder="${esc(v)}" autocomplete="off"` : `value="${esc(v)}"`}>`;
+    return `<label><span>${esc(f.label)}</span>${input}${help}</label>`;
+  }).join('');
+}
+function fillBasics() {
+  const p = data.profile; const f = $('basicForm').elements; f.preferredName.value = p.preferredName; f.phone.value = formatPhone(p.phone); f.codeVia.value = p.codeVia || '';
+  // only the ways this server offers
+  if (!fillBasics.ways) fillBasics.ways = fetch('/api/auth/pin/channels').then((r) => r.json()).catch(() => ({}));
+  fillBasics.ways.then((w) => { f.codeVia.querySelector('option[value="phone"]').hidden = !w.text; f.codeVia.querySelector('option[value="whatsapp"]').hidden = !w.whatsapp; });
+  // no mobile on record: offer the number typed on the sign-in page in this browser
+  const typed = phoneFromSignin();
+  const show = !p.phone && typed;
+  $('phoneSuggestRow').hidden = !show;
+  if (show) $('phoneSuggest').textContent = tr('usePhone').replace('{p}', formatPhone(typed));
+}
+const fill = (t, vars) => Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, v), tr(t));
+/** What is still missing, each with a button that opens the right place */
+function paintTodo() {
+  if (!data) return;
+  const p = data.profile; const pend = (f) => (data.requests || []).some((r) => r.field === f && r.status === 'pending');
+  const items = [];
+  if (!p.phone) items.push(['todoPhone', 'todoPhoneWhy', 'phone']);
+  if (!(p.emergencyContacts || []).length) items.push(['todoContact', 'todoContactWhy', 'contact']);
+  if (!p.homeAddress && !pend('homeAddress')) items.push(['todoAddress', 'todoAddressWhy', 'addressForm']);
+  if (!p.bank && !pend('bankDetails')) items.push(['todoBank', 'todoBankWhy', 'bankForm']);
+  $('todoCard').hidden = items.length === 0;
+  $('todoList').innerHTML = items.map(([t, why, go]) => `<div class="item"><b>${esc(tr(t))}</b><br><span class="hint">${esc(tr(why))}</span><div class="row"><button class="soft" type="button" data-todo="${go}">${esc(tr('fixIt'))}</button></div></div>`).join('');
+}
+function wireSmart() {
+  livePhone($('basicForm').elements.phone);
+  livePhone($('contactForm').elements.phone);
+  offerChoices($('contactForm').elements.relationship, 'relChoices', (CHOICES[lang] || CHOICES.en).relationship);
+  for (const [form, field] of [['legalForm', 'legalName'], ['addressForm', 'homeAddress'], ['bankForm', 'bankDetails']]) offerChoices($(form).elements.reason, `why_${field}`, (CHOICES[lang] || CHOICES.en)[field]);
+  const af = $('addressForm').elements;
+  af.state.addEventListener('input', () => { af.state.value = af.state.value.toUpperCase().slice(0, 2); });
+  af.zip.addEventListener('input', () => {
+    const st = stateForZip(af.zip.value);
+    $('zipHint').textContent = '';
+    if (st && /^[A-Z]{2}$/.test(st) && af.state.value !== st) { af.state.value = st; $('zipHint').textContent = fill('zipState', { z: af.zip.value.slice(0, 5), s: st }); }
+  });
+  const bf = $('bankForm').elements;
+  bf.routingNumber.addEventListener('input', () => {
+    bf.routingNumber.value = bf.routingNumber.value.replace(/\D/g, '').slice(0, 9);
+    const v = bf.routingNumber.value; const h = $('routingHint');
+    h.textContent = v.length < 9 ? '' : tr(routingLooksRight(v) ? 'routingOk' : 'routingBad'); h.className = `hint${v.length === 9 && !routingLooksRight(v) ? ' warn' : ''}`;
+  });
+  const acct = () => { const a = bf.accountNumber.value; const b = bf.accountNumber2.value; const h = $('acctHint'); h.textContent = !b || b.length < a.length ? '' : tr(a === b ? 'acctOk' : 'acctBad'); h.className = `hint${b && a !== b && b.length >= a.length ? ' warn' : ''}`; };
+  bf.accountNumber.addEventListener('input', acct); bf.accountNumber2.addEventListener('input', acct);
+  $('phoneSuggest').addEventListener('click', () => { $('basicForm').elements.phone.value = formatPhone(phoneFromSignin()); $('phoneSuggestRow').hidden = true; $('basicForm').elements.phone.focus(); });
+}
+async function load() { data = await req('GET', '/me/profile'); paint(); paintTodo(); loadApp(); }
+async function loadApp() {
+  try {
+    const s = await req('GET', '/me/authenticator');
+    $('appState').textContent = tr(s.enabled ? 'appOn' : 'appOff');
+    $('appStart').hidden = s.enabled; $('appRemove').hidden = !s.enabled;
+  } catch (_) { $('appCard').hidden = true; }
+}
+$('appStart').addEventListener('click', async () => {
+  try {
+    const s = await req('POST', '/me/authenticator/start');
+    $('appSecret').textContent = s.secret; $('appOpen').href = s.otpauthUrl;
+    const svg = window.QrMini ? window.QrMini.svg(s.otpauthUrl, { scale: 4 }) : null;
+    $('appQr').innerHTML = svg || '';
+    $('appSetup').hidden = false; $('appConfirm').elements.code.focus();
+  } catch (err) { say(err.message, false); }
+});
+$('appConfirm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  try { await req('POST', '/me/authenticator/confirm', { code: e.target.elements.code.value.trim() }); $('appSetup').hidden = true; e.target.reset(); await loadApp(); say(tr('appDone')); }
+  catch (err) { say(err.message, false); }
+});
+$('appRemove').addEventListener('click', async () => {
+  const code = String(window.prompt(tr('appAskCode')) || '').trim(); if (!code) return;
+  try { await req('DELETE', '/me/authenticator', { code }); await loadApp(); say(tr('appGone')); } catch (err) { say(err.message, false); }
+});
+const closeForms = () => ['legalForm', 'addressForm', 'bankForm'].forEach((id) => { $(id).hidden = true; $(id).reset(); });
+
+$('basicForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  try { await req('PUT', '/me/profile', { preferredName: f.get('preferredName'), phone: f.get('phone'), codeVia: f.get('codeVia') || '' }); if (f.get('phone')) rememberPhoneForSignin(f.get('phone')); await load(); fillBasics(); say(tr('saved')); } catch (err) { say(err.message, false); }
+});
+$('contactAdd').addEventListener('click', () => { contactEdit = null; $('contactForm').reset(); $('contactForm').elements.isPrimary.checked = !(data && data.profile.emergencyContacts.length); $('contactForm').hidden = false; $('contactForm').elements.name.focus(); });
+$('contactCancel').addEventListener('click', () => { $('contactForm').hidden = true; });
+$('contactForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  const body = { name: f.get('name'), relationship: f.get('relationship'), phone: f.get('phone'), email: f.get('email'), isPrimary: f.get('isPrimary') === 'on' };
+  try { await req(contactEdit ? 'PUT' : 'POST', `/me/emergency-contacts${contactEdit ? `/${contactEdit}` : ''}`, body); $('contactForm').hidden = true; await load(); say(tr('saved')); } catch (err) { say(err.message, false); }
+});
+async function sendRequest(body) {
+  const r = await req('POST', '/me/change-requests', body); closeForms(); await load(); say(tr(r.applied ? 'applied' : 'sent'));
+}
+$('legalForm').addEventListener('submit', (e) => { e.preventDefault(); const f = new FormData(e.target); sendRequest({ field: 'legalName', legalFirstName: f.get('legalFirstName'), legalMiddleName: f.get('legalMiddleName'), legalLastName: f.get('legalLastName'), reason: f.get('reason') }).catch((err) => say(err.message, false)); });
+$('addressForm').addEventListener('submit', (e) => { e.preventDefault(); const f = new FormData(e.target); sendRequest({ field: 'homeAddress', homeAddress: { line1: f.get('line1'), line2: f.get('line2'), city: f.get('city'), state: f.get('state'), zip: f.get('zip') }, reason: f.get('reason') }).catch((err) => say(err.message, false)); });
+$('bankForm').addEventListener('submit', (e) => {
+  e.preventDefault(); const f = new FormData(e.target);
+  if (f.get('accountNumber') !== f.get('accountNumber2')) { say(tr('mismatch'), false); return; }
+  sendRequest({ field: 'bankDetails', bankName: f.get('bankName'), routingNumber: f.get('routingNumber'), accountNumber: f.get('accountNumber'), accountType: f.get('accountType'), authorization: f.get('authorization') === 'on', reason: f.get('reason') }).catch((err) => say(err.message, false));
+});
+$('extraForm').addEventListener('submit', async (e) => {
+  e.preventDefault(); const f = new FormData(e.target); const values = {};
+  for (const d of data.customFields.filter((x) => x.canEdit)) {
+    const raw = f.get(`cf_${d.key}`);
+    if (d.sensitive && raw === '') continue; // an empty box keeps the value on file
+    values[d.key] = raw === '' ? null : d.type === 'boolean' ? raw === 'true' : d.type === 'number' ? Number(raw) : raw;
+  }
+  if (!Object.keys(values).length) return;
+  try { await req('PUT', `/employees/${data.profile.id}/custom-fields`, { values }); await load(); say(tr('saved')); } catch (err) { say(err.message, false); }
+});
+document.addEventListener('click', async (e) => {
+  const hit = (k) => { const el = e.target.closest(`[data-${k}]`); return el ? el.dataset[k] : null; };
+  let v;
+  try {
+    if ((v = hit('todo'))) {
+      if (v === 'phone') { const i = $('basicForm').elements.phone; i.scrollIntoView({ behavior: 'smooth', block: 'center' }); i.focus(); }
+      else if (v === 'contact') $('contactAdd').click();
+      else { const b = document.querySelector(`[data-open="${v}"]`); if (b) b.click(); }
+      return;
+    }
+    if ((v = hit('l'))) { lang = v; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} paint(); paintTodo(); wireChoicesOnly(); } else if ((v = hit('open'))) {
+      closeForms(); const form = $(v); form.hidden = false; const p = data.profile;
+      if (v === 'legalForm') { form.elements.legalFirstName.value = p.legalFirstName; form.elements.legalMiddleName.value = p.legalMiddleName; form.elements.legalLastName.value = p.legalLastName; }
+      if (v === 'addressForm' && p.homeAddress) ['line1', 'line2', 'city', 'state', 'zip'].forEach((k) => { form.elements[k].value = p.homeAddress[k] || ''; });
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if ((v = hit('close'))) $(v).hidden = true;
+    else if ((v = hit('cedit'))) {
+      const c = data.profile.emergencyContacts.find((x) => x.id === v); const f = $('contactForm').elements; contactEdit = c.id;
+      f.name.value = c.name; f.relationship.value = c.relationship; f.phone.value = c.phone; f.email.value = c.email || ''; f.isPrimary.checked = Boolean(c.isPrimary); $('contactForm').hidden = false;
+    } else if ((v = hit('cdel'))) { if (window.confirm(tr('removeAsk'))) { await req('DELETE', `/me/emergency-contacts/${v}`); await load(); } } else if ((v = hit('rcancel'))) { await req('DELETE', `/me/change-requests/${v}`); await load(); say(tr('cancelled')); }
+  } catch (err) { say(err.message, false); }
+});
+paintStatic();
+function wireChoicesOnly() {
+  offerChoices($('contactForm').elements.relationship, 'relChoices', (CHOICES[lang] || CHOICES.en).relationship);
+  for (const [form, field] of [['legalForm', 'legalName'], ['addressForm', 'homeAddress'], ['bankForm', 'bankDetails']]) offerChoices($(form).elements.reason, `why_${field}`, (CHOICES[lang] || CHOICES.en)[field]);
+  if (data) fillBasics();
+}
+wireSmart();
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  try { await load(); fillBasics(); } catch (_) { say(tr('fail'), false); }
+});
+</script>
+<script src="qr-mini.js"></script>
+<script type="module" src="us-nav.js?v=3"></script>
+</body>
+</html>

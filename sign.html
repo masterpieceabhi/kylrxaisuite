@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Sign a document</title>
+<style>
+:root{--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;--blue:#2563eb;--bg:#f8fafc;--ok:#166534;--bad:#b91c1c}
+*{box-sizing:border-box}body{margin:0;font:17px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink);background:var(--bg)}
+header{display:flex;align-items:center;justify-content:space-between;padding:16px;background:#fff;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap}
+h1{margin:0;font-size:22px}h2{margin:0 0 8px;font-size:19px}
+.lang button{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:15px;cursor:pointer;color:var(--ink)}.lang button.on{background:var(--ink);color:#fff}
+main{max-width:760px;margin:0 auto;padding:16px;display:grid;gap:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}
+.doc{border:1px solid var(--line);border-radius:10px;padding:16px;max-height:55vh;overflow:auto;background:#fff;font-size:16px;overflow-wrap:anywhere}
+label{display:grid;gap:4px;font-size:15px;color:var(--muted);font-weight:600;margin-bottom:12px}
+input[type=text],textarea{padding:12px;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:16px;width:100%;color:var(--ink);background:#fff}
+button.go{padding:13px 18px;border:0;border-radius:10px;background:var(--blue);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+button.soft{padding:11px 16px;border:0;border-radius:10px;background:#eef2ff;color:var(--blue);font:inherit;font-weight:700;cursor:pointer}
+button.no{padding:11px 16px;border:0;border-radius:10px;background:#fee2e2;color:var(--bad);font:inherit;font-weight:700;cursor:pointer}
+button:disabled{opacity:.5}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:15px;color:var(--ink);font-weight:500}.chk input{width:22px;height:22px;flex:none;margin-top:2px}
+canvas{width:100%;height:170px;border:2px dashed #94a3b8;border-radius:10px;background:#fff;touch-action:none;display:block}
+#msg{display:none;border-radius:10px;padding:12px}#msg.ok{display:block;background:#dcfce7;color:var(--ok)}#msg.err{display:block;background:#fee2e2;color:var(--bad)}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}.hint{color:var(--muted);font-size:14px}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all;color:var(--muted)}
+</style>
+</head>
+<body>
+<header><h1 id="title"></h1><div class="lang"><button data-l="en">English</button> <button data-l="es">Español</button></div></header>
+<main>
+  <div id="msg" role="status"></div>
+
+  <section class="card" id="closed" hidden><h2 id="closedTitle"></h2><p id="closedText"></p></section>
+
+  <div id="open" hidden style="display:none;gap:14px">
+    <section class="card">
+      <h2 id="docName"></h2>
+      <p class="hint" id="docFor"></p>
+      <div class="doc" id="doc" tabindex="0"></div>
+      <p class="hint" data-t="readAll" style="margin-bottom:0"></p>
+    </section>
+    <section class="card">
+      <h2 data-t="signHere"></h2>
+      <label class="chk" style="margin-bottom:14px"><input type="checkbox" id="consent"> <span id="consentText"></span></label>
+      <label><span data-t="typed"></span><input type="text" id="typed" autocomplete="name" maxlength="100"><span class="hint" id="typedHint"></span></label>
+      <label style="margin-bottom:4px"><span data-t="draw"></span></label>
+      <canvas id="pad" width="700" height="170" aria-label="Signature"></canvas>
+      <div class="row"><button class="soft" type="button" id="clear" data-t="clear"></button></div>
+      <div class="row"><button class="go" type="button" id="sign" data-t="sign"></button><button class="no" type="button" id="declineOpen" data-t="decline"></button></div>
+      <div id="declineBox" hidden style="margin-top:12px">
+        <label><span data-t="declineWhy"></span><textarea id="declineReason" rows="2" maxlength="300"></textarea></label>
+        <div class="row"><button class="no" type="button" id="declineGo" data-t="declineConfirm"></button><button class="soft" type="button" id="declineCancel" data-t="back"></button></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" id="done" hidden>
+    <h2 id="doneTitle"></h2>
+    <p id="doneText"></p>
+    <p class="mono" id="doneHash"></p>
+  </section>
+</main>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var T = {
+    en: {
+      title: 'Sign a document', loading: 'Opening your document...', from: 'From {c} for {n}', readAll: 'Read the whole document before you sign. Scroll inside the box to see all of it.', signHere: 'Sign', typed: 'Type your full name', typedHint: 'It must match: {n}', draw: 'Draw your signature with your finger or mouse', clear: 'Clear signature', sign: 'Sign document', signing: 'Signing...', decline: 'I will not sign', declineWhy: 'Why not? (optional)', declineConfirm: 'Decline this document', back: 'Go back',
+      e_consent: 'Tick the box to agree to sign electronically.', e_name: 'Type your full name.', e_draw: 'Draw your signature in the box.', e_fail: 'Something went wrong. Please try again.', e_busy: 'Too many tries. Please wait a few minutes.', left: 'Tries left: {n}.',
+      signedTitle: 'Signed', signedText: 'Thank you. Your signed copy was saved. You can close this page.', hash: 'Document fingerprint: {h}', declinedTitle: 'Declined', declinedText: 'We told the sender that you did not sign. You can close this page.',
+      c_title: 'This link cannot be used', c_signed: 'This document has already been signed.', c_declined: 'This document was declined.', c_voided: 'This request was cancelled by the sender.', c_expired: 'This link has expired. Ask the sender for a new one.', c_locked: 'Too many tries. Ask the sender for a new link.', c_invalid: 'This link is not valid. Check that you opened the whole link, or ask the sender for a new one.', c_none: 'No signing link was found. Open the link you were sent.',
+      s_agree: 'You must agree to use electronic records and signatures.', s_match: 'The typed name must match the name this document was sent to.', s_draw: 'Draw your signature.'
+    },
+    es: {
+      title: 'Firmar un documento', loading: 'Abriendo su documento...', from: 'De {c} para {n}', readAll: 'Lea todo el documento antes de firmar. Deslice dentro del cuadro para verlo completo.', signHere: 'Firmar', typed: 'Escriba su nombre completo', typedHint: 'Debe coincidir con: {n}', draw: 'Dibuje su firma con el dedo o el ratón', clear: 'Borrar firma', sign: 'Firmar documento', signing: 'Firmando...', decline: 'No voy a firmar', declineWhy: '¿Por qué no? (opcional)', declineConfirm: 'Rechazar este documento', back: 'Volver',
+      e_consent: 'Marque la casilla para aceptar firmar electrónicamente.', e_name: 'Escriba su nombre completo.', e_draw: 'Dibuje su firma en el cuadro.', e_fail: 'Algo salió mal. Intente de nuevo.', e_busy: 'Demasiados intentos. Espere unos minutos.', left: 'Intentos restantes: {n}.',
+      signedTitle: 'Firmado', signedText: 'Gracias. Se guardó su copia firmada. Puede cerrar esta página.', hash: 'Huella del documento: {h}', declinedTitle: 'Rechazado', declinedText: 'Avisamos al remitente que usted no firmó. Puede cerrar esta página.',
+      c_title: 'Este enlace no se puede usar', c_signed: 'Este documento ya fue firmado.', c_declined: 'Este documento fue rechazado.', c_voided: 'El remitente canceló esta solicitud.', c_expired: 'Este enlace venció. Pida uno nuevo al remitente.', c_locked: 'Demasiados intentos. Pida un enlace nuevo al remitente.', c_invalid: 'Este enlace no es válido. Revise que abrió el enlace completo o pida uno nuevo al remitente.', c_none: 'No se encontró un enlace de firma. Abra el enlace que le enviaron.',
+      s_agree: 'Debe aceptar usar registros y firmas electrónicos.', s_match: 'El nombre escrito debe coincidir con el nombre al que se envió este documento.', s_draw: 'Dibuje su firma.'
+    }
+  };
+  var SERVER = [[/must agree/i, 's_agree'], [/must match/i, 's_match'], [/Type your full name/i, 'e_name'], [/Draw your signature|signature image/i, 's_draw'], [/Too many attempts/i, 'c_locked']];
+  var lang = (navigator.language || 'en').toLowerCase().indexOf('es') === 0 ? 'es' : 'en';
+  try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (e) {}
+  if (!T[lang]) lang = 'en';
+  var tr = function (k, v) { return (T[lang][k] || T.en[k] || k).replace(/\{(\w+)\}/g, function (m, x) { return v && v[x] !== undefined ? v[x] : ''; }); };
+  var token = new URLSearchParams(window.location.search).get('t') || '';
+  var api = '/api/public/sign/' + encodeURIComponent(token);
+  var state = 'loading'; var doc = null; var closedCode = ''; var doneHash = ''; var lastErr = null; var drawn = false;
+
+  function say(key, vars) { lastErr = key ? { key: key, vars: vars } : null; var m = $('msg'); m.textContent = key ? tr(key, vars) + (vars && vars.extra ? ' ' + vars.extra : '') : ''; m.className = key ? 'err' : ''; if (key) window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  function paint() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-t]').forEach(function (el) { el.textContent = tr(el.dataset.t); });
+    document.querySelectorAll('.lang button').forEach(function (b) { b.classList.toggle('on', b.dataset.l === lang); });
+    $('title').textContent = state === 'loading' ? tr('loading') : tr('title');
+    $('open').hidden = state !== 'open'; $('open').style.display = state === 'open' ? 'grid' : 'none';
+    $('closed').hidden = state !== 'closed'; $('done').hidden = state !== 'signed' && state !== 'declined';
+    if (state === 'closed') { $('closedTitle').textContent = tr('c_title'); $('closedText').textContent = tr('c_' + closedCode); }
+    if (state === 'signed') { $('doneTitle').textContent = tr('signedTitle'); $('doneText').textContent = tr('signedText'); $('doneHash').textContent = doneHash ? tr('hash', { h: doneHash }) : ''; }
+    if (state === 'declined') { $('doneTitle').textContent = tr('declinedTitle'); $('doneText').textContent = tr('declinedText'); $('doneHash').textContent = ''; }
+    if (doc) {
+      $('docName').textContent = doc.templateName; $('docFor').textContent = tr('from', { c: doc.companyName, n: doc.signerName });
+      $('consentText').textContent = doc.consentText[lang] || doc.consentText.en; $('typedHint').textContent = tr('typedHint', { n: doc.signerName });
+    }
+    if (lastErr) { $('msg').textContent = tr(lastErr.key, lastErr.vars); }
+  }
+  function close(code) { state = 'closed'; closedCode = code; say(''); paint(); }
+  function call(method, path, body) {
+    return fetch(api + path, { method: method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, referrerPolicy: 'no-referrer' })
+      .then(function (res) { return res.json().catch(function () { return {}; }).then(function (json) { return { status: res.status, json: json }; }); });
+  }
+
+  // signature pad
+  var pad = $('pad'); var ctx = pad.getContext('2d'); var down = false;
+  function resetPad() { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, pad.width, pad.height); ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; drawn = false; }
+  function at(e) { var r = pad.getBoundingClientRect(); return { x: (e.clientX - r.left) * (pad.width / r.width), y: (e.clientY - r.top) * (pad.height / r.height) }; }
+  pad.addEventListener('pointerdown', function (e) { down = true; pad.setPointerCapture(e.pointerId); var p = at(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); e.preventDefault(); });
+  pad.addEventListener('pointermove', function (e) { if (!down) return; var p = at(e); ctx.lineTo(p.x, p.y); ctx.stroke(); drawn = true; e.preventDefault(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { pad.addEventListener(n, function () { down = false; }); });
+  $('clear').addEventListener('click', resetPad);
+  resetPad();
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-l]');
+    if (b) { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (x) {} paint(); }
+  });
+  $('sign').addEventListener('click', function () {
+    if (!$('consent').checked) return say('e_consent');
+    if ($('typed').value.trim().length < 2) return say('e_name');
+    if (!drawn) return say('e_draw');
+    $('sign').disabled = true; $('sign').textContent = tr('signing');
+    call('POST', '/sign', { consent: true, typedName: $('typed').value, signatureData: pad.toDataURL('image/png'), lang: lang }).then(function (r) {
+      if (r.status === 200) { state = 'signed'; doneHash = r.json.documentHash || ''; say(''); paint(); window.scrollTo({ top: 0 }); return; }
+      if (r.status === 410) return close(r.json.code || 'invalid');
+      if (r.status === 404) return close('invalid');
+      if (r.status === 429 && !r.json.errors) return say('e_busy');
+      var first = (r.json.errors || [r.json.error || ''])[0]; var key = 'e_fail';
+      SERVER.forEach(function (p) { if (key === 'e_fail' && p[0].test(first)) key = p[1]; });
+      if (r.status === 429) return close('locked');
+      say(key); if (r.json.attemptsLeft !== undefined) $('msg').textContent += ' ' + tr('left', { n: r.json.attemptsLeft });
+    }).catch(function () { say('e_fail'); }).then(function () { $('sign').disabled = false; $('sign').textContent = tr('sign'); });
+  });
+  $('declineOpen').addEventListener('click', function () { $('declineBox').hidden = false; $('declineReason').focus(); });
+  $('declineCancel').addEventListener('click', function () { $('declineBox').hidden = true; });
+  $('declineGo').addEventListener('click', function () {
+    $('declineGo').disabled = true;
+    call('POST', '/decline', { reason: $('declineReason').value }).then(function (r) {
+      if (r.status === 200) { state = 'declined'; say(''); paint(); window.scrollTo({ top: 0 }); } else if (r.status === 410) close(r.json.code || 'invalid'); else if (r.status === 404) close('invalid'); else say('e_fail');
+    }).catch(function () { say('e_fail'); }).then(function () { $('declineGo').disabled = false; });
+  });
+
+  paint();
+  if (!/^[A-Za-z0-9_-]{20,200}$/.test(token)) return close(token ? 'invalid' : 'none');
+  // take the token out of the address bar so it is not left in history or copied by accident
+  try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+  call('GET', '').then(function (r) {
+    if (r.status === 200) { doc = r.json; $('doc').innerHTML = doc.html; state = 'open'; paint(); return; } // html is escaped on the server; only <br> and <mark> are added there
+    if (r.status === 410) return close(r.json.code || 'invalid');
+    if (r.status === 429) { state = 'closed'; closedCode = 'invalid'; paint(); return say('e_busy'); }
+    close('invalid');
+  }).catch(function () { close('invalid'); });
+})();
+</script>
+</body>
+</html>

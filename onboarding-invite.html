@@ -4,9 +4,9 @@
     <script src="config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Secure onboarding portal for new team members at Kylrx AI Enterprise. Start your activation process and complete profile verification.">
+    <meta name="description" content="Secure onboarding portal for new team members at Onn HR. Start your activation process and complete profile verification.">
     <meta name="robots" content="noindex, nofollow">
-    <title>Welcome to Kylrx AI | Employee Onboarding</title>
+    <title>Welcome to Onn HR | Employee Onboarding</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.321.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
     <style>
@@ -283,6 +283,7 @@
             #kylrx-toast.toast-hide    { transform: translateY(-110%); }
         }
     </style>
+<script src="country-format.js"></script>
 </head>
 <body>
 
@@ -291,7 +292,7 @@
             <i data-lucide="shield-check" style="color: white; width: 40px; height: 40px;"></i>
         </div>
         <h1>Welcome to the Team</h1>
-        <p>Your digital identity at Kylrx AI has been provisioned. Please complete your secure onboarding to activate your enterprise accounts.</p>
+        <p>Your digital identity at Onn HR has been provisioned. Please complete your secure onboarding to activate your enterprise accounts.</p>
 
         <div class="feature-grid">
             <div class="feature-item"><i data-lucide="file-text"></i> NDA & Policies</div>
@@ -465,7 +466,7 @@
                         const newInviteLink = `${window.location.origin}${window.location.pathname}?token=${newToken}&id=${empId}`;
                         
                         // 4. Construct email body
-                        const deadline = newExpiry.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                        const deadline = newExpiry.toLocaleDateString((window.KylrxFmt ? KylrxFmt.locale() : 'en-IN'), { day: '2-digit', month: 'short', year: 'numeric' });
                         const emailBody = `
                             <div style="font-family: 'Outfit', sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e5e7eb; border-radius: 20px; background-color: #ffffff;">
                                 <div style="text-align: center; margin-bottom: 20px;">

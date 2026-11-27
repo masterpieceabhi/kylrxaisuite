@@ -1,5 +1,5 @@
 /**
- * Upcoming Birthdays Widget Controller - Kylrx AI Enterprise Suite
+ * Upcoming Birthdays Widget Controller - Onn HR
  * Real-time Firestore sync, Chronological grouping, Live Countdowns, 
  * Leap-year logic, Role-based Isolation (HR vs Manager), and Interactive Birthday Wishes.
  */

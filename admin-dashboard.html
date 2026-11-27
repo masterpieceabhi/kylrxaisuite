@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Kylrx AI Admin Console. Complete workforce administration, system customization, leave management, and live activity streams.">
+    <meta name="description" content="Onn HR Admin Console. Complete workforce administration, system customization, leave management, and live activity streams.">
     <meta name="robots" content="noindex, nofollow">
-    <title>Super Admin Dashboard | Kylrx AI</title>
+    <title>Super Admin Dashboard | Onn HR</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏢</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1102,6 +1102,7 @@
             }
         }
     </style>
+<script src="country-format.js"></script>
 </head>
 <body class="admin-dashboard layout-grid">
 
@@ -1122,8 +1123,8 @@
                 <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <a href="admin-dashboard.html" class="logo">
-                <img src="logo.jpg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
-                <span class="logo-text">Kylrx <span style="color: var(--primary);">AI</span></span>
+                <img src="onnhr-logo.svg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
+                <span class="logo-text">Onn <span style="color: var(--primary);">HR</span></span>
             </a>
             
             <nav class="nav-menu">
@@ -1153,6 +1154,45 @@
                 <div class="nav-item"><a href="bulk-trigger-dashboard.html" class="nav-link"><i data-lucide="zap"></i><span>Bulk Trigger & OTP Hub</span></a></div>
                 <div class="nav-item"><a href="controls-acceptance-hub.html" class="nav-link"><i data-lucide="shield-check"></i><span>Controls & Sign-Off (PRD 4)</span></a></div>
                 <div class="nav-item"><a href="admin-statutory-compliance.html" class="nav-link"><i data-lucide="scale"></i><span>Statutory Compliance</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-people.html" class="nav-link"><i data-lucide="users"></i><span>US People</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-time.html" class="nav-link"><i data-lucide="clock"></i><span>Time clock</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-leave.html" class="nav-link"><i data-lucide="calendar-off"></i><span>Time off</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-offboarding.html" class="nav-link"><i data-lucide="log-out"></i><span>Offboarding</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-reports.html" class="nav-link"><i data-lucide="bar-chart-3"></i><span>Reports</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-compliance.html" class="nav-link"><i data-lucide="shield-check"></i><span>Compliance</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-org.html" class="nav-link"><i data-lucide="network"></i><span>Company structure</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-changes.html" class="nav-link"><i data-lucide="user-check"></i><span>Profile changes</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-hiring.html" class="nav-link"><i data-lucide="user-plus"></i><span>Hiring</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-hiring-compliance.html" class="nav-link"><i data-lucide="shield-check"></i><span>Hiring checks</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-esign.html" class="nav-link"><i data-lucide="pen-line"></i><span>Documents to sign</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-schedule.html" class="nav-link"><i data-lucide="calendar-clock"></i><span>Schedule</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-benefits.html" class="nav-link"><i data-lucide="heart-pulse"></i><span>Benefits</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-pay.html" class="nav-link"><i data-lucide="banknote"></i><span>Pay and contractors</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-privacy.html" class="nav-link"><i data-lucide="lock"></i><span>Privacy requests</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-owner.html" class="nav-link"><i data-lucide="settings-2"></i><span>Owner settings</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-clock.html" class="nav-link"><i data-lucide="scan-face"></i><span>Time clock rules</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-calendar.html" class="nav-link"><i data-lucide="calendar-check"></i><span>Compliance calendar</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-checklists.html" class="nav-link"><i data-lucide="list-checks"></i><span>Checklists</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-i9-report.html" class="nav-link"><i data-lucide="file-check"></i><span>I-9 audit report</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-performance.html" class="nav-link"><i data-lucide="target"></i><span>Goals and reviews</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-surveys.html" class="nav-link"><i data-lucide="clipboard-list"></i><span>Surveys</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-assets.html" class="nav-link"><i data-lucide="laptop"></i><span>Equipment</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-policies.html" class="nav-link"><i data-lucide="book-open"></i><span>Policies</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-report-builder.html" class="nav-link"><i data-lucide="table"></i><span>Report builder</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-team-import.html" class="nav-link"><i data-lucide="user-plus"></i><span>Add your team</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-i9.html" class="nav-link"><i data-lucide="id-card"></i><span>Form I-9</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-training.html" class="nav-link"><i data-lucide="graduation-cap"></i><span>Training records</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-review-cycles.html" class="nav-link"><i data-lucide="users-round"></i><span>Review rounds</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-recognition.html" class="nav-link"><i data-lucide="megaphone"></i><span>News and thanks</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-pay-schedule.html" class="nav-link"><i data-lucide="calendar-clock"></i><span>Pay schedule</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-payroll-import.html" class="nav-link"><i data-lucide="upload"></i><span>Bring in past payroll</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-exit-interviews.html" class="nav-link"><i data-lucide="door-open"></i><span>Exit interviews</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-leave-cases.html" class="nav-link"><i data-lucide="briefcase-medical"></i><span>Leave cases</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-wages.html" class="nav-link"><i data-lucide="badge-dollar-sign"></i><span>Wages and tips</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-payroll.html" class="nav-link"><i data-lucide="banknote"></i><span>Payroll (Gusto)</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-integrations.html" class="nav-link"><i data-lucide="plug"></i><span>Integrations</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-security.html" class="nav-link"><i data-lucide="lock"></i><span>Security and sign-in</span></a></div>
+<div class="nav-item" data-country-only="US" style="display:none"><a href="admin-us-assistant.html" class="nav-link"><i data-lucide="message-circle"></i><span>HR assistant</span></a></div>
                 <div class="nav-item"><a href="admin-inactivity-monitor.html" class="nav-link"><i data-lucide="radar"></i><span>Inactivity Radar</span></a></div>
 
                 <div class="nav-label">INTELLIGENCE</div>
@@ -1210,7 +1250,7 @@
             <header class="header-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem;">
                 <!-- Breadcrumbs -->
                 <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 600; color: var(--text-muted); flex: 1;">
-                    <span>Kylrx AI</span>
+                    <span>Onn HR</span>
                     <span>/</span>
                     <span style="color: var(--primary); font-weight: 700;">Super Admin Dashboard</span>
                 </div>

@@ -34,6 +34,8 @@ const notificationCenterRoutes = require("./routes/notification-center");
 const documentTemplatesRoutes = require("./routes/document-templates");
 const workflowBuilderRoutes = require("./routes/workflow-builder");
 const integrationsRoutes = require("./routes/integrations");
+// Older India-era modules: refused for US/CA companies and on servers that do not serve India (see the file)
+const { indiaOnly } = require('./middleware/india-only-modules');
 const hrOsRoutes = require("./routes/hr-os");
 const policiesRoutes = require("./routes/policies");
 const assetsRoutes = require("./routes/assets");
@@ -50,12 +52,28 @@ const automationEngine = require("./services/automation-engine");
 
 const app = express();
 app.set('trust proxy', 1);
+app.use(require('./middleware/observability')); // request ids, JSON request logs, metrics
 const PORT = process.env.PORT || 3000;
 
 // 0. Firebase Auth reverse proxy (/__/auth/*, /__/firebase/*) so Google sign-in can use
 // signInWithRedirect with this server as authDomain (same-origin, no popup, no third-party
 // storage). Registered first so helmet's CSP and the body sanitizer don't touch Google's pages.
-const FIREBASE_AUTH_HOST = 'https://kylrxai.firebaseapp.com';
+// The browser's Firebase settings for this server's own project (FIREBASE_WEB_CONFIG, the web app settings from the
+// Firebase console as one line of JSON). They are public by design: Firebase protects data with sign-in and rules.
+const WEB_CONFIG_KEYS = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'];
+const FIREBASE_WEB_CONFIG = (() => {
+    try {
+        const raw = JSON.parse(process.env.FIREBASE_WEB_CONFIG || 'null');
+        if (!raw || typeof raw !== 'object' || !raw.apiKey || !/^[a-z0-9-]{4,40}$/.test(String(raw.projectId || ''))) return null;
+        return Object.fromEntries(WEB_CONFIG_KEYS.filter((k) => typeof raw[k] === 'string' && raw[k].length < 200).map((k) => [k, raw[k]]));
+    } catch (_) { return null; }
+})();
+app.get('/firebase-web-config.json', (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    if (!FIREBASE_WEB_CONFIG) return res.status(404).json({ error: 'not set' }); // the pages then use their built-in values
+    res.json(FIREBASE_WEB_CONFIG);
+});
+const FIREBASE_AUTH_HOST = `https://${FIREBASE_WEB_CONFIG ? FIREBASE_WEB_CONFIG.projectId : 'kylrxai'}.firebaseapp.com`;
 app.use(['/__/auth', '/__/firebase'], async (req, res) => {
     try {
         const upstream = await fetch(FIREBASE_AUTH_HOST + req.originalUrl, {
@@ -76,18 +94,9 @@ app.use(['/__/auth', '/__/firebase'], async (req, res) => {
 });
 
 // 1. CORS Configuration MUST be first to handle OPTIONS preflight
-const isAllowedOrigin = (origin) => {
-    if (!origin) return true;
-    const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    if (isLocal) {
-        return process.env.NODE_ENV !== 'production';
-    }
-    const isProductionAllowed =
-        /kylrxai\.(firebaseapp|web)\.app$/.test(origin) ||
-        /kylrxai\.firebaseapp\.com$/.test(origin) ||
-        /app\.kylrxai\.com$/.test(origin);
-    return isProductionAllowed;
-};
+// The product's own addresses, localhost outside production, and any exact origin named in ALLOWED_ORIGINS
+// (a client app served from its own address). See middleware/allowed-origins.js.
+const { isAllowedOrigin } = require('./middleware/allowed-origins');
 
 app.use(cors({
     origin: function(origin, callback) {
@@ -126,7 +135,8 @@ app.use(helmet({
 // 3. Rate Limiting (100 requests per 15 mins for external clients, relaxed for localhost / tests)
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, 
-    max: process.env.NODE_ENV === 'test' ? 10000 : 2000,
+    // per network address. A whole workplace often shares one address, so a large site can raise it with API_RATE_LIMIT.
+    max: process.env.NODE_ENV === 'test' ? 10000 : (Number(process.env.API_RATE_LIMIT) >= 100 ? Math.floor(Number(process.env.API_RATE_LIMIT)) : 2000),
     skip: (req) => {
         if (process.env.NODE_ENV === 'test') return true;
         if (process.env.NODE_ENV === 'production') return false;
@@ -243,39 +253,94 @@ app.get('/reset-browser-data', (req, res) => {
 <p><a href="/login.html" style="color:#2563eb;font-weight:600">Go to login</a></p>
 </body></html>`);
 });
+// Never hand out server code, settings, rules, scripts, stored data or logs as static files (middleware/static-guard.js)
+app.use(require('./middleware/static-guard'));
 app.use(express.static(__dirname));
 
 // Route Wiring
+app.use("/api/auth", require("./routes/pin-signin")); // sign-in with a PIN, and a code by email as the way back in
+app.use("/api/auth", require("./routes/qr-signin")); // sign-in by scanning a personal one-time QR (public part)
 app.use("/api/auth", authRoutes);
 app.use("/api/data", dataRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/admin", adminRoutes);
+app.use("/api/admin", indiaOnly, adminRoutes);
 
 app.use("/api/messages", messageRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/payroll-runs", payrollRoutes);
-app.use("/api/email", emailRoutes);
+app.use("/api/email", indiaOnly, emailRoutes);
 app.use("/api/automations", automationRoutes);
-app.use("/api/assignments", assignmentRoutes);
-app.use("/api/alerts", alertRoutes);
+app.use("/api/assignments", indiaOnly, assignmentRoutes);
+app.use("/api/alerts", indiaOnly, alertRoutes);
 app.use("/api/analytics", analyticsRoutes);
-app.use("/api/central-dashboard", centralDashboardRoutes);
+app.use("/api/central-dashboard", indiaOnly, centralDashboardRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/notification-center", notificationCenterRoutes);
-app.use("/api/document-templates", documentTemplatesRoutes);
+app.use("/api/document-templates", indiaOnly, documentTemplatesRoutes);
 app.use("/api/workflow-builder", workflowBuilderRoutes);
 app.use("/api/integrations", integrationsRoutes);
-app.use("/api/hr-os", hrOsRoutes);
+app.use("/api/hr-os", indiaOnly, hrOsRoutes);
 app.use("/api/policies", policiesRoutes);
 app.use("/api/assets", assetsRoutes);
 app.use("/api/exits", exitsRoutes);
+app.use("/api/org", require("./routes/org"));
+// Public, and attached before the /api/us groups below: each of those asks for a sign-in on every /api/us address,
+// and Gusto sends the browser back here without one. The handler trusts only its own one-time state.
+app.get("/api/us/gusto/oauth/callback", require("./routes/us-gusto").oauthCallback);
+app.use("/api/us", require("./routes/us-hr"));
+app.use("/api/us", require("./routes/us-forms"));
+app.use("/api/us", require("./routes/us-people"));
+app.use("/api/time", require("./routes/time"));
+app.use("/api/time", require("./routes/time-approval"));
+app.use("/api/us", require("./routes/us-leave"));
+app.use("/api/us", require("./routes/us-checklists"));
+app.use("/api/us", require("./routes/us-offboarding"));
+app.use("/api/us", require("./routes/us-reports"));
+app.use("/api/us", require("./routes/us-vault"));
+app.use("/api/us", require("./routes/us-compliance"));
+app.use("/api/us", require("./routes/us-billing"));
+app.use("/api/us", require("./routes/us-company-data"));
+app.use("/api/us", require("./routes/us-privacy"));
+app.use("/api/us", require("./routes/us-audit"));
+app.use("/api/us", require("./routes/us-retention"));
+app.use("/api", require("./routes/ops")); // health/deep, metrics, status, billing webhook, platform operator
+app.use("/api/us", require("./routes/us-benefits"));
+app.use("/api/us", require("./routes/us-leave-cases"));
+app.use("/api/us", require("./routes/us-wages"));
+app.use("/api/us", require("./routes/us-tips"));
+app.use("/api/us", require("./routes/us-people-data"));
+app.use("/api/us", require("./routes/us-hiring"));
+app.use("/api/us", require("./routes/us-esign"));
+// PUBLIC (no login): careers page and e-signature page APIs, rate limited inside the router
+app.use("/api/public", require("./routes/public-recruiting"));
+app.use("/api/us", require("./routes/us-clock-policy"));
+app.use("/api/us", require("./routes/us-approvals")); // what is waiting for this person to approve
+app.use("/api/us", require("./routes/us-schedule"));
+app.use("/api/us", require("./routes/us-performance")); // goals and reviews
+app.use("/api/us", require("./routes/us-surveys")); // pulse surveys and eNPS
+app.use("/api/us", require("./routes/us-assets")); // company equipment
+app.use("/api/us", require("./routes/us-policies")); // policy library with versions
+app.use("/api/us", require("./routes/us-training")); // training records
+app.use("/api/us", require("./routes/us-report-builder")); // custom reports and scheduled copies
+app.use("/api/us", require("./routes/us-review-cycles")); // review cycles and 360 feedback
+app.use("/api/us", require("./routes/us-recognition")); // announcements and thanks
+app.use("/api/us", require("./routes/us-payroll-import")); // historical payroll import
+app.use("/api/us", require("./routes/us-assistant")); // HR assistant (OpenAI)
+app.use("/api/sso", require("./routes/sso"));
+app.use("/api/support", require("./routes/support-access"));
+app.use("/api/us/integrations", require("./routes/us-integrations")); // API keys, OAuth apps, webhooks, SCIM tokens, connectors
+app.use("/api/us/gusto", require("./routes/us-gusto")); // payroll through Gusto: connect, company setup, people sync, payroll runs
+app.use("/api/webhooks/gusto", require("./routes/us-gusto").webhookReceiver); // public: checked by Gusto's signature
+app.use("/api/v1", require("./routes/api-v1")); // public REST API (API key or OAuth token; no catch-all, so /api/v1/esic etc. still resolve)
+app.use("/oauth", require("./routes/oauth")); // OAuth 2.0 token and revocation
+app.use("/scim/v2", require("./routes/scim")); // SCIM 2.0 provisioning (Okta, Entra ID, Google Workspace)
 app.use("/api/manager-goals", managerGoalsRoutes);
 app.use("/api/employee-goals", employeeGoalsRoutes);
-app.use("/api/custom-templates", customTemplatesRoutes);
-app.use("/api/bulk-trigger", bulkTriggerRoutes);
+app.use("/api/custom-templates", indiaOnly, customTemplatesRoutes);
+app.use("/api/bulk-trigger", indiaOnly, bulkTriggerRoutes);
 app.use("/api/payroll-settings", payrollSettingsRoutes);
-app.use("/api/controls-acceptance", controlsAcceptanceRoutes);
+app.use("/api/controls-acceptance", indiaOnly, controlsAcceptanceRoutes);
 
 // ─────────────────────────────────────────────
 // Dynamic ESM Route Registration (Reconciliation, ESIC, Gratuity, NPS, Compliance, PF)
@@ -283,7 +348,7 @@ app.use("/api/controls-acceptance", controlsAcceptanceRoutes);
 async function registerDynamicRoutes(targetApp = app) {
   try {
     const { default: reconciliationRoutes } = await import('./routes/reconciliation.mjs');
-    targetApp.use('/api/reconciliation', reconciliationRoutes);
+    targetApp.use('/api/reconciliation', indiaOnly, reconciliationRoutes);
     logger.info('[ReconciliationEngine] Routes registered at /api/reconciliation');
   } catch (err) {
     logger.error('[ReconciliationEngine] Failed to load reconciliation routes:', err.message);
@@ -318,7 +383,7 @@ async function registerDynamicRoutes(targetApp = app) {
 
   try {
     const { default: unifiedComplianceRoutes } = await import('./routes/unified-compliance.mjs');
-    targetApp.use('/api/v1/compliance', unifiedComplianceRoutes);
+    targetApp.use('/api/v1/compliance', indiaOnly, unifiedComplianceRoutes);
     targetApp.use('/api/compliance', unifiedComplianceRoutes);
     logger.info('[UnifiedStatutoryOrchestrator] Routes registered at /api/v1/compliance and /api/compliance');
   } catch (err) {
@@ -351,6 +416,16 @@ const dynamicRoutesLoaded = registerDynamicRoutes(app);
 
 async function startServer() {
   await dynamicRoutesLoaded;
+
+  // On a production server, say at every start which settings are wrong, by name only (never a value). The same
+  // check as `npm run check:production`; it only reports, so a server that ran before keeps running.
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      const { problems } = require('./services/production-check').checkProductionEnv(process.env, { appDir: __dirname });
+      for (const p of problems) logger.error(`[Settings] Must fix: ${p}`);
+      if (problems.length) logger.error(`[Settings] ${problems.length} production setting(s) must be fixed. Run "npm run check:production" for the full list.`);
+    } catch (e) { logger.warn(`[Settings] The production settings check could not run: ${e.message}`); }
+  }
 
   try {
     const eventBus = require('./services/event-bus');
@@ -420,7 +495,20 @@ async function startServer() {
     
     // Initialize the centralized automation engine
     automationEngine.start();
-    
+
+    // Outbound webhooks (event outbox -> signed deliveries with retries) and scheduled connector syncs
+    try {
+      require('./services/webhooks').start();
+      require('./services/connectors/runtime').startScheduler();
+      if (require('./routes/us-gusto').startJobs()) logger.info('[Gusto] Event poll job started');
+      if (require('./routes/us-report-builder').startJobs()) logger.info('[ReportBuilder] Scheduled report copies job started');
+      if (require('./services/daily-jobs').startJobs()) logger.info('[DailyJobs] Daily retention and backup job started');
+      if (require('./services/ops-alerts').startJobs()) logger.info(process.env.ALERT_EMAIL_TO ? '[Alert] Health and daily-run alerts started' : '[Alert] Health and daily-run checks started (ALERT_EMAIL_TO is not set: alerts are logged, not emailed)');
+      logger.info('[Integrations] Webhook delivery worker and connector scheduler started');
+    } catch (intErr) {
+      logger.error(`[Integrations] Could not start background workers: ${intErr.message}`);
+    }
+
     // Onboarding Document submission Reminder scheduler (Twice daily: every 12 hours)
     const { runReminderJob } = require("./utils/reminder-scheduler");
     setInterval(() => {

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payroll Document Center | Kylrx AI</title>
+    <title>Payroll Document Center | Onn HR</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📄</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +36,6 @@
             }
         }
     </script>
-    <script src="https://smtpjs.com/v3/smtp.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js" crossorigin="anonymous"></script>
     <script src="feedbackService.js"></script>
     <script src="public/js/admin-payroll-console.js"></script>
@@ -173,8 +172,8 @@
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <a href="admin-dashboard.html" class="logo">
-                <img src="logo.jpg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
-                <span class="logo-text">Kylrx <span style="color: var(--primary);">AI</span></span>
+                <img src="onnhr-logo.svg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
+                <span class="logo-text">Onn <span style="color: var(--primary);">HR</span></span>
             </a>
             
             <nav class="nav-menu">
@@ -199,8 +198,8 @@
                 <div class="nav-item"><a href="admin-document-templates.html" class="nav-link"><i data-lucide="file-text"></i><span>Document Templates</span></a></div>
                 <div class="nav-item"><a href="admin-payroll-documents.html" class="nav-link active" id="navLinkDocs" onclick="switchPayrollTab('docs')"><i data-lucide="file-text"></i><span>Payroll Docs</span></a></div>
                 <div class="nav-item"><a href="admin-payroll-upload.html" class="nav-link"><i data-lucide="upload"></i><span>Finance Payroll Upload</span></a></div>
-                <div class="nav-item"><a href="admin-payroll-documents.html#disbursement" class="nav-link" id="navLinkDisbursement" onclick="switchPayrollTab('disbursement')"><i data-lucide="credit-card"></i><span>Payroll Disbursement</span></a></div>
-                <div class="nav-item"><a href="admin-payroll-documents.html#compliance" class="nav-link" id="navLinkCompliance" onclick="switchPayrollTab('compliance')"><i data-lucide="scale"></i><span>Statutory Compliance</span></a></div>
+                <div class="nav-item"><a href="admin-payroll-documents.html#disbursement" class="nav-link" id="navLinkDisbursement" data-country-only="IN" onclick="switchPayrollTab('disbursement')"><i data-lucide="credit-card"></i><span>Payroll Disbursement</span></a></div>
+                <div class="nav-item"><a href="admin-payroll-documents.html#compliance" class="nav-link" id="navLinkCompliance" data-country-only="IN" onclick="switchPayrollTab('compliance')"><i data-lucide="scale"></i><span>Statutory Compliance</span></a></div>
                 <div class="nav-item"><a href="admin-inactivity-monitor.html" class="nav-link"><i data-lucide="radar"></i><span>Inactivity Radar</span></a></div>
 
                 <div class="nav-label">INTELLIGENCE</div>
@@ -261,8 +260,8 @@
                 </div>
                 <div class="btn-group" style="gap: 8px; flex-wrap: wrap;">
                     <button class="btn btn-primary" id="tabBtnDocs" onclick="switchPayrollTab('docs')"><i data-lucide="file-text"></i> Document Center</button>
-                    <button class="btn btn-outline" id="tabBtnDisbursement" onclick="switchPayrollTab('disbursement')"><i data-lucide="credit-card"></i> Payroll Disbursement</button>
-                    <button class="btn btn-outline" id="tabBtnCompliance" onclick="switchPayrollTab('compliance')"><i data-lucide="scale"></i> Statutory Compliance</button>
+                    <button class="btn btn-outline" id="tabBtnDisbursement" data-country-only="IN" onclick="switchPayrollTab('disbursement')"><i data-lucide="credit-card"></i> Payroll Disbursement</button>
+                    <button class="btn btn-outline" id="tabBtnCompliance" data-country-only="IN" onclick="switchPayrollTab('compliance')"><i data-lucide="scale"></i> Statutory Compliance</button>
                 </div>
             </header>
 
@@ -670,12 +669,6 @@
 
         let cachedPayrollDocs = [];
         let docTypeFilter = null;
-
-        // ─────────────────────────────────────────────
-        // EMAIL API CONFIGURATION
-        // ─────────────────────────────────────────────
-        const EMAIL_API_KEY = "6f8d75dc-500b-4eb1-b0db-6e6b4e7235db"; // Pre-validated, live SMTP token for direct delivery
-        const SENDER_EMAIL = "payroll@kylrxai.com";
 
         window.showToast = (msg, isError = false) => {
             const id = isError ? 'errorToast' : 'successToast';

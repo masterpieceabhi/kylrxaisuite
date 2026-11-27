@@ -12,6 +12,12 @@ const { verifyToken } = require('../middleware/authMiddleware');
 
 router.use(verifyToken);
 
+// Every call works on the caller's own company; an account without one is refused
+router.use((req, res, next) => {
+    if (!orgOf(req)) return res.status(403).json({ success: false, error: 'No company on this account' });
+    next();
+});
+
 /**
  * Enterprise Alert Builder Route Handler
  * 
@@ -271,7 +277,15 @@ syncAlertRulesWithFirestore().catch(() => {});
  */
 
 function orgOf(req) {
-    return req.tenantOrgId || (req.user && req.user.orgId) || LEGACY_ORG_ID;
+    return (req.user && req.user.orgId) || req.tenantOrgId || null;
+}
+
+// Automation engine audit entries made by this company's rules (engine rule ids are namespaced per company,
+// the original company keeps plain ids)
+function ownsEngineLog(orgId, log) {
+    const id = log && typeof log.automationId === 'string' ? log.automationId : '';
+    if (!id) return false;
+    return orgId === LEGACY_ORG_ID ? !id.includes('__') : id.startsWith(`${orgId}__`);
 }
 
 function ruleDocId(orgId, ruleId) {
@@ -365,10 +379,9 @@ router.get('/firebase-status', async (req, res) => {
 
         if (db && typeof db.collection === 'function') {
             try {
-                const rSnap = await db.collection('alert_rules').limit(20).get();
-                rulesCount = rSnap.size;
-                const bSnap = await db.collection('alert_breaches').limit(20).get();
-                breachesCount = bSnap.size;
+                const orgId = orgOf(req);
+                rulesCount = (await orgDocs(rawCollection, 'alert_rules', orgId, 20)).length;
+                breachesCount = (await orgDocs(rawCollection, 'alert_breaches', orgId, 20)).length;
                 isConnected = true;
             } catch (e) {
                 isConnected = true;
@@ -406,16 +419,21 @@ router.post('/sync-firebase', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Firebase Admin SDK not initialized' });
         }
 
-        const rules = Array.from(alertRulesMap.values());
+        // Only the caller's own saved rules are written back (never another company's, never the shared list)
+        const orgId = orgOf(req);
+        const rules = (await orgRules(orgId)).filter(r => !r.isTemplate);
         for (const r of rules) {
-            db.collection('alert_rules').doc(r.id).set({
-                ...r,
+            const { isTemplate, ...data } = r;
+            rawCollection('alert_rules').doc(ruleDocId(orgId, r.id)).set({
+                ...data,
+                orgId,
                 updatedAt: new Date().toISOString(),
                 syncedWithFirebase: true
             }, { merge: true }).catch(() => {});
         }
 
         const pingDoc = {
+            orgId,
             pingId: `ALERT_PING_${Date.now()}`,
             service: 'Alert Builder Threshold Monitoring',
             event: 'FIREBASE_ALERT_SYNC_PING',
@@ -681,11 +699,21 @@ router.post('/test-fire', async (req, res) => {
 
         const initialLogCount = automationEngine.auditLogs.length;
 
-        // Process directly through Unified Common Automation Engine pipeline
-        await automationEngine.processEvent(eventData);
+        // Run only this company's rule (processEvent would also run every other company's rules for this event)
+        const engineRuleId = ruleDocId(orgId, rule.id);
+        if (String(rule.status || '').toLowerCase() === 'active') {
+            await automationEngine.executeRule({
+                id: engineRuleId,
+                name: rule.name,
+                trigger_event: rule.trigger_event,
+                conditions: rule.conditions,
+                pipeline: rule.pipeline,
+                status: rule.status
+            }, eventData);
+        }
 
-        // Fetch logs created during this run
-        const generatedAuditLogs = automationEngine.auditLogs.slice(initialLogCount);
+        // Fetch logs created during this run by this rule
+        const generatedAuditLogs = automationEngine.auditLogs.slice(initialLogCount).filter(l => l.automationId === engineRuleId);
         const conditionMet = !generatedAuditLogs.some(l => l.status === 'conditions_unmet');
 
         let breachSaved = false;
@@ -738,7 +766,9 @@ router.get('/stats', async (req, res) => {
         const totalMonitors = rules.length;
         
         // Filter audit logs relating to alert triggers
+        const orgId = orgOf(req);
         const alertAuditLogs = automationEngine.auditLogs
+            .filter(l => ownsEngineLog(orgId, l))
             .filter(l => l.eventName && (l.eventName.startsWith('attendance.') || l.eventName.startsWith('payroll.') || l.eventName.startsWith('policy.') || l.eventName.startsWith('pms.') || l.eventName.startsWith('exit.')))
             .slice(-20)
             .reverse();

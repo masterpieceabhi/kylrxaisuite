@@ -84,6 +84,50 @@
             }
         }
 
+        // Default definition for a component that is not in the catalog
+        function defaultDefinition(code, comp) {
+            const isDeduct = code.includes('DEDUCT') || code.startsWith('PF_') || code.startsWith('ESIC_') || code === 'PT' || code === 'TDS';
+            return {
+                componentCode: code,
+                componentName: comp.componentName || code,
+                componentType: isDeduct ? 'Deduction' : 'Earning',
+                prorateOnLop: !isDeduct,
+                isTaxable: !isDeduct,
+                isPfApplicable: code === 'BASIC',
+                isEsiApplicable: !isDeduct,
+                isPtApplicable: !isDeduct,
+                isTdsApplicable: !isDeduct
+            };
+        }
+        function isProrated(def) {
+            return (def.prorateOnLop !== false && def.Prorate_On_LOP !== 'No');
+        }
+        const pendingCodes = new Set(pendingPercentage.map(p => p.code));
+        const componentCode = (comp) => String(comp.componentCode || comp.Component_Code || comp.code || '').trim().toUpperCase();
+
+        // Earned (LOP-prorated) amount of every component that is not a percentage of another one.
+        // Percentage components (PF 12% of BASIC, HRA 40% of BASIC, ...) are taken from these EARNED
+        // amounts, so a month with unpaid leave does not charge PF on the full scheduled basic.
+        const earnedBase = new Map();
+        for (const comp of salaryStructure.components) {
+            const code = componentCode(comp);
+            if (pendingCodes.has(code) || !componentValues.has(code)) continue;
+            const def = catalogMap.get(code) || defaultDefinition(code, comp);
+            const scheduled = componentValues.get(code);
+            earnedBase.set(code, isProrated(def) ? Math.round(scheduled * prorationFactor * 100) / 100 : scheduled);
+        }
+        // Optional PF wage ceiling (for example 15,000): a catalog setting on the PF component
+        // (pfWageCeiling / PF_Wage_Ceiling) or options.pfWageCeiling for the whole run. 0/blank = no ceiling.
+        function pfCeilingFor(code, def) {
+            const isPfContribution = /^PF[_-]/.test(code) || def.isPfContribution === true;
+            if (!isPfContribution) return 0;
+            const own = Number(def.pfWageCeiling !== undefined ? def.pfWageCeiling : def.PF_Wage_Ceiling);
+            if (own > 0) return own;
+            const global = Number(options && options.pfWageCeiling);
+            return global > 0 ? global : 0;
+        }
+        const percentageEarned = new Map();
+
         // Handle Percentage amounts
         for (const item of pendingPercentage) {
             let baseCode = item.basis;
@@ -98,6 +142,14 @@
             const baseAmt = componentValues.get(baseCode) || 0;
             const computedAmt = Math.round(((item.pct / 100) * baseAmt) * 100) / 100;
             componentValues.set(item.code, computedAmt || item.fallbackAmt || 0);
+
+            if (earnedBase.has(baseCode) && baseAmt) {
+                const pctDef = catalogMap.get(item.code) || defaultDefinition(item.code, { componentName: item.code });
+                let earnedBasis = earnedBase.get(baseCode);
+                const ceiling = pfCeilingFor(item.code, pctDef);
+                if (ceiling > 0) earnedBasis = Math.min(earnedBasis, ceiling);
+                percentageEarned.set(item.code, Math.round(((item.pct / 100) * earnedBasis) * 100) / 100);
+            }
         }
 
         // Pass 2: Apply LOP Proration & Classify Statutory Wage Bases
@@ -105,29 +157,19 @@
             const code = String(comp.componentCode || comp.Component_Code || comp.code || '').trim().toUpperCase();
             let def = catalogMap.get(code);
 
-            if (!def) {
-                // Default fallback component definition
-                const isDeduct = code.includes('DEDUCT') || code.startsWith('PF_') || code.startsWith('ESIC_') || code === 'PT' || code === 'TDS';
-                def = {
-                    componentCode: code,
-                    componentName: comp.componentName || code,
-                    componentType: isDeduct ? 'Deduction' : 'Earning',
-                    prorateOnLop: !isDeduct,
-                    isTaxable: !isDeduct,
-                    isPfApplicable: code === 'BASIC',
-                    isEsiApplicable: !isDeduct,
-                    isPtApplicable: !isDeduct,
-                    isTdsApplicable: !isDeduct
-                };
-            }
+            if (!def) def = defaultDefinition(code, comp);
 
             const scheduledAmount = componentValues.get(code) !== undefined ? componentValues.get(code) : Number(comp.amount || 0);
             
             // Check proration flag
-            const shouldProrate = (def.prorateOnLop !== false && def.Prorate_On_LOP !== 'No');
-            const earnedAmount = shouldProrate
-                ? Math.round(scheduledAmount * prorationFactor * 100) / 100
-                : scheduledAmount;
+            const shouldProrate = isProrated(def);
+            // A percentage-of-component amount already follows the earned basis (never prorated twice)
+            const fromEarnedBasis = percentageEarned.has(code);
+            const earnedAmount = fromEarnedBasis
+                ? percentageEarned.get(code)
+                : (shouldProrate
+                    ? Math.round(scheduledAmount * prorationFactor * 100) / 100
+                    : scheduledAmount);
 
             const compType = def.componentType || (def.type === 'DEDUCTION' ? 'Deduction' : 'Earning');
 
@@ -152,7 +194,7 @@
                 calculationMethod: def.calculationMethod || comp.calculationBasis || 'Flat_Amount',
                 scheduledAmount,
                 earnedAmount,
-                prorated: (shouldProrate && prorationFactor < 1.0),
+                prorated: ((shouldProrate || fromEarnedBasis) && prorationFactor < 1.0),
                 isTaxable: Boolean(def.isTaxable),
                 isPfApplicable: Boolean(def.isPfApplicable),
                 isEsiApplicable: Boolean(def.isEsiApplicable),

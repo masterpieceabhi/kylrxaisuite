@@ -5,9 +5,30 @@ const otpVerificationService = require('../services/otp-verification-service');
 const aiAssistedBuilderService = require('../services/ai-assisted-builder-service');
 const logger = require('../utils/logger');
 const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { LEGACY_ORG_ID } = require('../config/tenant');
 
 router.use(verifyToken);
 router.use(authorize(ADMIN_HR_ROLES));
+
+// Every call works on the caller's own company engine (jobs, audit trail, settings, recipients)
+router.use((req, res, next) => {
+    const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+    if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+    req.orgId = orgId;
+    req.bulkEngine = bulkTriggerEngine.forOrg(orgId);
+    next();
+});
+
+// AI builder drafts are tagged with the company that made them; untagged older drafts belong to the original company
+const draftOwner = (draft) => (draft && draft.orgId) || LEGACY_ORG_ID;
+function ownDraftOr404(req, res) {
+    const draft = aiAssistedBuilderService.getConfigurationById(req.params.draftId);
+    if (!draft || draftOwner(draft) !== req.orgId) {
+        res.status(404).json({ success: false, error: `Configuration '${req.params.draftId}' not found.` });
+        return null;
+    }
+    return draft;
+}
 
 /**
  * 2. Bulk Triggering and AI-Assisted Builder REST API (PRD §2)
@@ -29,7 +50,7 @@ router.use(authorize(ADMIN_HR_ROLES));
 router.post('/validate', (req, res) => {
     try {
         const { action, recipients, payload, actor } = req.body || {};
-        const validation = bulkTriggerEngine.validateSelection({
+        const validation = req.bulkEngine.validateSelection({
             action,
             recipients: recipients || [],
             payload: payload || {},
@@ -51,7 +72,7 @@ router.post('/validate', (req, res) => {
 router.post('/execute', async (req, res) => {
     try {
         const { action, recipients, payload, actor, options } = req.body || {};
-        const jobResult = await bulkTriggerEngine.executeBulkTrigger({
+        const jobResult = await req.bulkEngine.executeBulkTrigger({
             action,
             recipients: recipients || [],
             payload: payload || {},
@@ -73,7 +94,7 @@ router.post('/execute', async (req, res) => {
 // 2.9 Get Latest Job (PRD §2.2: Live monitoring auto-reconnect)
 router.get('/jobs/latest', (req, res) => {
     try {
-        const job = bulkTriggerEngine.getLatestJob();
+        const job = req.bulkEngine.getLatestJob();
         if (!job) {
             return res.status(200).json({ success: true, data: null, message: 'No bulk trigger jobs executed yet.' });
         }
@@ -87,7 +108,7 @@ router.get('/jobs/latest', (req, res) => {
 router.get('/jobs', (req, res) => {
     try {
         const limit = parseInt(req.query.limit, 10) || 10;
-        const jobs = bulkTriggerEngine.getRecentJobs(limit);
+        const jobs = req.bulkEngine.getRecentJobs(limit);
         res.status(200).json({ success: true, data: jobs });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -99,10 +120,10 @@ router.get('/jobs/:jobId', (req, res) => {
     try {
         const { jobId } = req.params;
         if (jobId === 'latest') {
-            const job = bulkTriggerEngine.getLatestJob();
+            const job = req.bulkEngine.getLatestJob();
             return res.status(200).json({ success: true, data: job });
         }
-        const job = bulkTriggerEngine.getJobStatus(jobId);
+        const job = req.bulkEngine.getJobStatus(jobId);
         if (!job) {
             return res.status(404).json({ success: false, error: `Job '${jobId}' not found.` });
         }
@@ -119,7 +140,7 @@ router.post('/jobs/:jobId/retry', async (req, res) => {
         const { jobId } = req.params;
         const { actor, options } = req.body || {};
 
-        const updatedJob = await bulkTriggerEngine.retryFailedItems(
+        const updatedJob = await req.bulkEngine.retryFailedItems(
             jobId,
             actor || { role: 'super_admin', name: 'Admin' },
             options || {}
@@ -139,7 +160,7 @@ router.post('/jobs/:jobId/retry', async (req, res) => {
 // 5. Config: View Engine Controls (PRD §2.2: Batch size configurable by admin)
 router.get('/config', (req, res) => {
     try {
-        const config = bulkTriggerEngine.getConfig();
+        const config = req.bulkEngine.getConfig();
         res.status(200).json({ success: true, data: config });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -150,7 +171,7 @@ router.get('/config', (req, res) => {
 router.put('/config', (req, res) => {
     try {
         const { batchSize, interBatchDelayMs, maxEmailsPerSecond, strictConsentRequired, actor } = req.body || {};
-        const result = bulkTriggerEngine.updateConfig(
+        const result = req.bulkEngine.updateConfig(
             { batchSize, interBatchDelayMs, maxEmailsPerSecond, strictConsentRequired },
             actor || { role: 'super_admin', name: 'Admin' }
         );
@@ -248,7 +269,7 @@ router.get('/otp/status/:otpId', (req, res) => {
 router.get('/audit-logs', (req, res) => {
     try {
         const { limit, action, status } = req.query;
-        const logs = bulkTriggerEngine.getAuditLogs({
+        const logs = req.bulkEngine.getAuditLogs({
             limit: limit ? parseInt(limit, 10) : 50,
             action,
             status
@@ -294,7 +315,7 @@ router.get('/recipients/from-firestore', async (req, res) => {
     try {
         const limit = parseInt(req.query.limit, 10) || 100;
         const cohort = req.query.cohort || 'auto';
-        const result = await bulkTriggerEngine.fetchRecipientsFromFirestore(limit, cohort);
+        const result = await req.bulkEngine.fetchRecipientsFromFirestore(limit, cohort);
         res.status(200).json({
             success: true,
             source: result.source || 'firestore',
@@ -310,7 +331,7 @@ router.get('/recipients/from-firestore', async (req, res) => {
 // 10.7 Generate & Seed 100-Member Enterprise Test Cohort in Firebase
 router.post('/recipients/seed-firestore', async (req, res) => {
     try {
-        const result = bulkTriggerEngine.generate100TestCohort();
+        const result = req.bulkEngine.generate100TestCohort();
         res.status(200).json({
             success: true,
             source: 'firestore_cohort_100',
@@ -338,6 +359,8 @@ router.post('/ai-builder/suggest', (req, res) => {
             context || {},
             actor || { role: 'super_admin', name: 'Admin' }
         );
+        draft.orgId = req.orgId;
+        aiAssistedBuilderService.syncConfigToFirestore(draft).catch(() => {});
 
         res.status(200).json({
             success: true,
@@ -355,6 +378,7 @@ router.put('/ai-builder/drafts/:draftId', (req, res) => {
     try {
         const { draftId } = req.params;
         const { edits, actor } = req.body || {};
+        if (!ownDraftOr404(req, res)) return;
 
         const updatedDraft = aiAssistedBuilderService.updateDraft(
             draftId,
@@ -378,6 +402,7 @@ router.post('/ai-builder/drafts/:draftId/reject', (req, res) => {
     try {
         const { draftId } = req.params;
         const { reason, actor } = req.body || {};
+        if (!ownDraftOr404(req, res)) return;
 
         const rejected = aiAssistedBuilderService.rejectDraft(
             draftId,
@@ -418,6 +443,7 @@ router.post('/ai-builder/drafts/:draftId/activate', (req, res) => {
     try {
         const { draftId } = req.params;
         const { actor } = req.body || {};
+        if (!ownDraftOr404(req, res)) return;
 
         const activated = aiAssistedBuilderService.activateConfiguration(
             draftId,
@@ -439,7 +465,8 @@ router.post('/ai-builder/drafts/:draftId/activate', (req, res) => {
 router.get('/ai-builder/drafts', (req, res) => {
     try {
         const { status, module, severity } = req.query;
-        const configs = aiAssistedBuilderService.getAllConfigurations({ status, module, severity });
+        const configs = aiAssistedBuilderService.getAllConfigurations({ status, module, severity })
+            .filter(c => draftOwner(c) === req.orgId);
 
         res.status(200).json({
             success: true,
@@ -454,12 +481,8 @@ router.get('/ai-builder/drafts', (req, res) => {
 // 17. Get Single Configuration by ID
 router.get('/ai-builder/drafts/:draftId', (req, res) => {
     try {
-        const { draftId } = req.params;
-        const config = aiAssistedBuilderService.getConfigurationById(draftId);
-
-        if (!config) {
-            return res.status(404).json({ success: false, error: `Configuration '${draftId}' not found.` });
-        }
+        const config = ownDraftOr404(req, res);
+        if (!config) return;
 
         res.status(200).json({ success: true, data: config });
     } catch (err) {

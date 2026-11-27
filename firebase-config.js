@@ -1,13 +1,14 @@
 // @ts-ignore
 import { initializeApp, setLogLevel } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
 // @ts-ignore
-import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { getAuth, onAuthStateChanged, signOut, signInWithEmailAndPassword, connectAuthEmulator } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
 // @ts-ignore
 import { 
   initializeFirestore, 
   persistentLocalCache, 
   persistentMultipleTabManager,
   memoryLocalCache,
+  connectFirestoreEmulator,
   setLogLevel as setFirestoreLogLevel,
   getDocsFromCache,
   getDocFromCache,
@@ -15,6 +16,30 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 // @ts-ignore
 import { getStorage } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-storage.js";
+
+// 0. Late page-ready listeners. This file waits for /firebase-web-config.json (the top-level await further down), so
+// on a real server every page script that imports it runs only after that answer, which is often after the page has
+// already loaded. A DOMContentLoaded or load listener added that late would never run (on staging the sign-up page's
+// buttons did nothing). From here on, such a listener added after the event has happened runs on the next tick.
+if (typeof document !== 'undefined' && !window.__onnhrLateReady) {
+  window.__onnhrLateReady = true;
+  const runSoon = (target, type, listener) => setTimeout(() => {
+    const ev = new Event(type);
+    if (typeof listener === 'function') listener.call(target, ev);
+    else if (listener && typeof listener.handleEvent === 'function') listener.handleEvent(ev);
+  }, 0);
+  const docAdd = document.addEventListener.bind(document);
+  document.addEventListener = function (type, listener, options) {
+    if (type === 'DOMContentLoaded' && document.readyState !== 'loading') return runSoon(document, type, listener);
+    return docAdd(type, listener, options);
+  };
+  const winAdd = window.addEventListener.bind(window);
+  window.addEventListener = function (type, listener, options) {
+    if (type === 'DOMContentLoaded' && document.readyState !== 'loading') return runSoon(window, type, listener);
+    if (type === 'load' && document.readyState === 'complete') return runSoon(window, type, listener);
+    return winAdd(type, listener, options);
+  };
+}
 
 // 1. Completely silence internal Firebase logger chatter
 try {
@@ -121,8 +146,33 @@ console.warn = function (...args) {
   _origConsoleWarn.apply(console, args);
 };
 
+// On localhost the app talks to the local Firebase emulators (npm run emulators), never to the
+// live project. Open any page once with ?emulator=off to use the live project from localhost.
+const USE_EMULATOR = (() => {
+  try {
+    if (typeof window === 'undefined' || !['localhost', '127.0.0.1'].includes(window.location.hostname)) return false;
+    const flag = new URLSearchParams(window.location.search).get('emulator');
+    if (flag === 'off') sessionStorage.setItem('kylrx_live_firebase', '1');
+    if (flag === 'on') sessionStorage.removeItem('kylrx_live_firebase');
+    return sessionStorage.getItem('kylrx_live_firebase') !== '1';
+  } catch (_) {
+    return true;
+  }
+})();
+
+// Which Firebase project the pages use. A server set up for its own project (FIREBASE_WEB_CONFIG) says so at
+// /firebase-web-config.json; without that, the built-in values below are used (local development and the emulators).
+const FROM_SERVER = await (async () => {
+  try {
+    if (USE_EMULATOR || typeof window === 'undefined') return null;
+    const base = window.API_BASE || window.location.origin;
+    const res = await fetch(`${base}/firebase-web-config.json`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    return res.ok ? await res.json() : null;
+  } catch (_) { return null; }
+})();
+
 // Your web app's Firebase configuration
-const firebaseConfig = {
+const BUILT_IN_CONFIG = {
   apiKey: "AIzaSyBQCO1FI1mPsWxsTvInyLlwIQVFGnUBlco",
   // On HTTPS the Kylrx server proxies /__/auth to Firebase and is its own authDomain (needed for
   // redirect sign-in). The Firebase SDK always opens https://<authDomain>/__/auth/handler, so on
@@ -136,11 +186,22 @@ const firebaseConfig = {
   appId: "1:483232913511:web:769faab820b2eead141cc2",
   measurementId: "G-3F6VW2MEJG"
 };
+const firebaseConfig = FROM_SERVER && FROM_SERVER.projectId && FROM_SERVER.apiKey
+  ? {
+      ...FROM_SERVER,
+      authDomain: (typeof window !== 'undefined' && window.location.protocol === 'https:' && window.location.host)
+        ? window.location.host
+        : `${FROM_SERVER.projectId}.firebaseapp.com`
+    }
+  : BUILT_IN_CONFIG;
 
 // Resilient Firebase initialization with InPrivate / Private-mode graceful degradation
 // Long-polling fallback enabled via experimentalAutoDetectLongPolling: true
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+if (USE_EMULATOR) {
+  try { connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true }); } catch (_) {}
+}
 const firestoreSettings = {
   experimentalAutoDetectLongPolling: true
 };
@@ -171,8 +232,61 @@ try {
     }
   }
 }
+if (USE_EMULATOR && db) {
+  try { connectFirestoreEmulator(db, '127.0.0.1', 8080); } catch (_) {}
+}
+// Several services use the older namespaced style (db.collection('x').doc('y').set(...)) against
+// window.db, which is a modular Firestore instance. Without this, those calls throw, the services
+// swallow the error and keep data only in browser memory while the UI reports success.
+if (db && typeof db.collection !== 'function') {
+  const wrapDoc = (s) => ({
+    id: s.id,
+    ref: s.ref,
+    exists: s.exists(),
+    data: (...a) => s.data(...a),
+    get: (f) => s.get(f)
+  });
+  const wrapSnap = (qs) => ({
+    docs: qs.docs.map(wrapDoc),
+    empty: qs.empty,
+    size: qs.size,
+    forEach: (fn) => qs.docs.map(wrapDoc).forEach(fn)
+  });
+  const compatQuery = (q) => ({
+    where: (f, op, v) => compatQuery(query(q, where(f, op, v))),
+    orderBy: (f, d) => compatQuery(query(q, orderBy(f, d))),
+    limit: (n) => compatQuery(query(q, limit(n))),
+    get: async () => wrapSnap(await rawGetDocs(q)),
+    onSnapshot: (next, err) => rawOnSnapshot(q, (qs) => next(wrapSnap(qs)), err)
+  });
+  const compatDoc = (r) => ({
+    id: r.id,
+    path: r.path,
+    collection: (n) => compatCollection(collection(r, n)),
+    set: (d, o) => rawSetDoc(r, d, o),
+    update: (d) => rawUpdateDoc(r, d),
+    delete: () => rawDeleteDoc(r),
+    get: async () => wrapDoc(await rawGetDoc(r)),
+    onSnapshot: (next, err) => rawOnSnapshot(r, (s) => next(wrapDoc(s)), err)
+  });
+  const compatCollection = (c) => ({
+    ...compatQuery(c),
+    doc: (id) => compatDoc(id ? doc(c, id) : doc(c)),
+    add: async (d) => compatDoc(await rawAddDoc(c, d))
+  });
+  db.collection = (path) => compatCollection(collection(db, path));
+  db.doc = (path) => compatDoc(doc(db, path));
+}
 if (typeof window !== 'undefined') {
   window.db = db;
+  window.auth = auth; // classic (non-module) scripts need the signed-in user to call the API
+  // Many services (holiday calendar, cost center, shifts, finance, ...) destructure these from
+  // window.firebaseFirestore; nothing defined it, so their saves silently stayed in memory.
+  window.firebaseFirestore = {
+    doc, collection, query, where, orderBy, limit, serverTimestamp, arrayUnion, arrayRemove, deleteField,
+    setDoc: rawSetDoc, updateDoc: rawUpdateDoc, deleteDoc: rawDeleteDoc, addDoc: rawAddDoc,
+    getDoc: rawGetDoc, getDocs: rawGetDocs, onSnapshot: rawOnSnapshot, writeBatch: rawWriteBatch
+  };
 }
 const storage = getStorage(app);
 
@@ -700,3 +814,6 @@ export {
 // only through this module and always get the tenant-scoped wrappers above
 export * from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
 
+
+// Floating clock button on signed-in pages (US/CA companies); loaded last so it can import this module
+if (typeof window !== 'undefined') { import('./punch-fab.js').catch(() => {}); }

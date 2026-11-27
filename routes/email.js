@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { sendEmail } = require('../utils/email');
 const { runReminderJob } = require('../utils/reminder-scheduler');
-const { verifyToken } = require('../middleware/authMiddleware');
+const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMiddleware');
+const { getCountryConfig } = require('../country-config');
 
 router.use(verifyToken);
 
@@ -17,7 +18,7 @@ try {
  * Trigger manual scheduler check.
  * POST /api/email/run-reminder-check
  */
-router.post('/run-reminder-check', async (req, res) => {
+router.post('/run-reminder-check', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const result = await runReminderJob();
         return res.json(result);
@@ -31,7 +32,8 @@ router.post('/run-reminder-check', async (req, res) => {
  * General endpoint to send emails.
  * POST /api/email/send
  */
-router.post('/send', async (req, res) => {
+// Free-form email from the platform address: owner and HR only (any signed-in user could send any email before 2026-11-20)
+router.post('/send', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const { to, subject, html, text } = req.body;
         if (!to || !subject || (!html && !text)) {
@@ -43,6 +45,59 @@ router.post('/send', async (req, res) => {
     } catch (error) {
         console.error('[EMAIL] Send route error:', error.message);
         return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * Salary-paid notice to one employee of the caller's company (used by the Payroll Document Center).
+ * The message is composed here, in the company's currency; the browser only names the person.
+ * POST /api/email/payroll-notice  { employeeId, amount, authority }
+ */
+router.post('/payroll-notice', authorize(ADMIN_HR_ROLES), async (req, res) => {
+    try {
+        const { employeeId, amount, authority } = req.body || {};
+        if (!employeeId) return res.status(400).json({ success: false, error: 'employeeId is required' });
+        const callerOrg = req.user && req.user.orgId;
+        let userDoc = await db.collection('users').doc(String(employeeId)).get();
+        if (!userDoc.exists) {
+            const q = await db.collection('users').where('employeeId', '==', String(employeeId)).limit(1).get();
+            if (!q.empty) userDoc = q.docs[0];
+        }
+        if (!userDoc.exists) return res.status(404).json({ success: false, error: 'Employee not found' });
+        const person = userDoc.data();
+        if (callerOrg && person.orgId && person.orgId !== callerOrg) {
+            return res.status(404).json({ success: false, error: 'Employee not found' });
+        }
+        if (!person.email) return res.status(422).json({ success: false, error: 'Employee has no email address' });
+
+        let country = 'IN';
+        try {
+            const org = callerOrg ? await db.collection('organizations').doc(callerOrg).get() : null;
+            if (org && org.exists) country = org.data().country || 'IN';
+        } catch (_) { /* keep default */ }
+        const cfg = getCountryConfig(country);
+        const num = Number(amount);
+        const money = Number.isFinite(num) && num > 0
+            ? new Intl.NumberFormat(cfg.locale, { style: 'currency', currency: cfg.currency }).format(num)
+            : null;
+        const esc = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const via = esc(String(authority || 'payroll').slice(0, 40));
+        const lines = [
+            `Dear ${esc(person.name || 'Employee')},`,
+            `Your salary payout has been disbursed via the ${via} gateway.`,
+            money ? `Net amount: ${esc(money)}` : null,
+            'Your payslip is available in your Documents portal.',
+            'Payroll Operations Team'
+        ].filter(Boolean);
+        const result = await sendEmail({
+            to: person.email,
+            subject: 'Salary disbursed',
+            html: lines.map((l) => `<p>${l}</p>`).join('')
+        });
+        return res.json({ success: true, result });
+    } catch (error) {
+        console.error('[EMAIL] Payroll notice error:', error.message);
+        return res.status(500).json({ success: false, error: 'Could not send the payroll notice' });
     }
 });
 
@@ -130,7 +185,7 @@ router.post('/trigger-bulk-reminders', async (req, res) => {
  * POST /api/email/test
  * Body: { to: "user@example.com" }
  */
-router.post('/test', async (req, res) => {
+router.post('/test', authorize(ADMIN_HR_ROLES), async (req, res) => {
     try {
         const { to } = req.body;
         if (!to) {

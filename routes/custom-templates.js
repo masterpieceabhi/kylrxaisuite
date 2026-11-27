@@ -7,6 +7,14 @@ const { verifyToken, authorize, ADMIN_HR_ROLES } = require('../middleware/authMi
 router.use(verifyToken);
 router.use(authorize(ADMIN_HR_ROLES));
 
+// Every call works on the caller's own company engine (templates, personal copies, versions)
+router.use((req, res, next) => {
+    const orgId = (req.user && req.user.orgId) || req.tenantOrgId;
+    if (!orgId) return res.status(403).json({ success: false, error: 'No company on this account' });
+    req.templateEngine = customTemplateEngine.forOrg(orgId);
+    next();
+});
+
 /**
  * Customisable Templates REST API Router
  * Requirement 1.2 Customisable Templates & 1.3 Module-level templates
@@ -16,7 +24,7 @@ router.use(authorize(ADMIN_HR_ROLES));
 router.get('/', (req, res) => {
     try {
         const { module, status, role, search, scope, ownerId, forGeneralUse } = req.query;
-        const templates = customTemplateEngine.listTemplates({ 
+        const templates = req.templateEngine.listTemplates({ 
             module, 
             status, 
             role, 
@@ -36,7 +44,7 @@ router.get('/', (req, res) => {
 router.get('/module/:module', (req, res) => {
     try {
         const { status, role, scope } = req.query;
-        const templates = customTemplateEngine.listTemplates({ 
+        const templates = req.templateEngine.listTemplates({ 
             module: req.params.module, 
             status, 
             role, 
@@ -52,7 +60,7 @@ router.get('/module/:module', (req, res) => {
 // GET /api/custom-templates/:id/versions - Get all versions of a template
 router.get('/:id/versions', (req, res) => {
     try {
-        const versions = customTemplateEngine.getTemplateVersions(req.params.id);
+        const versions = req.templateEngine.getTemplateVersions(req.params.id);
         res.status(200).json({ success: true, templateId: req.params.id, data: versions, total: versions.length });
     } catch (error) {
         logger.error(`[CustomTemplatesAPI] Error getting versions for ${req.params.id}:`, error);
@@ -63,7 +71,7 @@ router.get('/:id/versions', (req, res) => {
 // GET /api/custom-templates/:id - Get single template
 router.get('/:id', (req, res) => {
     try {
-        const template = customTemplateEngine.getTemplate(req.params.id);
+        const template = req.templateEngine.getTemplate(req.params.id);
         res.status(200).json({ success: true, data: template });
     } catch (error) {
         logger.error(`[CustomTemplatesAPI] Error getting template ${req.params.id}:`, error);
@@ -79,7 +87,7 @@ router.post('/shared', (req, res) => {
             return res.status(400).json({ success: false, error: 'Template name and module are required.' });
         }
 
-        const sharedTemplate = customTemplateEngine.provideSharedTemplate(
+        const sharedTemplate = req.templateEngine.provideSharedTemplate(
             { name, module, category, description, instructions, permittedFields, lockedFields, structure, status, permissions },
             actor || { name: 'Super Admin', role: 'super_admin' }
         );
@@ -104,7 +112,7 @@ router.post('/', (req, res) => {
             return res.status(400).json({ success: false, error: 'Template name and module are required.' });
         }
 
-        const newTemplate = customTemplateEngine.createTemplate(
+        const newTemplate = req.templateEngine.createTemplate(
             { name, module, category, description, instructions, permittedFields, lockedFields, structure, status, permissions, scope, isPersonal },
             actor || { name: 'Admin', role: 'hr_admin' }
         );
@@ -124,7 +132,7 @@ router.post('/', (req, res) => {
 router.post('/:id/personal-copy', (req, res) => {
     try {
         const { actor, overrides } = req.body;
-        const personalCopy = customTemplateEngine.createPersonalCopy(
+        const personalCopy = req.templateEngine.createPersonalCopy(
             req.params.id,
             actor || { name: 'Manager', role: 'manager' },
             overrides || {}
@@ -147,7 +155,7 @@ router.post('/:id/personal-copy', (req, res) => {
 router.post('/:id/archive', (req, res) => {
     try {
         const { actor, reason } = req.body;
-        const archived = customTemplateEngine.archiveTemplate(
+        const archived = req.templateEngine.archiveTemplate(
             req.params.id,
             actor || { name: 'Admin', role: 'hr_admin' },
             reason
@@ -173,7 +181,7 @@ router.post('/:id/version', (req, res) => {
             return res.status(400).json({ success: false, error: 'versionData payload is required.' });
         }
 
-        const updated = customTemplateEngine.createTemplateVersion(
+        const updated = req.templateEngine.createTemplateVersion(
             req.params.id,
             versionData,
             actor || { name: 'Admin', role: 'hr_admin' }
@@ -196,7 +204,7 @@ router.post('/:id/version', (req, res) => {
 router.put('/:id', (req, res) => {
     try {
         const { name, description, instructions, permittedFields, lockedFields, structure, changeNotes, actor, status } = req.body;
-        const updated = customTemplateEngine.updateTemplate(
+        const updated = req.templateEngine.updateTemplate(
             req.params.id,
             { name, description, instructions, permittedFields, lockedFields, structure, changeNotes, status },
             actor || { name: 'User', role: 'manager' }
@@ -217,7 +225,7 @@ router.put('/:id', (req, res) => {
 router.post('/:id/preview', (req, res) => {
     try {
         const { customFieldValues } = req.body;
-        const preview = customTemplateEngine.previewTemplate(req.params.id, customFieldValues || {});
+        const preview = req.templateEngine.previewTemplate(req.params.id, customFieldValues || {});
         res.status(200).json({ success: true, data: preview });
     } catch (error) {
         logger.error(`[CustomTemplatesAPI] Error previewing template ${req.params.id}:`, error);
@@ -229,7 +237,7 @@ router.post('/:id/preview', (req, res) => {
 router.post('/:id/save-draft', (req, res) => {
     try {
         const { updates, actor } = req.body;
-        const template = customTemplateEngine.saveAsDraft(req.params.id, updates || {}, actor);
+        const template = req.templateEngine.saveAsDraft(req.params.id, updates || {}, actor);
         res.status(200).json({
             success: true,
             data: template,
@@ -245,7 +253,7 @@ router.post('/:id/save-draft', (req, res) => {
 router.post('/:id/publish', (req, res) => {
     try {
         const { actor } = req.body;
-        const template = customTemplateEngine.publishTemplate(req.params.id, actor || { name: 'Admin', role: 'hr_admin' });
+        const template = req.templateEngine.publishTemplate(req.params.id, actor || { name: 'Admin', role: 'hr_admin' });
         res.status(200).json({
             success: true,
             data: template,
@@ -265,7 +273,7 @@ router.put('/:id/permissions', (req, res) => {
             return res.status(400).json({ success: false, error: 'Permissions payload is required.' });
         }
 
-        const template = customTemplateEngine.updateTemplatePermissions(
+        const template = req.templateEngine.updateTemplatePermissions(
             req.params.id,
             permissions,
             actor || { name: 'Super Admin', role: 'super_admin' }
@@ -286,7 +294,7 @@ router.put('/:id/permissions', (req, res) => {
 router.post('/:id/instantiate', (req, res) => {
     try {
         const { userInputs, actor } = req.body;
-        const instantiated = customTemplateEngine.instantiateTemplate(req.params.id, userInputs || {}, actor);
+        const instantiated = req.templateEngine.instantiateTemplate(req.params.id, userInputs || {}, actor);
         res.status(200).json({
             success: true,
             data: instantiated,

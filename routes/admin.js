@@ -23,6 +23,7 @@ router.post("/sync-database", adminController.syncDatabase);
 router.post("/departments", validateDepartment, adminController.createDepartment);
 router.post("/employees", validateEmployee, adminController.createEmployee);
 router.post("/employees/:id/trigger-invite", adminController.triggerEmailInvite);
+router.post("/job-roster/import", require("../services/job-roster-import").importJobRoster);
 router.put("/employees/:id", adminController.updateEmployee);
 router.delete("/employees/:id", adminController.deleteEmployee);
 router.post("/managers", validateEmployee, adminController.createManager);

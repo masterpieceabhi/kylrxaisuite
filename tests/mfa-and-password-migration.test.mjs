@@ -7,6 +7,9 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+// Run on the full in-memory database (same calls as Firestore). The small stand-in inside config/firebase.js does not
+// understand FieldValue.delete(), so the migration's "remove tempPassword" step could not be checked against it.
+require('./helpers/memory-firestore.js').install();
 const { app, dynamicRoutesLoaded } = require('../server.js');
 const { db, admin } = require('../config/firebase.js');
 const { migratePlaintextPasswords } = require('../scripts/migrate-plaintext-passwords.js');

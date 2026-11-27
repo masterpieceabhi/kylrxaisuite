@@ -5,7 +5,16 @@
   "main": "app.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test --test-force-exit tests/non-negotiable-product-rules.test.mjs tests/kylrx-hr-operating-system.test.mjs services/gratuity-automation-engine.test.mjs tests/payroll-decentro-integration.test.mjs tests/business-unit-schema-and-rules.test.mjs tests/employee-type-schema-and-rules.test.mjs tests/employee-finance-schema-and-rules.test.mjs tests/manager-goals-and-custom-templates.test.mjs tests/employee-goals.test.mjs",
+    "emulators": "npx --yes firebase-tools@14.27.0 emulators:start --only auth,firestore --project kylrxai",
+    "seed:local": "node scripts/seed-emulator.js",
+    "start:local": "node scripts/start-local.js",
+    "test": "npm run test:main && npm run test:servers",
+    "test:servers": "node --test --test-timeout=120000 tests/kylrx-hr-operating-system.test.mjs services/gratuity-automation-engine.test.mjs tests/server-hardening.test.mjs tests/route-auth-enforcement.test.mjs tests/mfa-and-password-migration.test.mjs tests/firestore-users-security.test.mjs",
+    "test:main": "node --test --test-force-exit tests/non-negotiable-product-rules.test.mjs tests/payroll-decentro-integration.test.mjs tests/business-unit-schema-and-rules.test.mjs tests/employee-type-schema-and-rules.test.mjs tests/employee-finance-schema-and-rules.test.mjs tests/manager-goals-and-custom-templates.test.mjs tests/employee-goals.test.mjs tests/country-config.test.mjs tests/us-hr-validation.test.mjs tests/us-forms.test.mjs tests/time-rules.test.mjs tests/leave-rules.test.mjs tests/checklist-rules.test.mjs tests/us-offboarding.test.mjs tests/time-policy.test.mjs tests/us-reports.test.mjs tests/compliance-rules.test.mjs tests/permissions.test.mjs tests/sso.test.mjs tests/clock-compliance-rules.test.mjs tests/schedule-rules.test.mjs tests/org-people-data.test.mjs tests/pay-schedule-rules.test.mjs tests/benefits-rules.test.mjs tests/leave-cases-rules.test.mjs tests/wage-rules.test.mjs tests/tips-rules.test.mjs tests/api-auth.test.mjs tests/background-check-rules.test.mjs tests/billing.test.mjs tests/canonical.test.mjs tests/esign-rules.test.mjs tests/everify-newhire-rules.test.mjs tests/gusto-integration.test.mjs tests/gusto-app-connect.test.mjs tests/gusto-app-connect-routes.test.mjs tests/gusto-time-sheets.test.mjs tests/pin-signin.test.mjs tests/daily-jobs.test.mjs tests/ops-alerts.test.mjs tests/email-notices.test.mjs tests/email-reminders.test.mjs tests/company-ein.test.mjs tests/sso-complete.test.mjs tests/smart-fill.test.mjs tests/error-reporter-scrub.test.mjs tests/gusto-app-payroll.test.mjs tests/client-app-readiness.test.mjs tests/authenticator.test.mjs tests/billing-read-only.test.mjs tests/export-and-paging.test.mjs tests/env-documented.test.mjs tests/served-countries.test.mjs tests/backend-rules.test.mjs tests/qr-signin.test.mjs tests/firebase-config-guard.test.mjs tests/firestore-us-rules.test.mjs tests/gusto-pay-results.test.mjs tests/leave-holidays.test.mjs tests/performance-rules.test.mjs tests/survey-rules.test.mjs tests/asset-rules.test.mjs tests/policy-rules.test.mjs tests/report-builder-rules.test.mjs tests/gusto-extra-hours.test.mjs tests/static-guard.test.mjs tests/production-check.test.mjs tests/hiring-rules.test.mjs tests/privacy-rules.test.mjs tests/ssrf.test.mjs tests/webhooks-events.test.mjs tests/payroll-pf-earned-basic.test.mjs tests/review-cycle-rules.test.mjs tests/recognition-rules.test.mjs tests/payroll-import-rules.test.mjs tests/company-profile-industry.test.mjs tests/tag-rules.test.mjs tests/pay-schedule-page.test.mjs tests/leave-payout-rules.test.mjs tests/audit-chain-writer.test.mjs tests/us-hr-permissions.test.mjs tests/local-demo.test.mjs tests/gusto-offcycle.test.mjs tests/gusto-contractors.test.mjs tests/gusto-tax-forms.test.mjs tests/garnishment-rules.test.mjs tests/gusto-garnishments.test.mjs tests/gusto-benefit-deductions.test.mjs tests/gusto-bank-state-tax.test.mjs tests/gusto-extras-routes.test.mjs tests/connector-mapping.test.mjs tests/connector-sync.test.mjs tests/connector-file-export.test.mjs tests/connector-netsuite-sftp.test.mjs tests/scim.test.mjs tests/integration-alerts.test.mjs tests/support-rules.test.mjs tests/backup-rules.test.mjs tests/notice-templates.test.mjs tests/exit-interview.test.mjs tests/comp-due-rules.test.mjs tests/training-rules.test.mjs tests/us-compliance-permissions.test.mjs tests/us-vault-permissions.test.mjs tests/us-checklists-permissions.test.mjs tests/us-forms-permissions.test.mjs tests/us-offboarding-permissions.test.mjs tests/us-i9.test.mjs tests/auth-middleware.test.mjs tests/rbac-permissions-override.test.mjs tests/time-workweek.test.mjs tests/time-zones.test.mjs tests/time-access.test.mjs tests/time-network.test.mjs tests/team-import-rules.test.mjs tests/access-link-rules.test.mjs tests/us-people-permissions.test.mjs tests/qr-mini.test.mjs tests/gusto-workweek.test.mjs tests/payroll-documents-access.test.mjs tests/schedule-workweek.test.mjs tests/standin-store-fieldvalue.test.mjs tests/us-checklists-scope.test.mjs tests/workweek-routes.test.mjs tests/hr-assistant.test.mjs tests/india-only-modules.test.mjs tests/india-per-company-stores.test.mjs tests/vault-retention-after-leaving.test.mjs tests/checklist-data-tasks.test.mjs tests/prefill-known-data.test.mjs tests/hiring-prefill.test.mjs tests/benefits-leave-prefill.test.mjs tests/forms-prefill.test.mjs tests/setup-status.test.mjs tests/company-data.test.mjs tests/team-invite.test.mjs tests/billing-stripe-card.test.mjs",
+    "test:rules": "npx --yes firebase-tools@14.27.0 emulators:exec --only auth,firestore --project kylrxai \"node --test --test-force-exit --test-timeout=120000 tests/firestore-us-rules.test.mjs tests/firestore-users-security.test.mjs\"",
+    "check:production": "node scripts/check-production-env.js",
+    "backup": "node scripts/backup.js",
+    "restore": "node scripts/restore.js",
     "provision:superadmin": "node scripts/provision-superadmin.js",
     "migrate:passwords": "node scripts/migrate-plaintext-passwords.js",
     "deploy:firebase": "firebase deploy --only firestore:rules,firestore:indexes,storage"
@@ -23,6 +32,7 @@
   "homepage": "https://github.com/infokylrxai-rgb/kylrx-enterprise-suite#readme",
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",
+    "@sentry/node": "^11.16.0",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
@@ -30,7 +40,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.4.1",
-    "firebase-admin": "^13.10.0",
+    "firebase-admin": "^14.5.1",
     "helmet": "^8.1.0",
     "hpp": "^0.2.3",
     "joi": "^18.2.1",
@@ -38,11 +48,12 @@
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
     "multer": "^2.1.1",
-    "nodemailer": "^9.0.1",
+    "nodemailer": "^10.6.0",
     "puppeteer": "^25.1.0",
     "resend": "^6.21.0",
+    "ssh2-sftp-client": "^12.1.1",
     "winston": "^3.19.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "xss": "^1.0.16"
   }
 }

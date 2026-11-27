@@ -264,13 +264,9 @@
         if (typeof window === 'undefined' || !window.location) {
             return `${typeof API_BASE !== 'undefined' ? API_BASE : (typeof window !== 'undefined' && window.API_BASE ? window.API_BASE : (typeof window !== 'undefined' && window.location ? window.location.origin : ''))}/api/admin/bu-rules`;
         }
-        const port = window.location.port;
-        // On port 3000 (direct Express) or port 5500/5501 (reverse proxy), use relative path
-        if (port === '3000' || port === '5500' || port === '5501') {
-            return '/api/admin/bu-rules';
-        }
-        const host = window.location.hostname || 'localhost';
-        return `http://${host}:3000/api/admin/bu-rules`;
+        // The pages and the API come from the same server (local :3000, staging and production behind HTTPS), so the
+        // API is on this page's own address. A fixed http://<host>:3000 broke every real server.
+        return `${window.API_BASE || window.location.origin}/api/admin/bu-rules`;
     }
 
     /**

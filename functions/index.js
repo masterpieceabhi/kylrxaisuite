@@ -50,80 +50,24 @@ const SUPERADMIN_PERMISSIONS = [
  * and provisions the unconfigured organization document (`orgConfigured: false`).
  */
 exports.onUserCreated = functions.auth.user().onCreate(async (user) => {
-  const { uid, email, displayName } = user;
-  console.log(`[onUserCreated] Processing new Firebase Auth user: ${email} (${uid})`);
-
+  // This trigger used to make every new sign-in without a role the SUPER ADMIN of a company named after its email
+  // domain (org_<domain>), whether or not that company already existed. That let anyone who could create a sign-in
+  // (the web key is public) take over a company by using an address at its domain, put every gmail.com sign-up into
+  // one shared company, and race the server's own signup, which sets the role a moment after creating the account.
+  //
+  // Nothing needs it: no page creates sign-in accounts from the browser. Companies and their owners are made by
+  // POST /api/auth/register-organization, and employees by the people routes; both set the role and company
+  // themselves with the Admin SDK. So a sign-in that arrives here without a role gets none: it belongs to no
+  // company until the server puts it in one.
+  const { uid, email } = user;
   try {
-    // 1. Check if user already has custom claims
-    const existingUser = await auth.getUser(uid);
-    if (existingUser.customClaims && existingUser.customClaims.role) {
-      console.log(`[onUserCreated] User ${uid} already has claims assigned. Skipping.`);
-      return null;
-    }
-
-    // 2. Determine if this user is an initial customer/super admin signup
-    // In multi-tenant SaaS, the signup flow creates a new tenant organization
-    const orgSlug = email.split('@')[1]?.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase() || 'default_org';
-    const orgId = `org_${orgSlug}`;
-
-    const orgRef = db.collection('organizations').doc(orgId);
-    const orgSnap = await orgRef.get();
-
-    let isInitialCustomerSignup = false;
-
-    if (!orgSnap.exists) {
-      // First user registering under this tenant domain -> Initial Customer Super Admin
-      isInitialCustomerSignup = true;
-      console.log(`[onUserCreated] Initial customer account detected. Creating organization: ${orgId}`);
-
-      await orgRef.set({
-        orgId,
-        domain: email.split('@')[1] || '',
-        name: displayName || 'Enterprise Organization',
-        creatorUid: uid,
-        creatorEmail: email,
-        orgConfigured: false, // Critical Gate: Blocked from admin collections until setup is finished
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        settings: {
-          weeklyOff: 'none', // Default 7-day operation or configured in onboarding
-          currency: 'INR',
-          timezone: 'Asia/Kolkata',
-          statutoryComplianceActive: true
-        }
-      });
-    }
-
-    // 3. Assign Custom Claims if initial customer or explicit admin domain
-    const customClaims = {
-      role: 'super_admin',
-      super_admin: true,
-      orgId,
-      permissions: SUPERADMIN_PERMISSIONS
-    };
-
-    await auth.setCustomUserClaims(uid, customClaims);
-    console.log(`[onUserCreated] Successfully granted Super Admin custom claims to UID: ${uid} for org: ${orgId}`);
-
-    // 4. Ensure master user profile document in Firestore reflects this
-    const userRef = db.collection('users').doc(uid);
-    await userRef.set({
-      uid,
-      email,
-      displayName: displayName || 'Super Admin',
-      role: 'super_admin',
-      orgId,
-      isInitialSignup: isInitialCustomerSignup,
-      status: 'active',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    return { success: true, uid, orgId, claims: customClaims };
+    const existing = await auth.getUser(uid);
+    const hasRole = Boolean(existing.customClaims && existing.customClaims.role);
+    console.log(`[onUserCreated] New sign-in ${uid} (${email ? "with" : "without"} email): ${hasRole ? "role already set by the server" : "no role yet; none is granted here"}.`);
   } catch (error) {
-    console.error(`[onUserCreated] Error during user provisioning:`, error);
-    throw new functions.https.HttpsError('internal', error.message);
+    console.error(`[onUserCreated] Could not read new sign-in ${uid}:`, error.message);
   }
+  return null;
 });
 
 /**

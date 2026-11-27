@@ -4,9 +4,9 @@
     <script src="config.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Kylrx AI — Operational Finance Dashboard. Live reconciliation, disbursement summaries, compliance registers, batch reports, exception queues, and full audit log with one-click exports.">
+  <meta name="description" content="Onn HR — Operational Finance Dashboard. Live reconciliation, disbursement summaries, compliance registers, batch reports, exception queues, and full audit log with one-click exports.">
   <meta name="robots" content="noindex, nofollow">
-  <title>Operational Dashboard | Kylrx AI HRMS</title>
+  <title>Operational Dashboard | Onn HR</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📊</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -200,8 +200,8 @@
           <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <a href="admin-dashboard.html" class="logo">
-                <img src="logo.jpg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
-                <span class="logo-text">Kylrx <span style="color: var(--primary);">AI</span></span>
+                <img src="onnhr-logo.svg" alt="Logo" style="height: 36px; object-fit: contain; border-radius: 8px;">
+                <span class="logo-text">Onn <span style="color: var(--primary);">HR</span></span>
             </a>
             
             <nav class="nav-menu">
@@ -1385,9 +1385,8 @@ window.renderLucideIcons = renderLucideIcons;
   try {
     onAuthStateChanged(auth, async (user) => {
       if (!user) {
-        try {
-          await signInWithEmailAndPassword(auth, 'superadmin@kylrx.ai', 'Kylrx#SuperAdmin2026!Secured');
-        } catch (_) {}
+        window.location.replace('login.html');
+        return;
       }
       setupFirestoreListeners();
       await loadBackendData();

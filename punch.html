@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0f172a">
+<title>Clock in / out</title>
+<style>
+:root{--green:#16a34a;--red:#dc2626;--amber:#d97706;--ink:#0f172a;--muted:#64748b;--bg:#f1f5f9}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;min-height:100vh;font:18px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid #e2e8f0}
+header b{font-size:20px}
+.lang{display:flex;gap:6px}.lang button{font:inherit;font-weight:700;padding:8px 14px;border-radius:999px;border:2px solid #cbd5e1;background:#fff;color:var(--ink)}
+.lang button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:22px 16px}
+#hello{font-size:24px;font-weight:700;text-align:center}
+#state{font-size:22px;text-align:center;color:var(--muted);min-height:2.6em}
+#state strong{color:var(--ink)}
+#big{width:min(74vw,320px);aspect-ratio:1;border-radius:50%;border:0;color:#fff;font:800 clamp(28px,8vw,40px)/1.1 system-ui;letter-spacing:.02em;box-shadow:0 14px 34px rgba(15,23,42,.28);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:18px;transition:transform .12s}
+#big:active{transform:scale(.96)}#big:disabled{opacity:.6}
+#big small{display:block;font-size:.42em;font-weight:600;opacity:.9;margin-top:6px}
+.in{background:var(--green)}.out{background:var(--red)}
+#breakBtn{min-width:min(74vw,320px);padding:18px 22px;border-radius:18px;border:0;font:700 22px system-ui;color:#fff;background:var(--amber);cursor:pointer;display:none}
+#breakBtn.end{background:var(--green)}
+.totals{display:flex;gap:14px;width:min(92vw,420px)}
+.totals div{flex:1;background:#fff;border-radius:16px;padding:12px 14px;text-align:center;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+.totals b{display:block;font-size:26px}.totals span{color:var(--muted);font-size:14px}
+#banner{display:none;width:min(92vw,420px);background:#fef3c7;color:#92400e;border-radius:14px;padding:12px 14px;font-weight:600;text-align:center}
+#toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(30px);opacity:0;transition:.25s;padding:16px 24px;border-radius:16px;color:#fff;font-weight:700;font-size:20px;background:var(--ink);max-width:92vw;text-align:center;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%)}#toast.ok{background:var(--green)}#toast.bad{background:var(--red)}
+footer{padding:14px;text-align:center}footer a{color:var(--muted);font-size:15px}
+#pending,#lateFail{display:none;width:min(92vw,420px);border-radius:14px;padding:12px 14px;font-weight:600;text-align:center}
+#pending{background:#dbeafe;color:#1e3a8a}#lateFail{background:#fee2e2;color:#991b1b}
+#pending button,#lateFail button{margin-top:10px;padding:12px 18px;border:0;border-radius:12px;font:inherit;font-weight:800;cursor:pointer;background:#1e3a8a;color:#fff}#lateFail button{background:#991b1b}
+#pending ul,#lateFail ul{list-style:none;margin:8px 0 0;padding:0;font-weight:500}
+#sheet .item{border:1px solid #e2e8f0;border-radius:12px;padding:12px;margin:10px 0;text-align:left}#sheet .item b{display:block}#sheet .item span{color:var(--muted);font-size:15px}#sheet .item button{margin-top:10px;width:100%;font-size:17px;padding:12px}
+#sheet{display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);align-items:center;justify-content:center;padding:14px;z-index:20}#sheet .box{background:#fff;border-radius:18px;padding:18px;width:min(94vw,460px);max-height:92vh;overflow:auto}#sheet h2{margin:0 0 8px;font-size:22px}#sheet .step{margin:0 0 8px;color:var(--muted);font-size:15px}#sheet .notice{white-space:pre-wrap;font-size:16px;line-height:1.45;max-height:46vh;overflow:auto;border:1px solid #e2e8f0;border-radius:12px;padding:12px}#sheet video{width:100%;border-radius:12px;background:#000;transform:scaleX(-1)}#sheet .acts{display:grid;gap:10px;margin-top:14px}#sheet button{padding:16px;border:0;border-radius:14px;font:inherit;font-size:19px;font-weight:800;cursor:pointer}#sheet .yes{background:var(--green);color:#fff}#sheet .no{background:#fee2e2;color:#b91c1c}#sheet .plain{background:#e2e8f0;color:var(--ink)}#sheet button:disabled{opacity:.5}
+/* wall clock above the button: it only tells the time, the button below does the clocking in and out */
+#clockWrap{perspective:900px;margin:2px 0 14px}
+#clock{width:min(66vw,270px);height:auto;transform:rotateX(14deg);transition:transform .35s;filter:drop-shadow(0 18px 14px rgba(15,23,42,.32))}
+#clock.working{transform:rotateX(0deg)}
+#clock text{font-family:system-ui,sans-serif}
+@media (prefers-reduced-motion:reduce){#clock{transition:none}}
+#big{width:min(86vw,360px);aspect-ratio:auto;border-radius:20px;padding:18px 16px;font-size:clamp(24px,7vw,32px)}
+</style>
+</head>
+<body data-no-onn-footer>
+<div id="sheet" role="dialog" aria-modal="true"></div>
+<header><b id="title">Clock in / out</b><div class="lang"><button data-l="en">EN</button><button data-l="es">ES</button></div></header>
+<main>
+  <div id="hello"></div>
+  <div id="state"></div>
+  <div id="clockWrap" aria-hidden="true">
+    <svg id="clock" viewBox="0 0 300 300">
+      <defs>
+        <radialGradient id="ckRim" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#f4f4f1"/><stop offset=".45" stop-color="#a9a8a2"/><stop offset=".8" stop-color="#55544f"/><stop offset="1" stop-color="#2c2c2a"/></radialGradient>
+        <radialGradient id="ckInner" cx="50%" cy="50%" r="50%"><stop offset=".9" stop-color="#2c2c2a"/><stop offset="1" stop-color="#888780"/></radialGradient>
+        <radialGradient id="ckFace" cx="42%" cy="34%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".7" stop-color="#f1efe8"/><stop offset="1" stop-color="#d3d1c7"/></radialGradient>
+        <linearGradient id="ckGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+        <radialGradient id="ckCap" cx="35%" cy="30%" r="70%"><stop offset="0" stop-color="#f09595"/><stop offset="1" stop-color="#791f1f"/></radialGradient>
+        <filter id="ckShadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="2.5" dy="4" stdDeviation="2.2" flood-color="#000" flood-opacity=".4"/></filter>
+        <filter id="ckSoft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="5"/></filter>
+      </defs>
+      <circle cx="150" cy="150" r="146" fill="url(#ckRim)"/>
+      <circle cx="150" cy="150" r="128" fill="url(#ckInner)"/>
+      <circle cx="150" cy="150" r="122" fill="url(#ckFace)"/>
+      <circle cx="150" cy="150" r="121" fill="none" stroke="#000" stroke-opacity=".28" stroke-width="10" filter="url(#ckSoft)"/>
+      <g id="ckMarks"></g>
+      <text id="ckDigits" x="150" y="106" text-anchor="middle" font-size="13" fill="#444441"></text>
+      <g filter="url(#ckShadow)">
+        <rect id="ckHour" x="145.5" y="82" width="9" height="78" rx="4.5" fill="#2c2c2a"/>
+        <rect id="ckMin" x="147" y="48" width="6" height="112" rx="3" fill="#2c2c2a"/>
+        <g id="ckSec"><rect x="149" y="40" width="2" height="132" fill="#e24b4a"/><circle cx="150" cy="172" r="5" fill="#e24b4a"/></g>
+      </g>
+      <circle cx="150" cy="150" r="8" fill="url(#ckCap)"/>
+      <circle cx="150" cy="150" r="2.5" fill="#501313"/>
+      <path d="M52 118 A104 104 0 0 1 248 118 A150 120 0 0 0 52 118Z" fill="url(#ckGlass)"/>
+    </svg>
+  </div>
+  <button id="big" type="button" disabled></button>
+  <button id="breakBtn" type="button"></button>
+  <div id="banner"></div>
+  <div id="pending" role="status" aria-live="polite"></div>
+  <div id="lateFail" role="alert"></div>
+  <a id="paper" href="us-onboarding.html" style="display:none;width:min(92vw,420px);background:#dbeafe;color:#1e3a8a;border-radius:14px;padding:14px;font-weight:700;text-align:center;text-decoration:none"></a>
+  <div class="totals"><div><b id="today">-</b><span id="lblToday"></span></div><div><b id="week">-</b><span id="lblWeek"></span></div></div>
+</main>
+<footer><a href="timesheet.html" id="sheetLink" style="display:inline-block;margin:0 14px 10px;font-weight:700;font-size:18px"></a><a href="leave.html" id="leaveLink" style="display:inline-block;margin:0 14px 10px;font-weight:700;font-size:18px"></a><br><a href="my-documents.html" id="docsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="report-injury.html" id="injuryLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="self-id.html" id="idLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><br><a href="tips.html" id="tipsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="leave-cases.html" id="casesLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-pay.html" id="payLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-profile.html" id="profileLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-schedule.html" id="schedLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-benefits.html" id="benLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-goals.html" id="goalsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-surveys.html" id="surveysLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-assets.html" id="assetsLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-policies.html" id="policiesLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-privacy.html" id="privLink" style="display:inline-block;margin:0 14px 10px;font-size:16px"></a><a href="my-news.html" id="newsLink" style="display:none;margin:0 14px 10px;font-size:16px"></a><a href="my-reviews.html" id="reviewsLink" style="display:none;margin:0 14px 10px;font-size:16px"></a><a href="my-exit-interview.html" id="exitLink" style="display:none;margin:0 14px 10px;font-size:16px"></a><a href="#" id="noticesLink" style="display:none;margin:0 14px 10px;font-size:16px"></a><br><a href="us-home.html" id="homeLink" style="display:none;margin:0 14px 10px;font-weight:700;font-size:17px"></a><br><a href="#" id="backLink"></a></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script type="module">
+import { auth, onAuthStateChanged } from './firebase-config.js';
+
+const T = {
+  en: { title: 'Clock in / out', hello: 'Hello, {n}', in: 'CLOCK IN', out: 'CLOCK OUT', tap: 'Tap here', brk: 'Start break', brkEnd: 'End break',
+        offState: 'You are <strong>not clocked in</strong>', inState: 'Working since <strong>{t}</strong><br>{d}', brkState: 'On break since <strong>{t}</strong>',
+        today: 'Today', week: 'This week', done_in: 'Clocked in at {t}', done_out: 'Clocked out at {t}. Thank you!', done_bs: 'Break started', done_be: 'Back to work',
+        paper: 'Please finish your new-hire paperwork (tap here)', forgot: 'It looks like you forgot to clock out. Please tell your manager.', fail: 'Could not reach the server. Try again.', back: 'Back to my dashboard', leave: 'Time off', sheet: 'My hours', docs: 'My documents', injury: 'Report an injury', selfid: 'Optional: self-identification', tips: 'My tips', cases: 'Longer leave (medical, family, other)', pay: 'My pay stubs', profile: 'My details', sched: 'My schedule', ben: 'My benefits', priv: 'My privacy', goalsL: 'My goals', surveysL: 'Surveys', assetsL: 'My equipment', policiesL: 'Company policies',
+        newsL: 'Company news', reviewsL: 'My reviews', exitL: 'Exit interview', homeL: 'All my pages', noticesL: 'My clock notices',
+        actIn: 'Clock in', actOut: 'Clock out', actBs: 'Start break', actBe: 'End break',
+        offSaved: 'No connection. Your {a} at {t} is saved on this phone and will be sent by itself when you are back online.',
+        offNotSaved: 'No connection, and this phone could not save your punch. It was NOT recorded. Try again when you have signal, or tell your manager.',
+        pend1: '1 punch is waiting to be sent', pendN: '{n} punches are waiting to be sent', pendHelp: 'They are saved on this phone with the time you tapped. Keep this page open or come back to it: they are sent when the phone is online, and marked as sent late for your manager.', tryNow: 'Try to send now', sending: 'Sending...',
+        lateSent: 'Sent. Your {a} at {t} is recorded. It is marked as sent late, so your manager will look at it.', lateSentN: 'Sent. {n} saved punches are recorded and marked as sent late for your manager.',
+        lateFailT: 'A saved punch could not be recorded. Tell your manager so they can add it.', lateFailOk: 'OK, I will tell my manager', offStatus: 'No connection. This is what the phone last knew.',
+        late_too_old: 'it was saved more than 3 days ago', late_out_of_order: 'a later punch was already recorded', late_bad_time: 'its time could not be read', outside_network: 'This phone is not on an approved work network. Connect to the work Wi-Fi and try again.',
+        already_in: 'You are already clocked in.', not_in: 'You are not clocked in.', already_on_break: 'You are already on a break.', not_on_break: 'You are not on a break.' },
+  es: { title: 'Entrada / salida', hello: 'Hola, {n}', in: 'ENTRAR', out: 'SALIR', tap: 'Toque aquí', brk: 'Empezar descanso', brkEnd: 'Terminar descanso',
+        offState: '<strong>No ha registrado entrada</strong>', inState: 'Trabajando desde <strong>{t}</strong><br>{d}', brkState: 'En descanso desde <strong>{t}</strong>',
+        today: 'Hoy', week: 'Esta semana', done_in: 'Entrada registrada a las {t}', done_out: 'Salida registrada a las {t}. ¡Gracias!', done_bs: 'Descanso iniciado', done_be: 'De vuelta al trabajo',
+        paper: 'Por favor termine sus papeles de nuevo empleado (toque aquí)', forgot: 'Parece que olvidó registrar su salida. Avise a su supervisor.', fail: 'No se pudo conectar. Intente de nuevo.', back: 'Volver a mi panel', leave: 'Tiempo libre', sheet: 'Mis horas', docs: 'Mis documentos', injury: 'Reportar una lesión', selfid: 'Opcional: autoidentificación', tips: 'Mis propinas', cases: 'Licencia larga (médica, familiar, otra)', pay: 'Mis recibos de pago', profile: 'Mis datos', sched: 'Mi horario', ben: 'Mis beneficios', priv: 'Mi privacidad', goalsL: 'Mis metas', surveysL: 'Encuestas', assetsL: 'Mi equipo', policiesL: 'Políticas de la empresa',
+        newsL: 'Noticias', reviewsL: 'Mis evaluaciones', exitL: 'Entrevista de salida', homeL: 'Todas mis páginas', noticesL: 'Mis avisos del reloj',
+        actIn: 'Entrada', actOut: 'Salida', actBs: 'Inicio de descanso', actBe: 'Fin de descanso',
+        offSaved: 'Sin conexión. Su registro de {a} a las {t} quedó guardado en este teléfono y se enviará solo cuando vuelva la conexión.',
+        offNotSaved: 'Sin conexión, y este teléfono no pudo guardar su registro. NO quedó registrado. Intente de nuevo cuando tenga señal o avise a su supervisor.',
+        pend1: '1 registro está esperando para enviarse', pendN: '{n} registros están esperando para enviarse', pendHelp: 'Están guardados en este teléfono con la hora en que usted tocó el botón. Deje esta página abierta o vuelva a ella: se envían cuando el teléfono tenga conexión y quedan marcados como enviados tarde para su supervisor.', tryNow: 'Intentar enviar ahora', sending: 'Enviando...',
+        lateSent: 'Enviado. Su registro de {a} a las {t} quedó guardado. Está marcado como enviado tarde, así que su supervisor lo revisará.', lateSentN: 'Enviado. {n} registros guardados quedaron registrados y marcados como enviados tarde para su supervisor.',
+        lateFailT: 'Un registro guardado no se pudo registrar. Avise a su supervisor para que lo agregue.', lateFailOk: 'Entendido, avisaré a mi supervisor', offStatus: 'Sin conexión. Esto es lo último que supo el teléfono.',
+        late_too_old: 'se guardó hace más de 3 días', late_out_of_order: 'ya se registró un registro posterior', late_bad_time: 'no se pudo leer su hora', outside_network: 'Este teléfono no está en una red de trabajo aprobada. Conéctese al Wi-Fi del trabajo e intente de nuevo.',
+        already_in: 'Ya registró su entrada.', not_in: 'No ha registrado entrada.', already_on_break: 'Ya está en descanso.', not_on_break: 'No está en descanso.' }
+};
+let lang = (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en';
+try { lang = localStorage.getItem('kylrx_lang') || lang; } catch (_) {}
+const $ = (id) => document.getElementById(id);
+const tr = (k, v = {}) => (T[lang][k] || k).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? '');
+let name = '', status = null, clockOffset = 0, busy = false, paperNeeded = false, isUs = false, leaving = false;
+
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString(lang === 'es' ? 'es-US' : 'en-US', { hour: 'numeric', minute: '2-digit', timeZone: status && status.timeZone });
+const fmtDur = (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`; };
+
+function toast(text, kind) { const t = $('toast'); t.textContent = text; t.className = `show ${kind || ''}`; clearTimeout(toast.id); toast.id = setTimeout(() => { t.className = ''; }, Math.max(3200, Math.min(9000, text.length * 70))); }
+
+/**
+ * offline: true means the request did not get an answer from the app (no signal, a timeout, or the server was
+ * not reachable). That is different from the server answering "no", which comes back with ok: false and a code.
+ */
+async function api(method, path, body) {
+  let res;
+  const stop = new AbortController(); const timer = setTimeout(() => stop.abort(), 20000);
+  try {
+    const token = await auth.currentUser.getIdToken();
+    res = await fetch(`/api/time${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined, signal: stop.signal });
+  } catch (_) { return { ok: false, offline: true, status: 0, json: {} }; } finally { clearTimeout(timer); }
+  const json = await res.json().catch(() => null);
+  // a gateway error, "too many requests" or an answer that is not from the app: nothing was decided, so it can be sent again
+  if ([408, 425, 429, 500, 502, 503, 504].includes(res.status) || json === null) return { ok: false, offline: true, status: res.status, json: json || {} };
+  return { ok: res.ok, status: res.status, json };
+}
+
+/* ---------- punches made without a connection: kept on this phone, sent later, never dropped and never doubled ---------- */
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (_) { return false; } }
+};
+const who = () => (auth.currentUser ? auth.currentUser.uid : 'none');
+const qKey = () => `kylrx_punch_queue_${who()}`; const fKey = () => `kylrx_punch_failed_${who()}`; const sKey = () => `kylrx_punch_status_${who()}`;
+const queued = () => store.get(qKey(), []);
+// one key for each tap: the server records a key only once, so sending the same punch again cannot make a second one
+const newKey = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9_-]/g, '');
+const actWord = (a) => tr({ in: 'actIn', out: 'actOut', break_start: 'actBs', break_end: 'actBe' }[a]);
+let flushing = false;
+
+/** What the page shows while a punch is waiting: the state the person just chose, from the time they tapped */
+function applyLocal(item) {
+  const state = { in: 'in', out: 'out', break_start: 'break', break_end: 'in' }[item.action];
+  status = { ...status, state, lastPunchAt: item.at, shiftStartedAt: item.action === 'in' ? item.at : state === 'out' ? null : status.shiftStartedAt, forgottenClockOut: false };
+  store.set(sKey(), status);
+}
+function paintQueue() {
+  const q = queued(); const box = $('pending');
+  box.style.display = q.length ? 'block' : 'none';
+  if (q.length) {
+    box.replaceChildren();
+    const head = document.createElement('div'); head.textContent = q.length === 1 ? tr('pend1') : tr('pendN', { n: q.length });
+    const list = document.createElement('ul'); q.forEach((it) => { const li = document.createElement('li'); li.textContent = `${actWord(it.action)} ${fmtTime(it.at)}`; list.append(li); });
+    const help = document.createElement('div'); help.style.cssText = 'font-weight:500;font-size:15px;margin-top:8px'; help.textContent = tr('pendHelp');
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = flushing ? tr('sending') : tr('tryNow'); btn.disabled = flushing; btn.addEventListener('click', () => flush(true));
+    box.append(head, list, help, btn);
+  }
+  const failed = store.get(fKey(), []); const fb = $('lateFail');
+  fb.style.display = failed.length ? 'block' : 'none';
+  if (failed.length) {
+    fb.replaceChildren();
+    const head = document.createElement('div'); head.textContent = tr('lateFailT');
+    const list = document.createElement('ul'); failed.forEach((it) => { const li = document.createElement('li'); li.textContent = `${actWord(it.action)} ${fmtTime(it.at)}: ${T[lang][it.code] || (X[lang] || X.en)[it.code] || it.error || it.code || ''}`; list.append(li); });
+    const btn = document.createElement('button'); btn.type = 'button'; btn.textContent = tr('lateFailOk'); btn.addEventListener('click', () => { store.set(fKey(), []); paintQueue(); });
+    fb.append(head, list, btn);
+  }
+}
+/** Sends the saved punches, oldest first. Stops at the first one that cannot reach the server and keeps the rest. */
+async function flush(byHand) {
+  if (flushing || !auth.currentUser || !queued().length) return;
+  if (navigator.onLine === false) { if (byHand) toast(tr('fail'), 'bad'); return; }
+  flushing = true; paintQueue();
+  const sent = [];
+  try {
+    while (queued().length) {
+      const it = queued()[0];
+      const r = await api('POST', '/punch', { action: it.action, clientKey: it.key, clientAt: it.at });
+      if (r.offline || r.status === 401 || r.status === 403) { if (byHand) toast(tr('fail'), 'bad'); break; } // still no connection (or signed out): keep everything
+      store.set(qKey(), queued().filter((x) => x.key !== it.key));
+      if (r.json.status) { status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now(); store.set(sKey(), status); }
+      if (r.ok) sent.push({ ...it, late: Boolean(r.json.late) });
+      else store.set(fKey(), [...store.get(fKey(), []), { ...it, code: r.json.code || null, error: r.json.error || null }]);
+    }
+  } finally { flushing = false; }
+  // late: false means the first try had reached the server after all, so that punch is an ordinary one
+  if (sent.length === 1 && !sent[0].late) toast(tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[sent[0].action], { t: fmtTime(status.lastPunchAt) }), 'ok');
+  else if (sent.length === 1) toast(tr('lateSent', { a: actWord(sent[0].action), t: fmtTime(sent[0].at) }), 'ok');
+  else if (sent.length > 1) toast(tr('lateSentN', { n: sent.length }), 'ok');
+  render();
+}
+window.addEventListener('online', () => flush());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flush(); });
+setInterval(() => flush(), 20000);
+
+function render() {
+  document.documentElement.lang = lang;
+  $('title').textContent = tr('title'); document.title = tr('title');
+  $('leaveLink').textContent = tr('leave'); $('sheetLink').textContent = tr('sheet'); $('docsLink').textContent = tr('docs'); $('injuryLink').textContent = tr('injury'); $('idLink').textContent = tr('selfid'); $('tipsLink').textContent = tr('tips'); $('casesLink').textContent = tr('cases'); $('payLink').textContent = tr('pay'); $('profileLink').textContent = tr('profile'); $('schedLink').textContent = tr('sched'); $('benLink').textContent = tr('ben'); $('privLink').textContent = tr('priv'); $('goalsLink').textContent = tr('goalsL'); $('surveysLink').textContent = tr('surveysL'); $('assetsLink').textContent = tr('assetsL'); $('policiesLink').textContent = tr('policiesL');
+  $('newsLink').textContent = tr('newsL'); $('reviewsLink').textContent = tr('reviewsL'); $('exitLink').textContent = tr('exitL'); $('homeLink').textContent = tr('homeL'); $('noticesLink').textContent = tr('noticesL');
+  // these pages are for United States companies; the exit interview only for someone who is leaving
+  ['newsLink', 'reviewsLink', 'homeLink', 'noticesLink'].forEach((id) => { $(id).style.display = isUs ? 'inline-block' : 'none'; }); $('exitLink').style.display = isUs && leaving ? 'inline-block' : 'none';
+  paintQueue();
+  $('lblToday').textContent = tr('today'); $('lblWeek').textContent = tr('week'); $('backLink').textContent = tr('back');
+  document.querySelectorAll('.lang button').forEach((b) => b.classList.toggle('on', b.dataset.l === lang));
+  $('hello').textContent = name ? tr('hello', { n: name.split(' ')[0] }) : '';
+  if (!status) return;
+  const s = status.state;
+  const big = $('big');
+  big.disabled = busy;
+  big.className = s === 'out' ? 'in' : 'out';
+  big.innerHTML = `${s === 'out' ? tr('in') : tr('out')}<small>${tr('tap')}</small>`;
+  const brk = $('breakBtn');
+  brk.style.display = s === 'out' ? 'none' : 'block';
+  brk.className = s === 'break' ? 'end' : '';
+  brk.textContent = s === 'break' ? tr('brkEnd') : tr('brk');
+  tick();
+  $('today').textContent = fmtDur(status.todayMinutes); $('week').textContent = fmtDur(status.weekMinutes);
+  const banner = $('banner'); banner.style.display = status.forgottenClockOut ? 'block' : 'none'; banner.textContent = tr('forgot');
+  const paper = $('paper'); paper.textContent = tr('paper'); if (!paperNeeded) paper.style.display = 'none'; else paper.style.display = 'block';
+}
+
+function tick() {
+  if (!status) return;
+  const s = status.state;
+  if (s === 'out') { $('state').innerHTML = tr('offState'); return; }
+  const since = new Date(status.shiftStartedAt || status.lastPunchAt);
+  const mins = Math.max(0, Math.floor((Date.now() + clockOffset - since.getTime()) / 60000));
+  $('state').innerHTML = s === 'break' ? tr('brkState', { t: fmtTime(status.lastPunchAt) }) : tr('inState', { t: fmtTime(status.shiftStartedAt), d: fmtDur(mins) });
+}
+setInterval(tick, 20000);
+
+function here() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      () => resolve(null), { timeout: 4000, maximumAge: 60000 });
+  });
+}
+
+/* ---------- company clock rules (US): notices to accept, a photo, the work site area ---------- */
+const X = {
+  en: { consent_required: 'Please read and accept the notice first.', selfie_required: 'A photo is needed. Please take one.', outside_geofence: 'You are outside the work site area.', low_accuracy: 'Your phone location is not exact enough. Move near a window or outside and try again.', location_required: 'Turn on location for this page to clock in here.', week_locked: 'This week has been approved. Ask your manager if something needs to change.',
+        agree: 'I agree', disagree: 'I do not agree', declined: 'You did not accept the notice, so you cannot clock in this way. Talk to your manager.', noticeOf: 'Notice {a} of {b}', photoTitle: 'Take a photo', photoHint: 'Your employer asks for a photo when you clock in or out. It is used only to confirm it is you.', snap: 'Take photo and continue', skip: 'Continue without a photo', cancel: 'Cancel', noCam: 'The camera could not be opened. Allow the camera for this page, or ask your manager.', flagged: 'Clocked. Your manager will review this punch.',
+        nTitle: 'My clock notices', nNone: 'You have not accepted any clock notice.', nOn: 'You accepted this on {d}.', nBack: 'Take back my agreement', nAskT: 'Take back your agreement?', nAsk: 'You are taking back your agreement to: {n}. Clock photos of you that were saved under it are deleted. The clock will stop using it for you, and you may be asked to accept it again before you can clock in that way. Your employer must give you another way to clock in.', nYes: 'Yes, take it back', nNo: 'No, keep it', nDone: 'Done. Your agreement was taken back.', close: 'Close', oTitle: 'You can agree in advance', oHint: 'Your employer may offer face clock-in later. Nothing changes until they turn it on, and you can say no at any time.', oBtn: 'Review', oSaved: 'Saved. Thank you.', oYes: 'I agree', oNo: 'No, thanks', fTitle: 'Face clock-in on this phone', fSetup: 'Set up face clock-in on this phone', fResetup: 'Set up again', fCheck: 'Face check', fSetupHint: 'Look at the camera and hold still for a few seconds. Your face pattern stays on this phone and is never sent to us.', fBlink: 'Look at the camera and blink once.', fLoading: 'Loading the face check…', fNoCam: 'Allow the camera to use face clock-in.', fNoLib: 'The face check could not load. Check your connection and try again.', fFail: 'The face check did not work this time. You can clock in normally.', fNoFace: 'No face found. Face the camera in good light and try again.', fUnsteady: 'The pictures did not match each other. Hold still and try again.', fOk: 'Face set up on this phone.', fRemove: 'Remove face data from this phone', fRemoved: 'Face data removed from this phone.' },
+  es: { consent_required: 'Primero lea y acepte el aviso.', selfie_required: 'Se necesita una foto. Tome una.', outside_geofence: 'Usted está fuera del área del lugar de trabajo.', low_accuracy: 'La ubicación de su teléfono no es exacta. Acérquese a una ventana o salga e intente de nuevo.', location_required: 'Active la ubicación para esta página para registrar aquí.', week_locked: 'Esta semana ya fue aprobada. Pregunte a su supervisor si algo debe cambiar.',
+        agree: 'Acepto', disagree: 'No acepto', declined: 'Usted no aceptó el aviso, así que no puede registrar de esta forma. Hable con su supervisor.', noticeOf: 'Aviso {a} de {b}', photoTitle: 'Tome una foto', photoHint: 'Su empleador pide una foto cuando registra entrada o salida. Se usa solo para confirmar que es usted.', snap: 'Tomar foto y continuar', skip: 'Continuar sin foto', cancel: 'Cancelar', noCam: 'No se pudo abrir la cámara. Permita la cámara para esta página o avise a su supervisor.', flagged: 'Registrado. Su supervisor revisará este registro.',
+        nTitle: 'Mis avisos del reloj', nNone: 'Usted no ha aceptado ningún aviso del reloj.', nOn: 'Usted lo aceptó el {d}.', nBack: 'Retirar mi aceptación', nAskT: '¿Retirar su aceptación?', nAsk: 'Usted va a retirar su aceptación de: {n}. Las fotos del reloj guardadas bajo este aviso se borran. El reloj dejará de usarlo con usted, y puede que se le pida aceptarlo de nuevo antes de registrar de esa forma. Su empleador debe darle otra forma de registrar su entrada.', nYes: 'Sí, retirarla', nNo: 'No, mantenerla', nDone: 'Listo. Su aceptación fue retirada.', close: 'Cerrar', oTitle: 'Puede aceptar por adelantado', oHint: 'Su empleador tal vez ofrezca registrar entrada con el rostro más adelante. Nada cambia hasta que lo active, y puede decir que no en cualquier momento.', oBtn: 'Revisar', oSaved: 'Guardado. Gracias.', oYes: 'Acepto', oNo: 'No, gracias', fTitle: 'Registro facial en este teléfono', fSetup: 'Configurar el registro facial en este teléfono', fResetup: 'Configurar de nuevo', fCheck: 'Verificación facial', fSetupHint: 'Mire a la cámara y quédese quieto unos segundos. Su patrón facial se queda en este teléfono y nunca se envía a nosotros.', fBlink: 'Mire a la cámara y parpadee una vez.', fLoading: 'Cargando la verificación facial…', fNoCam: 'Permita la cámara para usar el registro facial.', fNoLib: 'No se pudo cargar la verificación facial. Revise su conexión e intente de nuevo.', fFail: 'La verificación facial no funcionó esta vez. Puede registrar su entrada normalmente.', fNoFace: 'No se encontró un rostro. Mire a la cámara con buena luz e intente de nuevo.', fUnsteady: 'Las fotos no coincidieron entre sí. Quédese quieto e intente de nuevo.', fOk: 'Rostro configurado en este teléfono.', fRemove: 'Quitar los datos faciales de este teléfono', fRemoved: 'Datos faciales quitados de este teléfono.' }
+};
+const xt = (k, v = {}) => ((X[lang] || X.en)[k] || X.en[k] || k).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? '');
+let rules = null; let stream = null;
+const sheet = () => $('sheet'); const closeSheet = () => { if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; } sheet().style.display = 'none'; sheet().innerHTML = ''; };
+const escText = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+async function us(method, path, body) {
+  const token = await auth.currentUser.getIdToken();
+  // with a poor signal this must not hang: the caller treats a failure as "no extra clock rules known" and carries on
+  const stop = new AbortController(); const timer = setTimeout(() => stop.abort(), 10000);
+  try {
+    const res = await fetch(`/api/us/clock${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined, signal: stop.signal });
+    return { ok: res.ok, json: await res.json().catch(() => ({})) };
+  } catch (_) { return { ok: false, offline: true, json: {} }; } finally { clearTimeout(timer); }
+}
+// when the answer cannot be fetched (no signal) the rules already known are kept
+async function loadRules() { if (!isUs) return; try { const r = await us('GET', '/my-requirements'); if (r.offline) return; rules = r.ok && r.json.policy ? r.json : null; } catch (_) { rules = null; } }
+
+/** Shows each notice that still needs an answer. Resolves true when all are accepted. */
+function askNotices(list) {
+  return new Promise((resolve) => {
+    let i = 0;
+    const show = () => {
+      const n = list[i]; const title = (lang === 'es' && n.title_es) || n.title_en; const body = (lang === 'es' && n.body_es) || n.body_en;
+      sheet().innerHTML = `<div class="box"><p class="step">${escText(xt('noticeOf', { a: i + 1, b: list.length }))}</p><h2>${escText(title)}</h2><div class="notice">${escText(body)}</div><div class="acts"><button type="button" class="yes" id="nYes">${escText(xt('agree'))}</button><button type="button" class="no" id="nNo">${escText(xt('disagree'))}</button></div></div>`;
+      sheet().style.display = 'flex';
+      const answer = async (decision) => {
+        $('nYes').disabled = true; $('nNo').disabled = true;
+        const r = await us('POST', '/consents', { type: n.type, decision }).catch(() => ({ ok: false }));
+        if (!r.ok && r.offline) { closeSheet(); return resolve('offline'); } // no signal: the punch is saved on the phone instead
+        if (!r.ok) { closeSheet(); toast(tr('fail'), 'bad'); return resolve(false); }
+        if (decision === 'declined') { closeSheet(); toast(xt('declined'), 'bad'); return resolve(false); }
+        i += 1; if (i < list.length) show(); else { closeSheet(); resolve(true); }
+      };
+      $('nYes').onclick = () => answer('accepted'); $('nNo').onclick = () => answer('declined');
+    };
+    show();
+  });
+}
+/** Opens the front camera. Resolves a JPEG data URL, '' to go on without a photo, or null to cancel. */
+function takePhoto(required) {
+  return new Promise((resolve) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(xt('photoTitle'))}</h2><p class="step">${escText(xt('photoHint'))}</p><video id="cam" autoplay playsinline muted></video><div class="acts"><button type="button" class="yes" id="pSnap" disabled>${escText(xt('snap'))}</button>${required ? '' : `<button type="button" class="plain" id="pSkip">${escText(xt('skip'))}</button>`}<button type="button" class="plain" id="pCancel">${escText(xt('cancel'))}</button></div></div>`;
+    sheet().style.display = 'flex';
+    const done = (v) => { closeSheet(); resolve(v); };
+    $('pCancel').onclick = () => done(null); if (!required) $('pSkip').onclick = () => done('');
+    const fail = () => { if (required) { closeSheet(); toast(xt('noCam'), 'bad'); resolve(null); } else done(''); };
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fail();
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false }).then((s) => {
+      stream = s; const v = $('cam'); if (!v) { s.getTracks().forEach((t) => t.stop()); return; }
+      v.srcObject = s; v.onloadedmetadata = () => { $('pSnap').disabled = false; };
+      $('pSnap').onclick = () => {
+        const w = Math.min(480, v.videoWidth || 480); const h = Math.round(w * ((v.videoHeight || 360) / (v.videoWidth || 480)));
+        const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(v, 0, 0, w, h);
+        let q = 0.7; let url = c.toDataURL('image/jpeg', q);
+        while (url.length > 380000 && q > 0.3) { q -= 0.15; url = c.toDataURL('image/jpeg', q); } // the server takes up to 300 KB
+        done(url);
+      };
+    }).catch(fail);
+  });
+}
+
+/** The notices this person has accepted, each with a way to take the agreement back */
+/** Opens the camera for the on-phone face check. 'setup' saves this phone's template; 'check' compares the face now with it.
+ *  Resolves the result, or undefined when there is no camera, no library, or the person stops. */
+function faceSheet(mode) {
+  return new Promise((resolve) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(mode === 'setup' ? xt('fSetup') : xt('fCheck'))}</h2><p class="step" id="fmsg">${escText(mode === 'setup' ? xt('fSetupHint') : xt('fBlink'))}</p><video id="fcam" autoplay playsinline muted></video><div class="acts"><button type="button" class="plain" id="fCancel">${escText(xt('cancel'))}</button></div></div>`;
+    sheet().style.display = 'flex';
+    let fstream = null;
+    const done = (v) => { if (fstream) fstream.getTracks().forEach((t) => t.stop()); closeSheet(); resolve(v); };
+    $('fCancel').onclick = () => done(undefined);
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false })
+      .then(async (s) => {
+        fstream = s; const v = $('fcam'); if (!v) return done(undefined);
+        v.srcObject = s; await v.play().catch(() => {});
+        try { await window.OnnFace.loadLib(); } catch (_) { toast(xt('fNoLib'), 'bad'); return done(undefined); }
+        const uid = auth.currentUser ? auth.currentUser.uid : null;
+        if (!uid) return done(undefined);
+        try { done((mode === 'setup' ? await window.OnnFace.enroll(uid, v) : await window.OnnFace.check(uid, v)) || undefined); }
+        catch (_) { toast(xt('fFail'), 'bad'); done(undefined); }
+      })
+      .catch(() => { toast(xt('fNoCam'), 'bad'); done(undefined); });
+  });
+}
+async function openNotices() {
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '');
+  const r = await us('GET', '/my-consents').catch(() => ({ ok: false }));
+  if (!r.ok) { toast(tr('fail'), 'bad'); return; }
+  const list = (r.json.current || []).filter((c) => c.canRevoke);
+  const rq = await us('GET', '/my-requirements').catch(() => ({ ok: false }));
+  const offered = rq.ok && Array.isArray(rq.json.offered) ? rq.json.offered : [];
+  const faceUid = auth.currentUser ? auth.currentUser.uid : null;
+  const faceInUse = Boolean(rq.ok && rq.json.methodsInUse && rq.json.methodsInUse.includes('biometric'));
+  const faceAgreed = list.some((c) => c.type === 'biometric_release');
+  const faceSaved = faceUid && window.OnnFace ? await window.OnnFace.hasTemplate(faceUid).catch(() => false) : false;
+  const titleOf = (c) => (lang === 'es' && c.title_es) || c.title_en || c.type;
+  const showList = () => {
+    const offerHtml = offered.length ? `<h3>${escText(xt('oTitle'))}</h3><p class="step">${escText(xt('oHint'))}</p>${offered.map((o, i) => `<div class="item"><b>${escText(titleOf(o))}</b><button type="button" class="yes" data-offer="${i}">${escText(xt('oBtn'))}</button></div>`).join('')}` : '';
+    const faceHtml = faceInUse && faceAgreed && window.OnnFace ? `<h3>${escText(xt('fTitle'))}</h3><p class="step">${escText(xt('fSetupHint'))}</p><div class="acts"><button type="button" class="yes" id="fSetupBtn">${escText(faceSaved ? xt('fResetup') : xt('fSetup'))}</button></div>${faceSaved ? `<div class="acts"><button type="button" class="plain" id="fRemoveBtn">${escText(xt('fRemove'))}</button></div>` : ''}` : (faceSaved ? `<div class="acts"><button type="button" class="plain" id="fRemoveBtn">${escText(xt('fRemove'))}</button></div>` : '');
+    sheet().innerHTML = `<div class="box"><h2>${escText(xt('nTitle'))}</h2>${list.length ? list.map((c, i) => `<div class="item"><b>${escText(titleOf(c))}</b><span>${escText(xt('nOn', { d: fmtDate(c.signedAt) }))}</span><button type="button" class="no" data-back="${i}">${escText(xt('nBack'))}</button></div>`).join('') : `<p class="step">${escText(xt('nNone'))}</p>`}${offerHtml}${faceHtml}<div class="acts"><button type="button" class="plain" id="nClose">${escText(xt('close'))}</button></div></div>`;
+    sheet().style.display = 'flex';
+    $('nClose').addEventListener('click', closeSheet);
+    sheet().querySelectorAll('[data-back]').forEach((b) => b.addEventListener('click', () => ask(list[Number(b.dataset.back)])));
+    sheet().querySelectorAll('[data-offer]').forEach((b) => b.addEventListener('click', () => askOffer(offered[Number(b.dataset.offer)])));
+    const setupBtn = sheet().querySelector('#fSetupBtn');
+    if (setupBtn) setupBtn.addEventListener('click', async () => {
+      const res = await faceSheet('setup');
+      if (res && res.ok) toast(xt('fOk'), 'ok');
+      else if (res && res.reason) toast(xt(res.reason === 'unsteady' ? 'fUnsteady' : 'fNoFace'), 'bad');
+      openNotices();
+    });
+    const removeBtn = sheet().querySelector('#fRemoveBtn');
+    if (removeBtn) removeBtn.addEventListener('click', async () => {
+      await window.OnnFace.remove(faceUid).catch(() => {});
+      toast(xt('fRemoved'), 'ok'); openNotices();
+    });
+  };
+  // An offered release: the person reads it and chooses. Saying no changes nothing; nothing is collected until the place turns the method on.
+  const askOffer = (o) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(titleOf(o))}</h2><div class="notice">${escText((lang === 'es' && o.body_es) || o.body_en || '')}</div><div class="acts"><button type="button" class="yes" id="oYes">${escText(xt('oYes'))}</button><button type="button" class="plain" id="oNo">${escText(xt('oNo'))}</button></div></div>`;
+    const answer = async (decision) => {
+      $('oYes').disabled = true; $('oNo').disabled = true;
+      const out = await us('POST', '/consents', { type: o.type, decision }).catch(() => ({ ok: false, json: {} }));
+      if (!out.ok) { toast((out.json && out.json.error) || tr('fail'), 'bad'); return openNotices(); }
+      toast(xt('oSaved'), 'ok'); return openNotices();
+    };
+    $('oYes').addEventListener('click', () => answer('accepted'));
+    $('oNo').addEventListener('click', () => answer('declined'));
+  };
+  const ask = (c) => {
+    sheet().innerHTML = `<div class="box"><h2>${escText(xt('nAskT'))}</h2><div class="notice">${escText(xt('nAsk', { n: titleOf(c) }))}</div><div class="acts"><button type="button" class="no" id="nYes">${escText(xt('nYes'))}</button><button type="button" class="plain" id="nNo">${escText(xt('nNo'))}</button></div></div>`;
+    $('nNo').addEventListener('click', showList);
+    $('nYes').addEventListener('click', async () => {
+      $('nYes').disabled = true; $('nNo').disabled = true;
+      const out = await us('POST', '/consents/revoke', { type: c.type }).catch(() => ({ ok: false, json: {} }));
+      closeSheet();
+      if (!out.ok) { toast((out.json && out.json.error) || tr('fail'), 'bad'); return; }
+      if (c.type === 'biometric_release' && window.OnnFace && auth.currentUser) await window.OnnFace.remove(auth.currentUser.uid).catch(() => {});
+      toast(xt('nDone'), 'ok'); await loadRules();
+    });
+  };
+  showList();
+}
+
+async function punch(action, retried) {
+  if (busy) return; busy = true; render();
+  try {
+    let photo; let faceCheck;
+    // navigator.onLine false is certain; true only means "maybe", so the real test is whether the request gets an answer
+    let noSignal = navigator.onLine === false;
+    if (isUs && !rules && !noSignal) await loadRules();
+    if (rules && !noSignal) {
+      if (rules.pending && rules.pending.length) { const ok = await askNotices(rules.pending); if (ok === 'offline') noSignal = true; else { await loadRules(); if (!ok) { busy = false; render(); return; } } }
+      const wantsPhoto = !noSignal && rules && rules.selfie !== 'off' && ['in', 'out'].includes(action);
+      if (wantsPhoto) { const p = await takePhoto(rules.selfie === 'required'); if (p === null) { busy = false; render(); return; } photo = p || undefined; }
+      // face check on this phone: only when the place has face clock-in on and this phone has a face set up.
+      // Only the outcome { matched, liveness } is sent; if the person stops or there is no camera, the punch goes on without it and is flagged.
+      if (rules.methodsInUse && rules.methodsInUse.includes('biometric') && window.OnnFace && auth.currentUser && await window.OnnFace.hasTemplate(auth.currentUser.uid).catch(() => false)) {
+        const fc = await faceSheet('check'); if (fc) faceCheck = fc;
+      }
+    }
+    // the time of the tap (on the server's clock as last seen) and its one-time key are fixed before anything is sent
+    const item = { key: newKey(), action, at: new Date(Date.now() + clockOffset).toISOString() };
+    const location = noSignal ? null : await here();
+    // earlier saved punches go first, so the order of in, break and out stays right
+    if (queued().length && !noSignal) await flush();
+    const r = noSignal || queued().length ? { ok: false, offline: true, json: {} } : await api('POST', '/punch', { action, location, photo, faceCheck, clientKey: item.key });
+    if (r.offline) {
+      // not sent: keep it on this phone and say so plainly. Sent again later with the same key, so it can never count twice.
+      if (store.set(qKey(), [...queued(), item])) { applyLocal(item); toast(tr('offSaved', { a: actWord(action), t: fmtTime(item.at) }), 'bad'); if (navigator.vibrate) navigator.vibrate([60, 80, 60]); }
+      else toast(tr('offNotSaved'), 'bad');
+    } else if (r.ok) {
+      status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now(); store.set(sKey(), status);
+      const flagged = r.json.compliance && r.json.compliance.decision === 'flag';
+      toast(flagged ? xt('flagged') : tr({ in: 'done_in', out: 'done_out', break_start: 'done_bs', break_end: 'done_be' }[action], { t: fmtTime(status.lastPunchAt) }), 'ok');
+      if (navigator.vibrate) navigator.vibrate(60);
+    } else {
+      if (r.json.status) status = r.json.status;
+      const code = r.json.code;
+      // the rules changed since this page loaded: fetch them again and go through the steps once more
+      if (isUs && !retried && (code === 'consent_required' || code === 'selfie_required')) { await loadRules(); busy = false; return punch(action, true); }
+      toast(T[lang][code] || (X[lang] || X.en)[code] || r.json.error || tr('fail'), 'bad');
+    }
+  } catch (_) { toast(tr('fail'), 'bad'); }
+  busy = false; render();
+}
+
+$('big').onclick = () => punch(status.state === 'out' ? 'in' : 'out');
+$('breakBtn').onclick = () => punch(status.state === 'break' ? 'break_end' : 'break_start');
+$('noticesLink').addEventListener('click', (e) => { e.preventDefault(); openNotices(); });
+$('backLink').onclick = (e) => { e.preventDefault(); if (history.length > 1) history.back(); else location.href = 'login.html'; };
+document.querySelectorAll('.lang button').forEach((b) => { b.onclick = () => { lang = b.dataset.l; try { localStorage.setItem('kylrx_lang', lang); } catch (_) {} render(); }; });
+render();
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.replace('login.html'); return; }
+  try {
+    await flush();
+    const r = await api('GET', '/status');
+    if (r.offline) {
+      // no connection: show what this phone last knew, so the person can still punch (it is saved and sent later)
+      const last = store.get(sKey(), null); name = user.displayName || '';
+      if (last) { status = last; queued().forEach((it) => applyLocal(it)); render(); toast(tr('offStatus'), 'bad'); } else toast(tr('fail'), 'bad');
+      const again = setInterval(async () => { const t = await api('GET', '/status'); if (t.offline || !t.ok) return; clearInterval(again); window.location.reload(); }, 15000);
+      return;
+    }
+    if (!r.ok) throw new Error(r.json.error);
+    name = r.json.name || user.displayName || ''; status = r.json.status; clockOffset = new Date(status.serverNow).getTime() - Date.now(); leaving = Boolean(r.json.leaving);
+    if (!queued().length) store.set(sKey(), status); else queued().forEach((it) => applyLocal(it));
+    render();
+    if (r.json.country === 'US') {
+      isUs = true; render(); loadRules();
+      try {
+        const token = await user.getIdToken();
+        const f = await fetch(`/api/us/employees/${encodeURIComponent(user.uid)}/forms`, { headers: { Authorization: `Bearer ${token}` } });
+        if (f.ok) { const j = await f.json(); paperNeeded = !j.forms.w4 || !j.forms.i9.section1; render(); }
+      } catch (_) {}
+    }
+  } catch (_) { toast(tr('fail'), 'bad'); }
+});
+</script>
+<script>
+// The wall clock. It shows this device's time and is decoration only: the server records the time of every punch.
+(function () {
+  var NS = 'http://www.w3.org/2000/svg', marks = document.getElementById('ckMarks');
+  if (!marks) return;
+  for (var i = 0; i < 60; i++) {
+    var l = document.createElementNS(NS, 'line'), hour = i % 5 === 0;
+    l.setAttribute('x1', 150); l.setAttribute('x2', 150); l.setAttribute('y1', 34); l.setAttribute('y2', hour ? 48 : 40);
+    l.setAttribute('stroke', hour ? '#2c2c2a' : '#888780'); l.setAttribute('stroke-width', hour ? 3 : 1.2); l.setAttribute('stroke-linecap', 'round');
+    l.setAttribute('transform', 'rotate(' + i * 6 + ' 150 150)'); marks.appendChild(l);
+  }
+  for (var n = 1; n <= 12; n++) {
+    var a = n * 30 * Math.PI / 180, t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', 150 + Math.sin(a) * 92); t.setAttribute('y', 150 - Math.cos(a) * 92 + 7); t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', n % 3 === 0 ? 22 : 16); t.setAttribute('font-weight', 600); t.setAttribute('fill', '#2c2c2a');
+    t.textContent = n; marks.appendChild(t);
+  }
+  var H = document.getElementById('ckHour'), M = document.getElementById('ckMin'), S = document.getElementById('ckSec'), D = document.getElementById('ckDigits');
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function draw() {
+    var d = new Date(), s = d.getSeconds() + (calm ? 0 : d.getMilliseconds() / 1000), m = d.getMinutes() + s / 60, h = d.getHours() % 12 + m / 60;
+    H.setAttribute('transform', 'rotate(' + (h * 30).toFixed(2) + ' 150 150)');
+    M.setAttribute('transform', 'rotate(' + (m * 6).toFixed(2) + ' 150 150)');
+    S.setAttribute('transform', 'rotate(' + (s * 6).toFixed(2) + ' 150 150)');
+    D.textContent = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  if (calm) { draw(); setInterval(draw, 1000); } else { (function loop() { draw(); requestAnimationFrame(loop); })(); }
+  // the clock stands upright while the person is working (the button is then the red "clock out" one)
+  var big = document.getElementById('big'), clock = document.getElementById('clock');
+  function lean() { clock.classList.toggle('working', big.classList.contains('out')); }
+  new MutationObserver(lean).observe(big, { attributes: true, attributeFilter: ['class'] }); lean();
+})();
+</script>
+<script src="face-check.js?v=1"></script>
+<script type="module" src="us-nav.js?v=3"></script>
+</body>
+</html>

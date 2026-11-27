@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const admin = require('../config/firebase-admin');
 const logger = require('../utils/logger');
 
 const auditLogger = async (req, res, next) => {

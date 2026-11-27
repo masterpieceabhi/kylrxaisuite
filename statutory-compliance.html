@@ -4,7 +4,7 @@
     <script src="config.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Statutory Compliance Command Hub | Kylrx AI HRMS</title>
+  <title>Statutory Compliance Command Hub | Onn HR</title>
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -121,8 +121,8 @@
   <!-- ── UNIFIED HRMS STRATEGIC SIDEBAR ── -->
   <aside class="sidebar">
     <a href="hrms-dashboard.html" class="logo">
-      <img src="logo.jpg" alt="Kylrx AI Logo" style="height: 36px; width: 36px; object-fit: contain; border-radius: 10px;">
-      <span class="logo-text">Kylrx AI</span>
+      <img src="onnhr-logo.svg" alt="Onn HR Logo" style="height: 36px; width: 36px; object-fit: contain; border-radius: 10px;">
+      <span class="logo-text">Onn HR</span>
     </a>
 
     <nav class="nav-menu">
@@ -266,7 +266,7 @@
     <!-- Top Action / Breadcrumb Bar -->
     <header class="flex items-center justify-between pb-5 mb-6 border-b border-slate-200">
       <div class="flex items-center space-x-2 text-sm font-semibold text-slate-500">
-        <a href="hrms-dashboard.html" class="hover:text-blue-600 transition">Kylrx AI</a>
+        <a href="hrms-dashboard.html" class="hover:text-blue-600 transition">Onn HR</a>
         <span>/</span>
         <a href="hrms-dashboard.html#payroll" class="hover:text-blue-600 transition">Operations</a>
         <span>/</span>
@@ -301,7 +301,7 @@
           <span class="text-xs text-slate-400">| Statutory Code: 2026.4</span>
         </div>
         <h1 class="text-2xl font-bold text-slate-900 mt-2 font-heading">Statutory Compliance & Return Filing Hub</h1>
-        <p class="text-sm text-slate-500 mt-0.5">Aggregates PF, ESIC, Gratuity, and NPS into a unified regulatory view matching Kylrx AI governance standards.</p>
+        <p class="text-sm text-slate-500 mt-0.5">Aggregates PF, ESIC, Gratuity, and NPS into a unified regulatory view matching Onn HR governance standards.</p>
       </div>
 
       <div class="flex items-center gap-3">
@@ -2311,10 +2311,11 @@
             updateFirebaseConnectionStatus(true, `Connected: ${user.email}`);
             initFirebaseStatutorySync();
           } else {
-            console.log("⚡ Auto-authenticating Super Admin credential (superadmin@kylrx.ai)...");
+            // No automatic sign-in: a real session is required
+            window.location.replace('login.html');
+            return;
             try {
-              const cred = await signInWithEmailAndPassword(auth, 'superadmin@kylrx.ai', 'Kylrx#SuperAdmin2026!Secured');
-              console.log("✅ Super Admin authenticated successfully:", cred.user.email);
+              const cred = null;
               updateFirebaseConnectionStatus(true, `Connected: ${cred.user.email}`);
               initFirebaseStatutorySync();
             } catch (err) {

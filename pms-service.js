@@ -1076,7 +1076,7 @@ export async function getAIProductivityInsights(dayScores, trendData) {
     
     const insights = [];
     if (avg > 80) insights.push({ type: 'positive', text: 'Workforce efficiency is 12% above quarterly baseline.' });
-    if (lastMonth > prevMonth) insights.push({ type: 'positive', text: 'Upward productivity trend detected. Projected ARR impact: +₹12M.' });
+    if (lastMonth > prevMonth) insights.push({ type: 'positive', text: 'Upward productivity trend detected. Projected ARR impact: +' + ((typeof window !== 'undefined' && window.KylrxFmt && KylrxFmt.code() !== 'IN') ? '$' : '₹') + '12M.' });
     
     // Anomaly Detection
     dayScores.forEach((score, i) => {
@@ -1200,12 +1200,12 @@ export async function getOrgMetrics() {
         return {
             currentArr: calculatedCurrent,
             arrTarget: calculatedTarget,
-            currency: '₹',
+            currency: (typeof window !== 'undefined' && window.KylrxFmt) ? (new Intl.NumberFormat(KylrxFmt.locale(), { style: 'currency', currency: KylrxFmt.currency(), maximumFractionDigits: 0 }).format(0).replace(/[\d\s.,]/g, '')) : '₹',
             lastUpdated: serverTimestamp()
         };
     } catch (err) {
         console.error('[PMS] Failed to fetch org metrics:', err);
-        return { currentArr: 0, arrTarget: 100, currency: '₹' };
+        return { currentArr: 0, arrTarget: 100, currency: (typeof window !== 'undefined' && window.KylrxFmt) ? KylrxFmt.moneyCompact(0).replace(/[\d\s.,]/g, '') : '₹' };
     }
 }
 
